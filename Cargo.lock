@@ -3,5 +3,31 @@
 version = 4
 
 [[package]]
+name = "fp2"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c5f1e57d40dc0dcd848b197c44baf84d1d2d205f3295bc906037fe53a665f14"
+dependencies = [
+ "rand_core",
+]
+
+[[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
 name = "isogeny"
 version = "0.1.0"
+dependencies = [
+ "fp2",
+ "hex",
+ "rand_core",
+]
+
+[[package]]
+name = "rand_core"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
