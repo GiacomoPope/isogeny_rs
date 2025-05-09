@@ -16,3 +16,16 @@ This repository has started as a collection and refactoring of some isogeny-base
 - "An Algorithmic Approach to (2, 2)-isogenies in the Theta Model and Applications to Isogeny-based Cryptography" by Pierrick Dartois, Luciano Maino, Giacomo Pope, and Damien Robert.
   - https://eprint.iacr.org/2023/1747
   - https://github.com/ThetaIsogenies/two-isogenies
+
+### Tests
+
+Tests can be run:
+
+```
+cargo test
+```
+
+[//]: # (badges)
+
+[build-image]: https://github.com/GiacomoPope/isogeny_rs/workflows/Rust/badge.svg
+[build-link]: https://github.com/GiacomoPope/isogeny_rs/actions?query=workflow%3ARust
