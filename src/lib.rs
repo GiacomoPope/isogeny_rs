@@ -1,5 +1,5 @@
 #![allow(non_snake_case)]
+#![allow(dead_code)]
 
-pub mod curve;
-pub mod point;
-pub mod projective_point;
+pub mod elliptic;
+// pub mod theta;

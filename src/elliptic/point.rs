@@ -1,27 +1,27 @@
-use fp2::fq::Fq;
+use fp2::fq::Fq as FqTrait;
 
 /// Special x-only representation of a point (or a pair of points,
 /// since two Y coordinates may match a given X).
 #[derive(Clone, Copy, Debug)]
-pub struct PointX<Fp2: Fq> {
-    pub X: Fp2, // TODO: do i really want this public
-    pub Z: Fp2,
+pub struct PointX<Fq: FqTrait> {
+    pub X: Fq,
+    pub Z: Fq,
 }
 
-impl<Fp2: Fq> PointX<Fp2> {
+impl<Fq: FqTrait> PointX<Fq> {
     /// The neutral point of the group.
     pub const INFINITY: Self = Self {
-        X: <Fp2>::ONE,
-        Z: <Fp2>::ZERO,
+        X: <Fq>::ONE,
+        Z: <Fq>::ZERO,
     };
 
     /// Create a point from coordinates. WARNING: no check is made on the point.
-    pub fn new(X: &Fp2, Z: &Fp2) -> Self {
+    pub fn new(X: &Fq, Z: &Fq) -> Self {
         Self { X: *X, Z: *Z }
     }
 
     /// Recover the (X : Z) coordinates of a PointX
-    fn coords(self) -> (Fp2, Fp2) {
+    fn coords(self) -> (Fq, Fq) {
         (self.X, self.Z)
     }
 
@@ -33,13 +33,13 @@ impl<Fp2: Fq> PointX<Fp2> {
 
     /// Returns the affine `x` coordinate of a point
     /// x = X / Z
-    pub fn x(self) -> Fp2 {
+    pub fn x(self) -> Fq {
         self.X / self.Z
     }
 
     /// Return 0xFFFFFFFF if self and rhs represent the same point.
     /// Otherwise, return 0x00000000.
-    pub fn equals(self, rhs: &PointX<Fp2>) -> u32 {
+    pub fn equals(self, rhs: &PointX<Fq>) -> u32 {
         let inf1 = self.is_zero();
         let inf2 = rhs.is_zero();
         let e = (self.X * rhs.Z).equals(&(rhs.X * self.Z));
@@ -75,8 +75,8 @@ impl<Fp2: Fq> PointX<Fp2> {
     }
 }
 
-// TODO: edit Fq trait to have Display available!
-// impl<FQ: Fq> fmt::Display for PointX<Fp2> {
+// TODO: edit FqTrait trait to have Display available!
+// impl<Fq: FqTrait> fmt::Display for PointX<Fq> {
 //     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 //         write!(f, "Elliptic Curve PointX: ({} : {})", self.X, self.Z)
 //     }

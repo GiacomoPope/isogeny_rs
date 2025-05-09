@@ -1,0 +1,134 @@
+// ===================================================================
+// Compting general (2,2)-isogenies between theta structures
+//
+// NOTE: For the two steps before a product structure is reached, we
+// need additional symplectic transforms which is controlled by the
+// `hadamard` array of `bool`s. The purpose of these is to avoid null
+// points (or dual null points) which have zero elements, which are
+// incompatible with the doubling formula.
+// ===================================================================
+
+/// Given the 8-torsion above the kernel, compute the codomain of the
+/// (2,2)-isogeny and the image of all points in `image_points`
+/// Cost:
+/// Codomain: 8S + 9M
+/// Image: 4S + 4M
+fn two_isogeny(
+    T1: &ThetaPoint,
+    T2: &ThetaPoint,
+    image_points: &mut [ThetaPoint],
+    hadamard: [bool; 2],
+) -> ThetaStructure {
+    // Compute the squared theta transform of both elements
+    // of the kernel
+    let (xA, xB, _, _) = T1.squared_theta();
+    let (zA, tB, zC, tD) = T2.squared_theta();
+
+    // Compute the codomain coordinates
+    let xAtB = &xA * &tB;
+    let zAxB = &zA * &xB;
+    let zCtD = &zC * &tD;
+
+    let mut A = &zA * &xAtB;
+    let mut B = &tB * &zAxB;
+    let mut C = &zC * &xAtB;
+    let mut D = &tD * &zAxB;
+
+    // Inverses are precomputed for evaluation below
+    let A_inv = &xB * &zCtD;
+    let B_inv = &xA * &zCtD;
+    let C_inv = D;
+    let D_inv = C;
+
+    // Finish computing the codomain coordinates
+    // For the penultimate case, we skip the hadamard transformation
+    if hadamard[1] {
+        (A, B, C, D) = to_hadamard(&A, &B, &C, &D);
+    }
+    let codomain = ThetaStructure::new_from_coords(&A, &B, &C, &D);
+
+    // Now push through each point through the isogeny
+    for P in image_points.iter_mut() {
+        let (mut XX, mut YY, mut ZZ, mut TT) = P.coords();
+        if hadamard[0] {
+            (XX, YY, ZZ, TT) = to_hadamard(&XX, &YY, &ZZ, &TT);
+            (XX, YY, ZZ, TT) = to_squared_theta(&XX, &YY, &ZZ, &TT);
+        } else {
+            (XX, YY, ZZ, TT) = to_squared_theta(&XX, &YY, &ZZ, &TT);
+        }
+
+        XX *= &A_inv;
+        YY *= &B_inv;
+        ZZ *= &C_inv;
+        TT *= &D_inv;
+
+        if hadamard[1] {
+            (XX, YY, ZZ, TT) = to_hadamard(&XX, &YY, &ZZ, &TT);
+        }
+
+        P.X = XX;
+        P.Y = YY;
+        P.Z = ZZ;
+        P.T = TT;
+    }
+
+    codomain
+}
+
+/// Special function for the case when we are (2,2)-isogenous to a
+/// product of elliptic curves. Essentially the same as above, but with
+/// some small changes to deal with that a dual coordinate is now zero.
+/// Computes the codomain of the (2,2)-isogeny and the image of all
+/// points in `image_points`
+/// Cost:
+/// Codomain: 8S + 13M
+/// Image: 4S + 3M
+fn two_isogeny_to_product(
+    T1: &ThetaPoint,
+    T2: &ThetaPoint,
+    image_points: &mut [ThetaPoint],
+) -> ThetaStructure {
+    // Compute the squared theta transform of both elements
+    // of the kernel
+    let (mut xA, mut xB, yC, yD) = T1.hadamard();
+    (xA, xB, _, _) = to_squared_theta(&xA, &xB, &yC, &yD);
+
+    let (mut zA, mut tB, mut zC, mut tD) = T2.hadamard();
+    (zA, tB, zC, tD) = to_squared_theta(&zA, &tB, &zC, &tD);
+
+    // Compute the codomain coordinates
+    let zAtB = &zA * &tB;
+    let A = &xA * &zAtB;
+    let B = &xB * &zAtB;
+    let C = &zC * &xA * &tB;
+    let D = &tD * &xB * &zA;
+
+    // Inverses are precomputed for evaluation below
+    let AB = &A * &B;
+    let CD = &C * &D;
+    let A_inv = CD * &B;
+    let B_inv = CD * &A;
+    let C_inv = AB * &D;
+    let D_inv = AB * &C;
+
+    let codomain = ThetaStructure::new_from_coords(&A, &B, &C, &D);
+
+    for P in image_points.iter_mut() {
+        let (mut XX, mut YY, mut ZZ, mut TT) = P.coords();
+
+        (XX, YY, ZZ, TT) = to_hadamard(&XX, &YY, &ZZ, &TT);
+        (XX, YY, ZZ, TT) = to_squared_theta(&XX, &YY, &ZZ, &TT);
+
+        XX *= A_inv;
+        YY *= B_inv;
+        ZZ *= C_inv;
+        TT *= D_inv;
+
+        P.X = XX;
+        P.Y = YY;
+        P.Z = ZZ;
+        P.T = TT;
+    }
+
+    codomain
+}
