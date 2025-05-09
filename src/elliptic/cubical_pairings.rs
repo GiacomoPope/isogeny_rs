@@ -283,4 +283,103 @@ impl<Fq: FqTrait> Curve<Fq> {
         let (e2_num, e2_den) = self.tate_pairing_not_reduced_2exp(xQ, xP, xPQ, e);
         (e1_num * e2_den) / (e2_num * e1_den)
     }
+
+    /// Given x(P), x(Q) and x(P - Q) for a basis <P, Q> of E[2^f] and
+    /// x(R), x(S) and x(R - S) for a basis <P, Q> of E[2^e] for e <= f
+    /// compute integers a, b, c, d such that:
+    /// R = 2^(e - f) ([a]P + [b]B)
+    /// S = 2^(e - f) ([c]P + [d]Q)
+    /// represented as little endian values.
+    pub fn point_compression(
+        self,
+        xP: &Fq,
+        xQ: &Fq,
+        xPQ: &Fq,
+        xR: &Fq,
+        xS: &Fq,
+        xRS: &Fq,
+        f: usize,
+        e: usize,
+        d: &[u8],
+        dbitlen: usize,
+    ) -> (Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>, u32) {
+        let e_diff = f - e;
+
+        // We are going to compute five non-reduced tate pairings:
+        // e(P, Q), e(R, P), e(R, Q), e(S, P) and e(S, Q)
+        // To do this, we first need to precompute the points we need for the five
+        // cubical ladders, x(R - P), x(R - Q), x(S - P), x(S - Q)
+        let (xRP, xRQ, xSP, xSQ) = self.compute_difference_points(xP, xQ, xPQ, xR, xS, xRS);
+
+        // Now we need to compute the inverses for the ladders below
+        let mut inv = [*xP, *xQ];
+        <Fq>::batch_invert(&mut inv);
+        let ixP = inv[0];
+        let ixQ = inv[1];
+
+        // We compute the pairing e(P, Q) by computing [2^f]P and [2^f]P - Q which for our case
+        // is the same as e(P, -Q) = 1/e(P, Q) = e(Q, P)
+        let mut nP = PointX::new(xP, &<Fq>::ONE);
+        let mut nPQ = PointX::new(xPQ, &<Fq>::ONE);
+        for _ in 0..(f - 1) {
+            self.cubical_xdbladd(&mut nP.X, &mut nP.Z, &mut nPQ.X, &mut nPQ.Z, &ixQ);
+        }
+        nPQ = nPQ.translate(nP);
+        nP = nP.translate(nP);
+
+        // For the remaining four pairings we want to compute pairings of order e
+        // which requires us to compute the values
+        // [2^e]R, [2^e]S, [2^e]R - P, [2^e]R - Q, [2^e]S - P, [2^e]S - Q
+        let mut nR = PointX::new(xR, &<Fq>::ONE);
+        let mut nS = PointX::new(xS, &<Fq>::ONE);
+        let mut nRP = PointX::new(&xRP, &<Fq>::ONE);
+        let mut nRQ = PointX::new(&xRQ, &<Fq>::ONE);
+        let mut nSP = PointX::new(&xSP, &<Fq>::ONE);
+        let mut nSQ = PointX::new(&xSQ, &<Fq>::ONE);
+        for _ in 0..(e - 1) {
+            (nRP.X, nRP.Z) = Self::cubical_xadd(&nRP.X, &nRP.Z, &nR.X, &nR.Z, &ixP);
+            self.cubical_xdbladd(&mut nR.X, &mut nR.Z, &mut nRQ.X, &mut nRQ.Z, &ixQ);
+
+            (nSP.X, nSP.Z) = Self::cubical_xadd(&nSP.X, &nSP.Z, &nS.X, &nS.Z, &ixP);
+            self.cubical_xdbladd(&mut nS.X, &mut nS.Z, &mut nSQ.X, &mut nSQ.Z, &ixQ);
+        }
+        nRP = nRP.translate(nR);
+        nRQ = nRQ.translate(nR);
+        nSP = nSP.translate(nS);
+        nSQ = nSQ.translate(nS);
+        nR = nR.translate(nR);
+        nS = nS.translate(nS);
+
+        // Represent the pairings projectively
+        let num = [nPQ.Z, nRP.Z, nRQ.Z, nSP.Z, nSQ.Z];
+        let den = [nP.X, nR.X, nR.X, nS.X, nS.X];
+
+        // We now raise each of these to the power p^2 - 1
+        let mut pairings: [Fq; 5] = [<Fq>::ONE; 5];
+        let mut pairings_den: [Fq; 5] = [<Fq>::ONE; 5];
+
+        // First raise num and den to power of p-1
+        for i in 0..5 {
+            pairings[i] = num[i].conjugate() * den[i];
+            pairings_den[i] = den[i].conjugate() * num[i];
+        }
+        // Invert the denominators
+        <Fq>::batch_invert(&mut pairings_den);
+
+        // Now compute power of (p + 1 // 2^f) * 2^(f - e)
+        for i in 0..5 {
+            pairings[i] = (pairings[i] * pairings_den[i]).pow(d, dbitlen);
+            for _ in 0..e_diff {
+                pairings[i] = pairings[i].square();
+            }
+        }
+
+        let (gpp, dlog_table, ok0) = pairings[0].precompute_dlp_tables(e);
+        let (r2, ok1) = pairings[0].solve_dlp_2e(&pairings[1], e, Some((&gpp, &dlog_table)));
+        let (r1, ok2) = pairings[0].solve_dlp_2e(&pairings[2], e, Some((&gpp, &dlog_table)));
+        let (s2, ok3) = pairings[0].solve_dlp_2e(&pairings[3], e, Some((&gpp, &dlog_table)));
+        let (s1, ok4) = pairings[0].solve_dlp_2e(&pairings[4], e, Some((&gpp, &dlog_table)));
+
+        (r1, r2, s1, s2, ok0 & ok1 & ok2 & ok3 & ok4)
+    }
 }

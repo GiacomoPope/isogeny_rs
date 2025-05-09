@@ -8,19 +8,20 @@ mod test_pairings {
 
     // NIST lvl 1 SIKE prime: p = 2^216 * 3^137 - 1
     // Fp434Ext: a finite field element GF(p^2) with modulus x^2 + 1.
-    fp2::define_fp_core!(
-        typename = Fp434,
-        modulus = [
-            0xFFFFFFFFFFFFFFFF_u64,
-            0xFFFFFFFFFFFFFFFF_u64,
-            0xFFFFFFFFFFFFFFFF_u64,
-            0xFDC1767AE2FFFFFF_u64,
-            0x7BC65C783158AEA3_u64,
-            0x6CFC5FD681C52056_u64,
-            0x0002341F27177344_u64,
-        ],
+    pub static MODULUS: [u64; 7] = [
+        0xFFFFFFFFFFFFFFFF,
+        0xFFFFFFFFFFFFFFFF,
+        0xFFFFFFFFFFFFFFFF,
+        0xFDC1767AE2FFFFFF,
+        0x7BC65C783158AEA3,
+        0x6CFC5FD681C52056,
+        0x0002341F27177344,
+    ];
+    fp2::define_fp2_from_modulus!(
+        typename = Fp434Ext,
+        base_typename = Fp434,
+        modulus = MODULUS,
     );
-    fp2::define_fp2_core!(typename = Fp434Ext, base_field = Fp434,);
 
     // Characteristic: p = 2^216 * 3^137 - 1
     pub static EA: usize = 216;

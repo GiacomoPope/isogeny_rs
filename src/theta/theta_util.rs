@@ -5,15 +5,15 @@ use fp2::fq::Fq as FqTrait;
 /// Cost: 8a
 #[inline(always)]
 pub fn to_hadamard<Fq: FqTrait>(X: &Fq, Y: &Fq, Z: &Fq, T: &Fq) -> (Fq, Fq, Fq, Fq) {
-    let t1 = X + Y;
-    let t2 = X - Y;
-    let t3 = Z + T;
-    let t4 = Z - T;
+    let t1 = (*X) + (*Y);
+    let t2 = (*X) - (*Y);
+    let t3 = (*Z) + (*T);
+    let t4 = (*Z) - (*T);
 
-    let A = &t1 + &t3;
-    let B = &t2 + &t4;
-    let C = &t1 - &t3;
-    let D = &t2 - &t4;
+    let A = t1 + t3;
+    let B = t2 + t4;
+    let C = t1 - t3;
+    let D = t2 - t4;
     (A, B, C, D)
 }
 

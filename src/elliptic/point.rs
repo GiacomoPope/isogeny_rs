@@ -75,9 +75,8 @@ impl<Fq: FqTrait> PointX<Fq> {
     }
 }
 
-// TODO: edit FqTrait trait to have Display available!
-// impl<Fq: FqTrait> fmt::Display for PointX<Fq> {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         write!(f, "Elliptic Curve PointX: ({} : {})", self.X, self.Z)
-//     }
-// }
+impl<Fq: FqTrait> ::std::fmt::Display for PointX<Fq> {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        write!(f, "PointX: ({} : {})", self.X, self.Z)
+    }
+}

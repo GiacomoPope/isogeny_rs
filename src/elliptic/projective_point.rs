@@ -18,7 +18,7 @@ impl<Fq: FqTrait> Point<Fq> {
 
     /// Create a new point.
     /// WARNING no check is made on the validity of the point.
-    fn new(X: &Fq, Y: &Fq, Z: &Fq) -> Self {
+    pub fn new(X: &Fq, Y: &Fq, Z: &Fq) -> Self {
         Self {
             X: *X,
             Y: *Y,
@@ -103,5 +103,16 @@ impl<Fq: FqTrait> core::ops::Neg for &Point<Fq> {
         let mut r = *self;
         r.set_neg();
         r
+    }
+}
+
+impl<Fq: FqTrait> ::std::fmt::Display for Point<Fq> {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        if self.is_zero() == u32::MAX {
+            write!(f, "Point: (0 : 1 : 0)")
+        } else {
+            let (x, y) = self.to_xy();
+            write!(f, "Point: ({} : {} : 1)", x, y)
+        }
     }
 }
