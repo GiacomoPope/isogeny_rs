@@ -8,30 +8,39 @@
 // compatible with the isogeny formula
 // ========================================================
 
+use super::theta_point::ThetaPoint;
+use super::theta_structure::ThetaStructure;
+use super::theta_util::{apply_base_change, to_hadamard};
+use crate::elliptic::curve::Curve;
+use crate::elliptic::product::{CouplePoint, EllipticProduct};
+use crate::elliptic::projective_point::Point;
+
+use fp2::fq::Fq as FqTrait;
+
 /// Given a point in the four torsion, compute the 2x2 matrix needed
 /// for the basis change
 /// M = [[a, b], [c, d]] represented as an array [a, b, c, d]
 /// Cost: 14M + 2S + 1I
-fn get_base_submatrix(E: &Curve, T: &Point) -> (Fq, Fq, Fq, Fq) {
+fn get_base_submatrix<Fq: FqTrait>(E: &Curve<Fq>, T: &Point<Fq>) -> (Fq, Fq, Fq, Fq) {
     let (x, z) = T.to_xz();
     let (u, w) = E.x_dbl_coords(&x, &z); // Cost 3M 2S
 
     // Precompute some pieces
-    let wx = &w * &x;
-    let wz = &w * &z;
-    let ux = &u * &x;
-    let uz = &u * &z;
-    let det = &wx - &uz;
+    let wx = w * x;
+    let wz = w * z;
+    let ux = u * x;
+    let uz = u * z;
+    let det = wx - uz;
 
     // Batch inversion
     let mut inverse = [det, z];
     Fq::batch_invert(&mut inverse);
 
     // Compute the matrix coefficients
-    let d = &uz * &inverse[0]; // Computing d then a saves one negation
-    let a = -&d;
-    let b = -&(&wz * &inverse[0]);
-    let c = &ux * &inverse[0] - &x * &inverse[1];
+    let d = uz * inverse[0]; // Computing d then a saves one negation
+    let a = -d;
+    let b = -(wz * inverse[0]);
+    let c = ux * inverse[0] - x * inverse[1];
 
     (a, b, c, d)
 }
@@ -43,7 +52,11 @@ fn get_base_submatrix(E: &Curve, T: &Point) -> (Fq, Fq, Fq, Fq) {
 /// Input is expected to be K1 = (P1, P2), K2 = (Q1, Q2) in E1 x E2
 /// Inside (E1 x E2)[4].
 /// Cost 100M + 8S + 4I
-fn get_base_matrix(E1E2: &EllipticProduct, P1P2: &CouplePoint, Q1Q2: &CouplePoint) -> [Fq; 16] {
+fn get_base_matrix<Fq: FqTrait>(
+    E1E2: &EllipticProduct<Fq>,
+    P1P2: &CouplePoint<Fq>,
+    Q1Q2: &CouplePoint<Fq>,
+) -> [Fq; 16] {
     // First compute the submatrices from each point
     let (E1, E2) = E1E2.curves();
     let (P1, P2) = P1P2.points();
@@ -63,12 +76,12 @@ fn get_base_matrix(E1E2: &EllipticProduct, P1P2: &CouplePoint, Q1Q2: &CouplePoin
     // and extract out the first column
 
     // first col of g1 * h1 = [[gh00_1, *], [gh10_1, *]]
-    let gh00_1 = &g00_1 * &h00_1 + &g01_1 * &h10_1;
-    let gh10_1 = &g10_1 * &h00_1 + &g11_1 * &h10_1;
+    let gh00_1 = g00_1 * h00_1 + g01_1 * h10_1;
+    let gh10_1 = g10_1 * h00_1 + g11_1 * h10_1;
 
     // first col of g2 * h2 = [[gh00_2, *], [gh10_2, *]]
-    let gh00_2 = &g00_2 * &h00_2 + &g01_2 * &h10_2;
-    let gh10_2 = &g10_2 * &h00_2 + &g11_2 * &h10_2;
+    let gh00_2 = g00_2 * h00_2 + g01_2 * h10_2;
+    let gh10_2 = g10_2 * h00_2 + g11_2 * h10_2;
 
     // start the trace with the identity
     let mut a = Fq::ONE;
@@ -77,79 +90,68 @@ fn get_base_matrix(E1E2: &EllipticProduct, P1P2: &CouplePoint, Q1Q2: &CouplePoin
     let mut d = Fq::ZERO;
 
     // T1
-    a += &g00_1 * &g00_2;
-    b += &g00_1 * &g10_2;
-    c += &g10_1 * &g00_2;
-    d += &g10_1 * &g10_2;
+    a += g00_1 * g00_2;
+    b += g00_1 * g10_2;
+    c += g10_1 * g00_2;
+    d += g10_1 * g10_2;
 
     // T2
-    a += &h00_1 * &h00_2;
-    b += &h00_1 * &h10_2;
-    c += &h10_1 * &h00_2;
-    d += &h10_1 * &h10_2;
+    a += h00_1 * h00_2;
+    b += h00_1 * h10_2;
+    c += h10_1 * h00_2;
+    d += h10_1 * h10_2;
 
     // T1+T2
-    a += &gh00_1 * &gh00_2;
-    b += &gh00_1 * &gh10_2;
-    c += &gh10_1 * &gh00_2;
-    d += &gh10_1 * &gh10_2;
+    a += gh00_1 * gh00_2;
+    b += gh00_1 * gh10_2;
+    c += gh10_1 * gh00_2;
+    d += gh10_1 * gh10_2;
 
     // Now we act by (0, Q2)
-    let a1 = &h00_2 * &a + &h01_2 * &b;
-    let b1 = &h10_2 * &a + &h11_2 * &b;
-    let c1 = &h00_2 * &c + &h01_2 * &d;
-    let d1 = &h10_2 * &c + &h11_2 * &d;
+    let a1 = h00_2 * a + h01_2 * b;
+    let b1 = h10_2 * a + h11_2 * b;
+    let c1 = h00_2 * c + h01_2 * d;
+    let d1 = h10_2 * c + h11_2 * d;
 
     // Now we act by (P1, 0)
-    let a2 = &g00_1 * &a + &g01_1 * &c;
-    let b2 = &g00_1 * &b + &g01_1 * &d;
-    let c2 = &g10_1 * &a + &g11_1 * &c;
-    let d2 = &g10_1 * &b + &g11_1 * &d;
+    let a2 = g00_1 * a + g01_1 * c;
+    let b2 = g00_1 * b + g01_1 * d;
+    let c2 = g10_1 * a + g11_1 * c;
+    let d2 = g10_1 * b + g11_1 * d;
 
     // Now we act by (P1, Q2)
-    let a3 = &g00_1 * &a1 + &g01_1 * &c1;
-    let b3 = &g00_1 * &b1 + &g01_1 * &d1;
-    let c3 = &g10_1 * &a1 + &g11_1 * &c1;
-    let d3 = &g10_1 * &b1 + &g11_1 * &d1;
+    let a3 = g00_1 * a1 + g01_1 * c1;
+    let b3 = g00_1 * b1 + g01_1 * d1;
+    let c3 = g10_1 * a1 + g11_1 * c1;
+    let d3 = g10_1 * b1 + g11_1 * d1;
     // 44M
 
     [a, b, c, d, a1, b1, c1, d1, a2, b2, c2, d2, a3, b3, c3, d3]
 }
 
-/// Apply the base change described by M on a ThetaPoint in-place
-/// Cost: 16M
-#[inline]
-fn apply_base_change(P: &mut ThetaPoint, M: [Fq; 16]) {
-    let (x, y, z, t) = P.coords();
-    P.X = &M[0] * &x + &M[1] * &y + &M[2] * &z + &M[3] * &t;
-    P.Y = &M[4] * &x + &M[5] * &y + &M[6] * &z + &M[7] * &t;
-    P.Z = &M[8] * &x + &M[9] * &y + &M[10] * &z + &M[11] * &t;
-    P.T = &M[12] * &x + &M[13] * &y + &M[14] * &z + &M[15] * &t;
-}
-
 /// Given a couple point as input, compute the corresponding ThetaPoint on
 /// the level two structure and then apply the basis change on this point
 /// Cost: 20M
-fn base_change_couple_point(P1P2: &CouplePoint, M: [Fq; 16]) -> ThetaPoint {
+fn base_change_couple_point<Fq: FqTrait>(P1P2: &CouplePoint<Fq>, M: [Fq; 16]) -> ThetaPoint<Fq> {
     let (P1, P2) = P1P2.points();
     let (mut X1, mut Z1) = P1.to_xz();
     let (mut X2, mut Z2) = P2.to_xz();
 
     // If we have the point (0, 0) swap to (1, 0)
-    let P1_check = X1.iszero() & Z1.iszero();
+    let P1_check = X1.is_zero() & Z1.is_zero();
     X1.set_cond(&Fq::ONE, P1_check);
     Z1.set_cond(&Fq::ZERO, P1_check);
 
     // If we have the point (0, 0) swap to (1, 0)
-    let P2_check = X2.iszero() & Z2.iszero();
+    let P2_check = X2.is_zero() & Z2.is_zero();
     X2.set_cond(&Fq::ONE, P2_check);
     Z2.set_cond(&Fq::ZERO, P2_check);
 
     // Take all products to get level-2 theta point
-    let X = &X1 * &X2;
-    let Y = &X1 * &Z2;
-    let Z = &Z1 * &X2;
-    let T = &Z1 * &Z2;
+    let X = X1 * X2;
+    let Y = X1 * Z2;
+    let Z = Z1 * X2;
+    let T = Z1 * Z2;
     let mut P = ThetaPoint::from_coords(&X, &Y, &Z, &T);
 
     // Finally apply the base change on the point
@@ -161,14 +163,14 @@ fn base_change_couple_point(P1P2: &CouplePoint, M: [Fq; 16]) -> ThetaPoint {
 /// one of the dual coordinates will be zero. We need
 /// to identify the index of this zero element for the
 /// gluing isogeny codomain and evaluation functions
-fn zero_index(dual_coords: &[Fq; 4]) -> usize {
+fn zero_index<Fq: FqTrait>(dual_coords: &[Fq; 4]) -> usize {
     let mut z_idx = 0;
     for (i, el) in dual_coords.iter().enumerate() {
         // When el is zero, the result is 0xFF...FF
         // and zero otherwise, so we can use this as
         // a mask for each step.
-        let el_is_zero = el.iszero();
-        z_idx |= (i as u32 & el_is_zero);
+        let el_is_zero = el.is_zero();
+        z_idx |= i as u32 & el_is_zero;
     }
     z_idx as usize
 }
@@ -182,7 +184,10 @@ fn zero_index(dual_coords: &[Fq; 4]) -> usize {
 /// it appear more friendly
 ///
 /// Cost: 8S 13M 1I
-fn gluing_codomain(T1_8: &ThetaPoint, T2_8: &ThetaPoint) -> (ThetaStructure, (Fq, Fq), usize) {
+fn gluing_codomain<Fq: FqTrait>(
+    T1_8: &ThetaPoint<Fq>,
+    T2_8: &ThetaPoint<Fq>,
+) -> (ThetaStructure<Fq>, (Fq, Fq), usize) {
     // First construct the dual coordinates of the kernel and look
     // for the element which is zero
     // For convenience we pack this as an array instead of a tuple:
@@ -206,13 +211,13 @@ fn gluing_codomain(T1_8: &ThetaPoint, T2_8: &ThetaPoint) -> (ThetaStructure, (Fq
     // Codomain coefficients
     let mut ABCD = [Fq::ZERO; 4];
     ABCD[0 ^ z_idx] = Fq::ZERO;
-    ABCD[1 ^ z_idx] = &t1 * &inverse[2];
-    ABCD[2 ^ z_idx] = &t2 * &inverse[3];
+    ABCD[1 ^ z_idx] = t1 * inverse[2];
+    ABCD[2 ^ z_idx] = t2 * inverse[3];
     ABCD[3 ^ z_idx] = Fq::ONE;
 
     // Used for the image computation
-    let a_inverse = &t3 * &inverse[0];
-    let b_inverse = &t4 * &inverse[1];
+    let a_inverse = t3 * inverse[0];
+    let b_inverse = t4 * inverse[1];
 
     let (A, B, C, D) = to_hadamard(&ABCD[0], &ABCD[1], &ABCD[2], &ABCD[3]);
     let codomain = ThetaStructure::new_from_coords(&A, &B, &C, &D);
@@ -228,13 +233,13 @@ fn gluing_codomain(T1_8: &ThetaPoint, T2_8: &ThetaPoint) -> (ThetaStructure, (Fq
 /// the correct image.
 ///
 /// Cost: 8S + 10M + 1I
-fn gluing_image(
-    T: &ThetaPoint,
-    T_shift: &ThetaPoint,
+fn gluing_image<Fq: FqTrait>(
+    T: &ThetaPoint<Fq>,
+    T_shift: &ThetaPoint<Fq>,
     a_inv: &Fq,
     b_inv: &Fq,
     z_idx: usize,
-) -> ThetaPoint {
+) -> ThetaPoint<Fq> {
     // Find dual coordinates of point to push through
     let AxByCzDt: [Fq; 4] = T.squared_theta().into();
 
@@ -244,8 +249,8 @@ fn gluing_image(
     let AyBxCtDz: [Fq; 4] = T_shift.squared_theta().into();
 
     // We can always directly compute three elements
-    let y = AxByCzDt[1 ^ z_idx] * a_inv;
-    let z = AxByCzDt[2 ^ z_idx] * b_inv;
+    let y = AxByCzDt[1 ^ z_idx] * (*a_inv);
+    let z = AxByCzDt[2 ^ z_idx] * (*b_inv);
     let t = AxByCzDt[3 ^ z_idx];
 
     // To compute the `x` value, we need to compute a scalar, lambda,
@@ -257,19 +262,19 @@ fn gluing_image(
     // constant time, we compute both using that inverting zero just
     // gives zero and conditionally swapping lanbda with lambda_t
     let zb = AyBxCtDz[3 ^ z_idx];
-    let tb = &AyBxCtDz[2 ^ z_idx] * b_inv;
+    let tb = AyBxCtDz[2 ^ z_idx] * (*b_inv);
 
     let mut inverse = [zb, tb];
     Fq::batch_invert(&mut inverse);
 
     // Potentially one of these inverses are zero, but we do both
     // to avoid branching.
-    let mut lam = &z * &inverse[0];
-    let lam_t = &t * &inverse[1];
-    lam.set_cond(&lam_t, z.iszero());
+    let mut lam = z * inverse[0];
+    let lam_t = t * inverse[1];
+    lam.set_cond(&lam_t, z.is_zero());
 
     // Finally we recover x
-    let xb = AyBxCtDz[1 ^ z_idx] * a_inv;
+    let xb = AyBxCtDz[1 ^ z_idx] * (*a_inv);
     let x = xb * lam;
 
     // We now have values for `x,y,z,t` but to order them we need to use
@@ -288,12 +293,12 @@ fn gluing_image(
 
 /// Compute the gluing (2,2)-isogeny from a ThetaStructure computed
 /// from an elliptic product.
-fn gluing_isogeny(
-    E1E2: &EllipticProduct,
-    P1P2_8: &CouplePoint,
-    Q1Q2_8: &CouplePoint,
-    image_points: &[CouplePoint],
-) -> (ThetaStructure, Vec<ThetaPoint>) {
+pub fn gluing_isogeny<Fq: FqTrait>(
+    E1E2: &EllipticProduct<Fq>,
+    P1P2_8: &CouplePoint<Fq>,
+    Q1Q2_8: &CouplePoint<Fq>,
+    image_points: &[CouplePoint<Fq>],
+) -> (ThetaStructure<Fq>, Vec<ThetaPoint<Fq>>) {
     // First recover the four torsion below the 8 torsion
     let P1P2_4 = E1E2.double(&P1P2_8);
     let Q1Q2_4 = E1E2.double(&Q1Q2_8);
@@ -319,7 +324,7 @@ fn gluing_isogeny(
     // with elements of type ThetaPoint, we need a new vector here and as we
     // iteratate through each CouplePoint, we can compute its image and push it
     // to the new vector.
-    let mut theta_images: Vec<ThetaPoint> = Vec::new();
+    let mut theta_images: Vec<ThetaPoint<Fq>> = Vec::new();
 
     // Per image cost =
     // 2 * (16M + 5S) for the CouplePoint addition

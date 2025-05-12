@@ -8,10 +8,10 @@ use fp2::fq::Fq as FqTrait;
 /// Theta Point Struct
 #[derive(Clone, Copy, Debug)]
 pub struct ThetaPoint<Fq: FqTrait> {
-    X: Fq,
-    Y: Fq,
-    Z: Fq,
-    T: Fq,
+    pub X: Fq,
+    pub Y: Fq,
+    pub Z: Fq,
+    pub T: Fq,
 }
 
 impl<Fq: FqTrait> ThetaPoint<Fq> {

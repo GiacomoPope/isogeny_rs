@@ -1,5 +1,5 @@
 use crate::theta::theta_point::ThetaPoint;
-use crate::theta::theta_util::{to_hadamard, to_squared_coords, to_squared_theta};
+use crate::theta::theta_util::{to_hadamard, to_squared_coords};
 use fp2::fq::Fq as FqTrait;
 // ========================================================
 // Functions for working with ThetaStructures

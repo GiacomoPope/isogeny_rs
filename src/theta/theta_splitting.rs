@@ -4,6 +4,16 @@
 // splitting to Montgomery curves.
 // ========================================================
 
+use fp2::fq::Fq as FqTrait;
+
+use crate::elliptic::curve::Curve;
+use crate::elliptic::point::PointX;
+use crate::elliptic::product::{CouplePoint, EllipticProduct};
+
+use super::theta_point::ThetaPoint;
+use super::theta_structure::ThetaStructure;
+use super::theta_util::apply_base_change;
+
 // This function is a bit of a mess. Ultimately, we want to know whether
 // given some pair of indices whether we should multiply by minus one.
 // We do this by returning either 0: do nothing, or 0xFF...FF: negate
@@ -60,14 +70,14 @@ fn chi_eval(x: &usize, y: &usize) -> u32 {
 /// For a given index (chi, i) compute the level 2,2 constants (square).
 /// The purpose of this is to identify for which (chi, i) this constant
 /// is zero.
-fn level_22_constants_sqr(null_point: &ThetaPoint, chi: &usize, i: &usize) -> Fq {
+fn level_22_constants_sqr<Fq: FqTrait>(null_point: &ThetaPoint<Fq>, chi: &usize, i: &usize) -> Fq {
     let mut U_constant = Fq::ZERO;
     let null_coords = null_point.list();
 
     for t in 0..4 {
-        let mut U_it = &null_coords[t] * &null_coords[i ^ t];
+        let mut U_it = null_coords[t] * null_coords[i ^ t];
         U_it.set_condneg(chi_eval(chi, &t));
-        U_constant += &U_it;
+        U_constant += U_it;
     }
     U_constant
 }
@@ -76,7 +86,7 @@ fn level_22_constants_sqr(null_point: &ThetaPoint, chi: &usize, i: &usize) -> Fq
 /// the even index for which this constant is zero. This only fails for
 /// bad input in which case the whole chain would fail. Evaluates all
 /// positions, and so should run in constant time.
-fn identify_even_index(null_point: &ThetaPoint) -> (usize, usize) {
+fn identify_even_index<Fq: FqTrait>(null_point: &ThetaPoint<Fq>) -> (usize, usize) {
     const EVEN_INDICIES: [(usize, usize); 10] = [
         (0, 0),
         (0, 1),
@@ -99,82 +109,203 @@ fn identify_even_index(null_point: &ThetaPoint) -> (usize, usize) {
         // When U_sqr is zero, U_sqr_is_zero = 0xFF...FF
         // and 0 otherwise, so we can use this as a mask
         // to select the non-zero index through the loop
-        let U_sqr_is_zero = U_sqr.iszero();
-        chi_zero |= (*chi as u32 & U_sqr_is_zero);
-        i_zero |= (*i as u32 & U_sqr_is_zero);
+        let U_sqr_is_zero = U_sqr.is_zero();
+        chi_zero |= *chi as u32 & U_sqr_is_zero;
+        i_zero |= *i as u32 & U_sqr_is_zero;
     }
     (chi_zero as usize, i_zero as usize)
+}
+
+fn splitting_maps<Fq: FqTrait>() -> [[Fq; 16]; 10] {
+    [
+        [
+            <Fq>::ONE,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ONE,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ONE,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::MINUS_ONE,
+            <Fq>::ZERO,
+        ],
+        [
+            <Fq>::ONE,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ONE,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ONE,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ONE,
+        ],
+        [
+            <Fq>::ONE,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ONE,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ONE,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::MINUS_ONE,
+        ],
+        [
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::MINUS_ONE,
+        ],
+        [
+            <Fq>::ONE,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ONE,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ONE,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::MINUS_ONE,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+        ],
+        [
+            <Fq>::ONE,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ONE,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ONE,
+            <Fq>::ZERO,
+            <Fq>::ZERO,
+            <Fq>::ONE,
+            <Fq>::ZERO,
+        ],
+        [
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+        ],
+        [
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::MINUS_ONE,
+        ],
+        [
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::ONE,
+            <Fq>::MINUS_ONE,
+            <Fq>::ONE,
+        ],
+        [
+            <Fq>::ONE,
+            <Fq>::ZETA,
+            <Fq>::ONE,
+            <Fq>::ZETA,
+            <Fq>::ONE,
+            <Fq>::MINUS_ZETA,
+            <Fq>::ONE,
+            <Fq>::ZETA,
+            <Fq>::ONE,
+            <Fq>::ZETA,
+            <Fq>::ONE,
+            <Fq>::MINUS_ZETA,
+            <Fq>::ONE,
+            <Fq>::ZETA,
+            <Fq>::ONE,
+            <Fq>::ZETA,
+        ],
+    ]
 }
 
 /// We can precompute 10 different symplectic transforms which
 /// correspond to each of the possible 10 even indicies which could be
 /// zero. We can select the right change of basis by using the above
 /// functions and then selecting the correct map accordingly.
-fn compute_splitting_matrix(null_point: &ThetaPoint) -> [Fq; 16] {
-    #[rustfmt::skip]
-    const MAPS: [[Fq; 16]; 10] = [
-        [
-            Fq::ONE, Fq::ZERO, Fq::ZERO, Fq::ZERO,
-            Fq::ZERO, Fq::ONE, Fq::ZERO, Fq::ZERO,
-            Fq::ZERO, Fq::ZERO, Fq::ZERO, Fq::ONE,
-            Fq::ZERO, Fq::ZERO, Fq::MINUS_ONE, Fq::ZERO,
-        ],
-        [
-            Fq::ONE, Fq::ZERO, Fq::ZERO, Fq::ZERO,
-            Fq::ZERO, Fq::ONE, Fq::ZERO, Fq::ZERO,
-            Fq::ZERO, Fq::ZERO, Fq::ONE, Fq::ZERO,
-            Fq::ZERO, Fq::ZERO, Fq::ZERO, Fq::ONE,
-        ],
-        [
-            Fq::ONE, Fq::ZERO, Fq::ZERO, Fq::ZERO,
-            Fq::ZERO, Fq::ONE, Fq::ZERO, Fq::ZERO,
-            Fq::ZERO, Fq::ZERO, Fq::ONE, Fq::ZERO,
-            Fq::ZERO, Fq::ZERO, Fq::ZERO, Fq::MINUS_ONE,
-        ],
-        [
-            Fq::ONE, Fq::ONE, Fq::ONE, Fq::ONE,
-            Fq::ONE, Fq::MINUS_ONE, Fq::ONE, Fq::MINUS_ONE,
-            Fq::ONE, Fq::MINUS_ONE, Fq::MINUS_ONE, Fq::ONE,
-            Fq::ONE, Fq::ONE, Fq::MINUS_ONE, Fq::MINUS_ONE,
-        ],
-        [
-            Fq::ONE, Fq::ZERO, Fq::ZERO, Fq::ZERO,
-            Fq::ZERO, Fq::ZERO, Fq::ZERO, Fq::ONE,
-            Fq::ZERO, Fq::ZERO, Fq::ONE, Fq::ZERO,
-            Fq::ZERO, Fq::MINUS_ONE, Fq::ZERO, Fq::ZERO,
-        ],
-        [
-            Fq::ONE, Fq::ZERO, Fq::ZERO, Fq::ZERO,
-            Fq::ZERO, Fq::ONE, Fq::ZERO, Fq::ZERO,
-            Fq::ZERO, Fq::ZERO, Fq::ZERO, Fq::ONE,
-            Fq::ZERO, Fq::ZERO, Fq::ONE, Fq::ZERO,
-        ],
-        [
-            Fq::ONE, Fq::ONE, Fq::ONE, Fq::ONE, Fq::ONE,
-            Fq::MINUS_ONE, Fq::ONE, Fq::MINUS_ONE,
-            Fq::ONE, Fq::MINUS_ONE, Fq::MINUS_ONE, Fq::ONE,
-            Fq::MINUS_ONE, Fq::MINUS_ONE, Fq::ONE, Fq::ONE,
-        ],
-        [
-            Fq::ONE, Fq::ONE, Fq::ONE, Fq::ONE,
-            Fq::ONE, Fq::MINUS_ONE, Fq::ONE, Fq::MINUS_ONE,
-            Fq::ONE, Fq::ONE, Fq::MINUS_ONE, Fq::MINUS_ONE,
-            Fq::MINUS_ONE, Fq::ONE, Fq::ONE, Fq::MINUS_ONE,
-        ],
-        [
-            Fq::ONE, Fq::ONE, Fq::ONE, Fq::ONE, Fq::ONE,
-            Fq::MINUS_ONE, Fq::MINUS_ONE, Fq::ONE,
-            Fq::ONE, Fq::ONE, Fq::MINUS_ONE, Fq::MINUS_ONE,
-            Fq::MINUS_ONE, Fq::ONE, Fq::MINUS_ONE, Fq::ONE,
-        ],
-        [
-            Fq::ONE, Fq::ZETA, Fq::ONE, Fq::ZETA,
-            Fq::ONE, Fq::MINUS_ZETA, Fq::ONE, Fq::ZETA,
-            Fq::ONE, Fq::ZETA, Fq::ONE, Fq::MINUS_ZETA,
-            Fq::ONE, Fq::ZETA, Fq::ONE, Fq::ZETA,
-        ],
-    ];
-
+fn compute_splitting_matrix<Fq: FqTrait>(null_point: &ThetaPoint<Fq>) -> [Fq; 16] {
     // Identity the current location of the zero
     let zero_location = identify_even_index(null_point);
 
@@ -182,17 +313,18 @@ fn compute_splitting_matrix(null_point: &ThetaPoint) -> [Fq; 16] {
     // the desired place
     // TODO: is a match like this the best thing to do in Rust??
     let M: [Fq; 16];
+    let maps = splitting_maps();
     match zero_location {
-        (0, 2) => M = MAPS[0],
-        (3, 3) => M = MAPS[1],
-        (0, 3) => M = MAPS[2],
-        (2, 1) => M = MAPS[3],
-        (0, 1) => M = MAPS[4],
-        (1, 2) => M = MAPS[5],
-        (2, 0) => M = MAPS[6],
-        (3, 0) => M = MAPS[7],
-        (1, 0) => M = MAPS[8],
-        (0, 0) => M = MAPS[9],
+        (0, 2) => M = maps[0],
+        (3, 3) => M = maps[1],
+        (0, 3) => M = maps[2],
+        (2, 1) => M = maps[3],
+        (0, 1) => M = maps[4],
+        (1, 2) => M = maps[5],
+        (2, 0) => M = maps[6],
+        (3, 0) => M = maps[7],
+        (1, 0) => M = maps[8],
+        (0, 0) => M = maps[9],
         // The above locations are an exhaustive list of possible inputs, not sure how to tell rust this...
         _ => panic!("Unreachable"),
     }
@@ -203,7 +335,10 @@ fn compute_splitting_matrix(null_point: &ThetaPoint) -> [Fq; 16] {
 /// Map from a theta point to one which admits a splitting to elliptic
 /// products. Essentially requires computing the correct splitting
 /// matrix and then applying the isomorphism
-fn splitting_isomorphism(Th: ThetaStructure, image_points: &mut [ThetaPoint]) -> ThetaStructure {
+pub fn splitting_isomorphism<Fq: FqTrait>(
+    Th: ThetaStructure<Fq>,
+    image_points: &mut [ThetaPoint<Fq>],
+) -> ThetaStructure<Fq> {
     // Compute the correct splitting matrix
     let mut O0 = Th.null_point();
     let M = compute_splitting_matrix(&O0);
@@ -224,7 +359,7 @@ fn splitting_isomorphism(Th: ThetaStructure, image_points: &mut [ThetaPoint]) ->
 /// Algorithm from:
 /// Models of Kummer lines and Galois representation,
 /// Razvan Barbulescu, Damien Robert and Nicolas Sarkis
-fn split_theta_point(P: &ThetaPoint) -> ((Fq, Fq), (Fq, Fq)) {
+fn split_theta_point<Fq: FqTrait>(P: &ThetaPoint<Fq>) -> ((Fq, Fq), (Fq, Fq)) {
     let (a, b, _, d) = P.coords();
 
     let P1 = (a, b);
@@ -239,16 +374,16 @@ fn split_theta_point(P: &ThetaPoint) -> ((Fq, Fq), (Fq, Fq)) {
 /// Algorithm from:
 /// Models of Kummer lines and Galois representation,
 /// Razvan Barbulescu, Damien Robert and Nicolas Sarkis
-fn null_point_to_montgomery_curve(O0: &(Fq, Fq)) -> Curve {
+fn null_point_to_montgomery_curve<Fq: FqTrait>(O0: &(Fq, Fq)) -> Curve<Fq> {
     let (a, b) = O0;
 
     let aa = a.square();
     let bb = b.square();
 
-    let T1 = &aa + &bb;
-    let T2 = &aa - &bb;
+    let T1 = aa + bb;
+    let T2 = aa - bb;
 
-    let A = -&(&T1.square() + &T2.square()) / &(&T1 * &T2);
+    let A = -(T1.square() + T2.square()) / (T1 * T2);
 
     Curve::new(&A)
 }
@@ -258,9 +393,9 @@ fn null_point_to_montgomery_curve(O0: &(Fq, Fq)) -> Curve {
 /// Algorithm from:
 /// Models of Kummer lines and Galois representation,
 /// Razvan Barbulescu, Damien Robert and Nicolas Sarkis
-fn theta_point_to_montgomery_point(O0: &(Fq, Fq), P: &(Fq, Fq)) -> PointX {
-    let (a, b) = O0;
-    let (U, V) = P;
+fn theta_point_to_montgomery_point<Fq: FqTrait>(O0: &(Fq, Fq), P: &(Fq, Fq)) -> PointX<Fq> {
+    let (a, b) = *O0;
+    let (U, V) = *P;
 
     let X = a * V + b * U;
     let Z = a * V - b * U;
@@ -268,17 +403,17 @@ fn theta_point_to_montgomery_point(O0: &(Fq, Fq), P: &(Fq, Fq)) -> PointX {
     // TODO: rather than use this Type we could directly lift here instead...
     // exposing PointX to be public was the easiest way to keep everything from
     // eccore the same, which will help in the future
-    PointX::new_xz(&X, &Z)
+    PointX::new(&X, &Z)
 }
 
 /// Given a ThetaStructure and set of points in the compatible form,
 /// compute the product of elliptic curves and affine points on these
 /// curves.
-fn split_to_product(
-    Th: &ThetaStructure,
-    image_points: &[ThetaPoint],
+pub fn split_to_product<Fq: FqTrait>(
+    Th: &ThetaStructure<Fq>,
+    image_points: &[ThetaPoint<Fq>],
     num_image_points: usize,
-) -> (EllipticProduct, Vec<CouplePoint>) {
+) -> (EllipticProduct<Fq>, Vec<CouplePoint<Fq>>) {
     // First we take the domain theta null point and
     // split this to two level-1 theta null points
     let null_point = Th.null_point();
@@ -291,8 +426,8 @@ fn split_to_product(
     let E3E4 = EllipticProduct::new(&E3, &E4);
 
     // Now compute points on E3 x E4
-    let mut C: CouplePoint;
-    let mut couple_points: Vec<CouplePoint> = vec![];
+    let mut C: CouplePoint<Fq>;
+    let mut couple_points: Vec<CouplePoint<Fq>> = vec![];
 
     for P in image_points.iter().take(num_image_points) {
         // Split to level 1

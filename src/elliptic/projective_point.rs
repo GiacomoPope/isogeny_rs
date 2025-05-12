@@ -43,6 +43,11 @@ impl<Fq: FqTrait> Point<Fq> {
         (self.X * t, self.Y * t)
     }
 
+    /// Returns the X and Z coordinates of the projective point
+    pub fn to_xz(self) -> (Fq, Fq) {
+        (self.X, self.Z)
+    }
+
     /// Negate the point in place.
     pub fn set_neg(&mut self) {
         self.Y.set_neg()

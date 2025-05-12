@@ -8,35 +8,41 @@
 // incompatible with the doubling formula.
 // ===================================================================
 
+use fp2::fq::Fq as FqTrait;
+
+use super::theta_point::ThetaPoint;
+use super::theta_structure::ThetaStructure;
+use crate::theta::theta_util::{to_hadamard, to_squared_theta};
+
 /// Given the 8-torsion above the kernel, compute the codomain of the
 /// (2,2)-isogeny and the image of all points in `image_points`
 /// Cost:
 /// Codomain: 8S + 9M
 /// Image: 4S + 4M
-fn two_isogeny(
-    T1: &ThetaPoint,
-    T2: &ThetaPoint,
-    image_points: &mut [ThetaPoint],
+pub fn two_isogeny<Fq: FqTrait>(
+    T1: &ThetaPoint<Fq>,
+    T2: &ThetaPoint<Fq>,
+    image_points: &mut [ThetaPoint<Fq>],
     hadamard: [bool; 2],
-) -> ThetaStructure {
+) -> ThetaStructure<Fq> {
     // Compute the squared theta transform of both elements
     // of the kernel
     let (xA, xB, _, _) = T1.squared_theta();
     let (zA, tB, zC, tD) = T2.squared_theta();
 
     // Compute the codomain coordinates
-    let xAtB = &xA * &tB;
-    let zAxB = &zA * &xB;
-    let zCtD = &zC * &tD;
+    let xAtB = xA * tB;
+    let zAxB = zA * xB;
+    let zCtD = zC * tD;
 
-    let mut A = &zA * &xAtB;
-    let mut B = &tB * &zAxB;
-    let mut C = &zC * &xAtB;
-    let mut D = &tD * &zAxB;
+    let mut A = zA * xAtB;
+    let mut B = tB * zAxB;
+    let mut C = zC * xAtB;
+    let mut D = tD * zAxB;
 
     // Inverses are precomputed for evaluation below
-    let A_inv = &xB * &zCtD;
-    let B_inv = &xA * &zCtD;
+    let A_inv = xB * zCtD;
+    let B_inv = xA * zCtD;
     let C_inv = D;
     let D_inv = C;
 
@@ -57,10 +63,10 @@ fn two_isogeny(
             (XX, YY, ZZ, TT) = to_squared_theta(&XX, &YY, &ZZ, &TT);
         }
 
-        XX *= &A_inv;
-        YY *= &B_inv;
-        ZZ *= &C_inv;
-        TT *= &D_inv;
+        XX *= A_inv;
+        YY *= B_inv;
+        ZZ *= C_inv;
+        TT *= D_inv;
 
         if hadamard[1] {
             (XX, YY, ZZ, TT) = to_hadamard(&XX, &YY, &ZZ, &TT);
@@ -83,11 +89,11 @@ fn two_isogeny(
 /// Cost:
 /// Codomain: 8S + 13M
 /// Image: 4S + 3M
-fn two_isogeny_to_product(
-    T1: &ThetaPoint,
-    T2: &ThetaPoint,
-    image_points: &mut [ThetaPoint],
-) -> ThetaStructure {
+pub fn two_isogeny_to_product<Fq: FqTrait>(
+    T1: &ThetaPoint<Fq>,
+    T2: &ThetaPoint<Fq>,
+    image_points: &mut [ThetaPoint<Fq>],
+) -> ThetaStructure<Fq> {
     // Compute the squared theta transform of both elements
     // of the kernel
     let (mut xA, mut xB, yC, yD) = T1.hadamard();
@@ -97,19 +103,19 @@ fn two_isogeny_to_product(
     (zA, tB, zC, tD) = to_squared_theta(&zA, &tB, &zC, &tD);
 
     // Compute the codomain coordinates
-    let zAtB = &zA * &tB;
-    let A = &xA * &zAtB;
-    let B = &xB * &zAtB;
-    let C = &zC * &xA * &tB;
-    let D = &tD * &xB * &zA;
+    let zAtB = zA * tB;
+    let A = xA * zAtB;
+    let B = xB * zAtB;
+    let C = zC * xA * tB;
+    let D = tD * xB * zA;
 
     // Inverses are precomputed for evaluation below
-    let AB = &A * &B;
-    let CD = &C * &D;
-    let A_inv = CD * &B;
-    let B_inv = CD * &A;
-    let C_inv = AB * &D;
-    let D_inv = AB * &C;
+    let AB = A * B;
+    let CD = C * D;
+    let A_inv = CD * B;
+    let B_inv = CD * A;
+    let C_inv = AB * D;
+    let D_inv = AB * C;
 
     let codomain = ThetaStructure::new_from_coords(&A, &B, &C, &D);
 

@@ -1,4 +1,4 @@
-use super::projective_point::Point;
+use super::{point::PointX, projective_point::Point};
 use fp2::fq::Fq as FqTrait;
 
 /// Curve y^2 = x^3 + A*x^2 + x, for a given constant A
@@ -21,6 +21,20 @@ impl<Fq: FqTrait> Curve<Fq> {
             A: a,
             A24: (a + <Fq>::TWO).half().half(),
         }
+    }
+
+    /// Compute the j-invariant of the curve.
+    pub fn j_invariant(self) -> Fq {
+        //         j_num = 256 * (self._A**2 - 3 * self._C**2) ** 3
+        // j_den = self._C**4 * (self._A**2 - 4 * self._C**2)
+        // return j_num / j_den
+        //
+        let mut j_num = (self.A.square() - Fq::THREE);
+        j_num = j_num * j_num.square();
+        j_num = j_num.mul_small(256);
+
+        let j_den = self.A.square() - Fq::FOUR;
+        j_num / j_den
     }
 
     /// P3 <- P1 + P2
@@ -258,6 +272,47 @@ impl<Fq: FqTrait> Curve<Fq> {
 
         // Compute the normalized x-coordinate of the differences
         (RmP.X * zs[0], RmQ.X * zs[1], SmP.X * zs[2], SmQ.X * zs[3])
+    }
+
+    /// Compute the x-only double of a given point and return
+    /// the X-coords
+    #[inline(always)]
+    pub fn x_dbl_coords(self, X: &Fq, Z: &Fq) -> (Fq, Fq) {
+        let mut V1 = (*X + *Z).square();
+        let V2 = (*X - *Z).square();
+        let X_new = V1 * V2;
+        V1 -= V2;
+        let mut Z_new = V1;
+        Z_new *= self.A24;
+        Z_new += V2;
+        Z_new *= V1;
+
+        (X_new, Z_new)
+    }
+
+    /// Complete an X-only point into a full point;
+    /// (an error is returned if there is no matching Y coordinate).
+    /// On error, P3 is set to the point-at-infinity.
+    fn complete_pointX_into(self, P3: &mut Point<Fq>, P: &PointX<Fq>) -> u32 {
+        let XZ = P.X * P.Z;
+        let V = (P.X + P.Z).square() + ((self.A - Fq::TWO) * XZ);
+        P3.X = XZ;
+        P3.Y = V * XZ;
+        let ok = P3.Y.set_sqrt();
+        P3.Z = P.Z.square();
+
+        // Set to inf on error.
+        P3.Z.set_cond(&Fq::ZERO, !ok);
+
+        ok
+    }
+
+    /// Complete an X-only point into a full point;
+    /// On error, the output point is set to the point-at-infinity.
+    pub fn complete_pointX(self, P: &PointX<Fq>) -> (Point<Fq>, u32) {
+        let mut P3 = Point::INFINITY;
+        let ok = self.complete_pointX_into(&mut P3, P);
+        (P3, ok)
     }
 }
 

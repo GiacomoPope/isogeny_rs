@@ -3,20 +3,9 @@
 // TODO: further randomize this test
 #[cfg(test)]
 mod test_point_compression {
-
+    use fp2::fq::Fq;
     use isogeny::elliptic::curve::Curve;
-
-    static MODULUS: [u64; 4] = [
-        0xFFFFFFFFFFFFFFFF,
-        0xFFFFFFFFFFFFFFFF,
-        0xFFFFFFFFFFFFFFFF,
-        0x04FFFFFFFFFFFFFF,
-    ];
-    fp2::define_fp2_from_modulus!(
-        typename = Fp248Ext,
-        base_typename = Fp248,
-        modulus = MODULUS,
-    );
+    use isogeny::fields::sqisign::SqiSqignI as Fp2;
 
     // Characteristic: p = 5*2^248 - 1
     static F: usize = 248;
@@ -57,24 +46,24 @@ mod test_point_compression {
     fn test_point_compression() {
         // Create E0
         // A supersingular elliptic curve of order 5*2^248
-        let (A0, check) = <Fp248Ext>::decode(&hex::decode(A0_STR).unwrap());
+        let (A0, check) = Fp2::decode(&hex::decode(A0_STR).unwrap());
         assert!(check == u32::MAX);
         let E0 = Curve::new(&A0);
 
         // Generator x(P), x(Q), x(P - Q)
-        let (xP, check) = <Fp248Ext>::decode(&hex::decode(PX_STR).unwrap());
+        let (xP, check) = Fp2::decode(&hex::decode(PX_STR).unwrap());
         assert!(check == u32::MAX);
-        let (xQ, check) = <Fp248Ext>::decode(&hex::decode(QX_STR).unwrap());
+        let (xQ, check) = Fp2::decode(&hex::decode(QX_STR).unwrap());
         assert!(check == u32::MAX);
-        let (xPQ, check) = <Fp248Ext>::decode(&hex::decode(P_QX_STR).unwrap());
+        let (xPQ, check) = Fp2::decode(&hex::decode(P_QX_STR).unwrap());
         assert!(check == u32::MAX);
 
         // Generator x(R), x(S), x(R - S)
-        let (xR, check) = <Fp248Ext>::decode(&hex::decode(RX_STR).unwrap());
+        let (xR, check) = Fp2::decode(&hex::decode(RX_STR).unwrap());
         assert!(check == u32::MAX);
-        let (xS, check) = <Fp248Ext>::decode(&hex::decode(SX_STR).unwrap());
+        let (xS, check) = Fp2::decode(&hex::decode(SX_STR).unwrap());
         assert!(check == u32::MAX);
-        let (xRS, check) = <Fp248Ext>::decode(&hex::decode(R_SX_STR).unwrap());
+        let (xRS, check) = Fp2::decode(&hex::decode(R_SX_STR).unwrap());
         assert!(check == u32::MAX);
 
         let (r1, r2, s1, s2, check) =

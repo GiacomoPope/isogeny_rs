@@ -2,4 +2,5 @@
 #![allow(dead_code)]
 
 pub mod elliptic;
-// pub mod theta;
+pub mod fields;
+pub mod theta;

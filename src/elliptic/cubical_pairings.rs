@@ -218,13 +218,13 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// Compute x^(p^2 - 1) = x^(p + 1)(p - 1) to reduce the tate pairing for E / Fp^2
     /// where Fp^2 has modulus x^2 + 1
-    fn reduce_tate_pairing(self, num: Fq, den: Fq, d: &[u8], dbitlen: usize) -> Fq {
+    fn reduce_tate_pairing(self, num: &Fq, den: &Fq, d: &[u8], dbitlen: usize) -> Fq {
         // We can compute the pth power with a conjugate \pi(x) = x^p
         let num_p = num.conjugate();
         let den_p = den.conjugate();
 
         // First we compute ePQ^(p-1) using Frobenius x^p / x = x^(p-1)
-        let ePQ = (num_p * den) / (den_p * num);
+        let ePQ = (num_p * (*den)) / (den_p * (*num));
 
         // Now handle the power of (p + 1) / d with supplied exponent
         ePQ.pow(d, dbitlen)
@@ -247,7 +247,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         let (num, den) = self.tate_pairing_not_reduced(xP, xQ, xPQ, n, nbitlen);
 
         // Efficiently compute ePQ^(p^2 - 1)
-        self.reduce_tate_pairing(num, den, d, dbitlen)
+        self.reduce_tate_pairing(&num, &den, d, dbitlen)
     }
 
     /// Given x(P), x(Q) and x(P - Q) computes the reduced tate
@@ -266,7 +266,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         let (num, den) = self.tate_pairing_not_reduced_2exp(xP, xQ, xPQ, e);
 
         // Efficiently compute ePQ^(p^2 - 1)
-        self.reduce_tate_pairing(num, den, d, dbitlen)
+        self.reduce_tate_pairing(&num, &den, d, dbitlen)
     }
 
     /// Given x(P), x(Q) and x(P - Q) computes the Weil pairing
