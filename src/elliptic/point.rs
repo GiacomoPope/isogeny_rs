@@ -21,7 +21,7 @@ impl<Fq: FqTrait> PointX<Fq> {
     }
 
     /// Recover the (X : Z) coordinates of a PointX
-    fn coords(self) -> (Fq, Fq) {
+    pub fn coords(self) -> (Fq, Fq) {
         (self.X, self.Z)
     }
 
