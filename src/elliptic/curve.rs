@@ -25,16 +25,22 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// Compute the j-invariant of the curve.
     pub fn j_invariant(self) -> Fq {
-        //         j_num = 256 * (self._A**2 - 3 * self._C**2) ** 3
-        // j_den = self._C**4 * (self._A**2 - 4 * self._C**2)
-        // return j_num / j_den
-        //
-        let mut j_num = (self.A.square() - Fq::THREE);
-        j_num = j_num * j_num.square();
-        j_num = j_num.mul_small(256);
+        let mut j = self.A.square();
+        let mut t1 = Fq::ONE; // This should be C^2, but C = 1
+        let mut t0 = Fq::TWO; // This should be 2C^2
+        t0 = j - t0;
+        t0 -= t1;
+        j = t0 - t1;
+        t1.set_square();
+        j *= t1;
+        t0.set_mul4();
+        t1 = t0.square();
+        t0 *= t1;
+        t0.set_mul4();
+        j.set_invert();
+        j *= t0;
 
-        let j_den = self.A.square() - Fq::FOUR;
-        j_num / j_den
+        j
     }
 
     /// P3 <- P1 + P2

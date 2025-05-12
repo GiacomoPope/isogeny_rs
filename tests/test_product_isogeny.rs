@@ -81,7 +81,5 @@ mod test_product_isogeny {
         println!("{}", F3.j_invariant());
         println!("{}", E4.j_invariant());
         println!("{}", F4.j_invariant());
-
-        assert!(1 == 2);
     }
 }
