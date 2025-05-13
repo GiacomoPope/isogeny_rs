@@ -23,7 +23,7 @@ use fp2::fq::Fq as FqTrait;
 /// Cost: 14M + 2S + 1I
 fn get_base_submatrix<Fq: FqTrait>(E: &Curve<Fq>, T: &Point<Fq>) -> (Fq, Fq, Fq, Fq) {
     let (x, z) = T.to_xz();
-    let (u, w) = E.x_dbl_coords(&x, &z); // Cost 3M 2S
+    let (u, w) = E.xdbl_coords(&x, &z); // Cost 3M 2S
 
     // Precompute some pieces
     let wx = w * x;

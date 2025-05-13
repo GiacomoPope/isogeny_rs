@@ -2,9 +2,63 @@ use super::curve::Curve;
 
 // use super::curve::Curve;
 use super::point::PointX;
+use super::projective_point::Point;
 use fp2::fq::Fq as FqTrait;
 
 impl<Fq: FqTrait> Curve<Fq> {
+    /// Given the x-coordinates of x(P), x(Q) and x(P - Q) lift the points
+    /// onto the curve <P, Q>.
+    fn lift_basis(self, xP: &Fq, xQ: &Fq, xPQ: &Fq) -> (Point<Fq>, Point<Fq>) {
+        let P = self.lift_point(xP);
+
+        // Okeya-Sakurai algorithm to recover Q.Y without a sqrt
+        let mut v2 = (*xP) + (*xQ);
+        let mut v3 = (*xP) - (*xQ);
+        v3.set_square();
+        v3 *= *xPQ;
+        let mut v1 = self.A.mul2();
+        v2 += v1;
+        let mut v4 = (*xP) * (*xQ);
+        v4 += <Fq>::ONE;
+        v2 *= v4;
+        v2 -= v1;
+        let y = v3 - v2;
+        v1 = P.Y + P.Y;
+        let x = (*xQ) * v1;
+        let Q = Point::new(&x, &y, &v1);
+
+        return (P, Q);
+    }
+
+    /// Given the x-coordinates of two bases, compute pairs of differences
+    /// x(R - P), x(R - Q), x(S - P), x(S - Q)
+    pub fn compute_difference_points(
+        self,
+        xP: &Fq,
+        xQ: &Fq,
+        xPQ: &Fq,
+        xR: &Fq,
+        xS: &Fq,
+        xRS: &Fq,
+    ) -> (Fq, Fq, Fq, Fq) {
+        // Lift x-coordinates to projective points on curve
+        let (P, Q) = self.lift_basis(xP, xQ, xPQ);
+        let (R, S) = self.lift_basis(xR, xS, xRS);
+
+        // Compute R - P, R - Q, S - P, S - Q
+        let RmP = self.add(&R, &P);
+        let RmQ = self.add(&R, &Q);
+        let SmP = self.add(&S, &P);
+        let SmQ = self.add(&S, &Q);
+
+        // Invert the four Z coordinates of the differences
+        let mut zs = [RmP.Z, RmQ.Z, SmP.Z, SmQ.Z];
+        <Fq>::batch_invert(&mut zs);
+
+        // Compute the normalized x-coordinate of the differences
+        (RmP.X * zs[0], RmQ.X * zs[1], SmP.X * zs[2], SmQ.X * zs[3])
+    }
+
     /// x-only differential formula with cubical normalisation
     /// (XP : ZP), (XQ : ZQ), (1 : ixPQ) For PQ = P - Q.
     #[inline(always)]

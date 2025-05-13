@@ -4,7 +4,15 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-fp2 = "0.1.4"
+fp2 = "0.1.5"
 rand = "0.9"
 rand_core = "0.6"
+
+[dev-dependencies]
+criterion = { version = "0.4", features = ["html_reports"] }
 hex = "0.4.3"
+
+[[bench]]
+name = "bench_sidh"
+path = "benches/bench_sidh.rs"
+harness = false

@@ -30,11 +30,19 @@ pub struct SidhPublicKey<Fq: FqTrait> {
     basis_img: BasisX<Fq>,
 }
 
-/// A private key is simply a scalar represented as an array of bytes
-/// For Alice, this is a scalar of size 2^ea bits and for Bob 3^eb bits.
-/// `exp` is the value of `ea` or `eb` respectively.
+/// SIDH pivate key for Alice, simply a scalar represented as an array of bytes
+/// of length N. We additionally keep track of the exponent ea for the final isogeny.
 #[derive(Clone, Copy, Debug)]
-pub struct SidhPrivateKey<Fq: FqTrait, const N: usize> {
+pub struct SidhAlicePrivateKey<Fq: FqTrait, const N: usize> {
+    exp: usize,
+    scalar: [u8; N],
+    _phantom: PhantomData<Fq>,
+}
+
+/// SIDH pivate key for Alice, simply a scalar represented as an array of bytes
+/// of length N. We additionally keep track of the exponent ea for the final isogeny.
+#[derive(Clone, Copy, Debug)]
+pub struct SidhBobPrivateKey<Fq: FqTrait, const N: usize> {
     exp: usize,
     scalar: [u8; N],
     _phantom: PhantomData<Fq>,
@@ -66,14 +74,14 @@ impl<Fq: FqTrait, const N: usize> SidhParameters<Fq, N> {
 
     /// Return the domain E0 : y^2 = x^3 + 6x^2 + x
     pub fn starting_curve() -> Curve<Fq> {
-        let A = Fq::THREE.mul2();
+        let A = Fq::from_i32(6);
         Curve::new(&A)
     }
 
     pub fn keygen_alice<R: TryRngCore>(
         self,
         rng: &mut R,
-    ) -> (SidhPublicKey<Fq>, SidhPrivateKey<Fq, N>) {
+    ) -> (SidhPublicKey<Fq>, SidhAlicePrivateKey<Fq, N>) {
         // Sample a secret key, which is an array of bytes used as a scalar to
         // generate a kernel
         let scalar = Self::sample_secret_key(rng);
@@ -90,14 +98,14 @@ impl<Fq: FqTrait, const N: usize> SidhParameters<Fq, N> {
 
         // Package the data above into public and private keys
         let public_key = SidhPublicKey::new(&codomain, three_torsion_img);
-        let secret_key = SidhPrivateKey::new(self.ea, scalar);
+        let secret_key = SidhAlicePrivateKey::new(self.ea, scalar);
         (public_key, secret_key)
     }
 
     pub fn keygen_bob<R: TryRngCore>(
         self,
         rng: &mut R,
-    ) -> (SidhPublicKey<Fq>, SidhPrivateKey<Fq, N>) {
+    ) -> (SidhPublicKey<Fq>, SidhBobPrivateKey<Fq, N>) {
         // Sample a secret key, which is an array of bytes used as a scalar to
         // generate a kernel
         let scalar = Self::sample_secret_key(rng);
@@ -109,17 +117,17 @@ impl<Fq: FqTrait, const N: usize> SidhParameters<Fq, N> {
         let kernel = E.three_point_ladder(&self.three_torsion, &scalar, N << 3);
 
         // Compute phi_3 : E0 -> E/<K3> and phi(P2), phi(Q2), phi(P2 - Q2)
-        let mut two_torsion_img = self.three_torsion.to_array();
+        let mut two_torsion_img = self.two_torsion.to_array();
         let codomain = three_isogeny_chain(&E, &kernel, self.eb, &mut two_torsion_img);
 
         // Package the data above into public and private keys
         let public_key = SidhPublicKey::new(&codomain, two_torsion_img);
-        let secret_key = SidhPrivateKey::new(self.eb, scalar);
+        let secret_key = SidhBobPrivateKey::new(self.eb, scalar);
         (public_key, secret_key)
     }
 }
 
-impl<Fq: FqTrait, const N: usize> SidhPrivateKey<Fq, N> {
+impl<Fq: FqTrait, const N: usize> SidhAlicePrivateKey<Fq, N> {
     pub fn new(exp: usize, scalar: [u8; N]) -> Self {
         Self {
             exp,
@@ -127,7 +135,8 @@ impl<Fq: FqTrait, const N: usize> SidhPrivateKey<Fq, N> {
             _phantom: PhantomData::default(),
         }
     }
-    pub fn shared_secret_alice(self, public_key: &SidhPublicKey<Fq>) -> Fq {
+
+    pub fn shared_secret(self, public_key: &SidhPublicKey<Fq>) -> Fq {
         // Extract out the codomain of phi_3 : E -> E/<K3>
         let E = public_key.E;
 
@@ -138,8 +147,18 @@ impl<Fq: FqTrait, const N: usize> SidhPrivateKey<Fq, N> {
         let codomain = two_isogeny_chain(&E, &kernel, self.exp, &mut []);
         codomain.j_invariant()
     }
+}
 
-    pub fn shared_secret_bob(self, public_key: &SidhPublicKey<Fq>) -> Fq {
+impl<Fq: FqTrait, const N: usize> SidhBobPrivateKey<Fq, N> {
+    pub fn new(exp: usize, scalar: [u8; N]) -> Self {
+        Self {
+            exp,
+            scalar,
+            _phantom: PhantomData::default(),
+        }
+    }
+
+    pub fn shared_secret(self, public_key: &SidhPublicKey<Fq>) -> Fq {
         // Extract out the codomain of phi_2 : E -> E/<K2>
         let E = public_key.E;
 

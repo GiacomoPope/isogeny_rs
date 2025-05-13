@@ -13,12 +13,9 @@ mod test_sidh {
             let (alice_pub, alice_priv) = SIDH_434.keygen_alice(&mut rng);
             let (bob_pub, bob_priv) = SIDH_434.keygen_bob(&mut rng);
 
-            // Test 5 different shared secrets.
-            for _ in 0..5 {
-                let alice_secret = alice_priv.shared_secret_alice(&bob_pub);
-                let bob_secret = bob_priv.shared_secret_alice(&alice_pub);
-                assert!(alice_secret.equals(&bob_secret) == u32::MAX);
-            }
+            let alice_secret = alice_priv.shared_secret(&bob_pub);
+            let bob_secret = bob_priv.shared_secret(&alice_pub);
+            assert!(alice_secret.equals(&bob_secret) == u32::MAX);
         }
     }
 }
