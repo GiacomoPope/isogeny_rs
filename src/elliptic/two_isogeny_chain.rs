@@ -30,7 +30,7 @@ fn xdbl_proj<Fq: FqTrait>(A24: &Fq, C24: &Fq, P: &mut PointX<Fq>) {
     P.Z = t0 * t2;
 }
 
-/// Compute [2^n]P in place using projective (A + 2) / 4 = (A24 : C24)
+/// Compute \[2^n\]P in place using projective (A + 2) / 4 = (A24 : C24).
 /// Cost: n * (2S + 4M)
 fn xdbl_proj_iter<Fq: FqTrait>(A24: &Fq, C24: &Fq, P: &mut PointX<Fq>, n: usize) {
     for _ in 0..n {
@@ -196,3 +196,5 @@ pub fn two_isogeny_chain<Fq: FqTrait>(
 
     curve_from_A24_proj(&A24, &C24)
 }
+
+// TODO: do the same chain but with four isogenies instead?

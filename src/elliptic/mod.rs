@@ -4,4 +4,5 @@ pub mod isomorphism;
 pub mod point;
 pub mod product;
 pub mod projective_point;
+pub mod three_isogeny_chain;
 pub mod two_isogeny_chain;
