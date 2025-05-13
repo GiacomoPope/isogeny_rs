@@ -1,4 +1,4 @@
-use super::{point::PointX, projective_point::Point};
+use super::{basis::BasisX, point::PointX, projective_point::Point};
 use fp2::fq::Fq as FqTrait;
 
 /// Curve y^2 = x^3 + A*x^2 + x, for a given constant A
@@ -319,6 +319,78 @@ impl<Fq: FqTrait> Curve<Fq> {
         let mut P3 = Point::INFINITY;
         let ok = self.complete_pointX_into(&mut P3, P);
         (P3, ok)
+    }
+
+    /// x-only doubling and differential addition formula
+    /// Note: order of arguments:
+    /// (XP : ZP), (XQ : ZQ), (XPQ: ZPQ) For PQ = P - Q
+    /// Sets P = [2]P and Q = P + Q in place
+    #[inline(always)]
+    fn xdbladd(self, XP: &mut Fq, ZP: &mut Fq, XQ: &mut Fq, ZQ: &mut Fq, XQP: &Fq, ZQP: &Fq) {
+        // TODO: I think I could just replace P, Q in-place rather than
+        // define new mutable elements of Fp2
+        let mut t0 = *XP + *ZP;
+        let mut t1 = *XP - *ZP;
+        let mut X2P = t0.square();
+        let mut t2 = *XQ - *ZQ;
+        let mut XPQ = *XQ + *ZQ;
+        t0 *= t2;
+        let mut Z2P = t1.square();
+        t1 *= XPQ;
+        t2 = X2P - Z2P;
+        X2P *= Z2P;
+        XPQ = self.A24 * t2;
+        let mut ZPQ = t0 - t1;
+        Z2P = XPQ + Z2P;
+        XPQ = t0 + t1;
+        Z2P *= t2;
+        ZPQ = ZPQ.square();
+        XPQ = XPQ.square();
+        ZPQ *= *XQP;
+        XPQ *= *ZQP;
+
+        // Modify in place
+        *XP = X2P;
+        *ZP = Z2P;
+        *XQ = XPQ;
+        *ZQ = ZPQ;
+    }
+
+    /// P <- P + n*Q, X-only variant given the x-only basis x(P), x(Q) and x(P - Q).
+    /// Integer `n` is encoded as unsigned little-endian, with length `nbitlen bits`.
+    /// Bits beyond that length are ignored.
+    fn three_point_ladder_into(self, P: &mut PointX<Fq>, B: &BasisX<Fq>, n: &[u8], nbitlen: usize) {
+        if nbitlen == 0 {
+            *P = B.P();
+            return;
+        }
+
+        // Extract out the coordinates from the basis
+        let (mut X0, mut Z0) = B.Q().coords();
+        let (mut X1, mut Z1) = B.P().coords();
+        let (mut X2, mut Z2) = B.PQ().coords();
+
+        let mut cc = 0u32;
+        for i in 0..nbitlen {
+            let ctl = (((n[i >> 3] >> (i & 7)) as u32) & 1).wrapping_neg();
+            Fq::condswap(&mut X1, &mut X2, ctl ^ cc);
+            Fq::condswap(&mut Z1, &mut Z2, ctl ^ cc);
+            self.xdbladd(&mut X0, &mut Z0, &mut X2, &mut Z2, &X1, &Z1);
+            cc = ctl;
+        }
+        Fq::condswap(&mut X1, &mut X2, cc);
+        Fq::condswap(&mut Z1, &mut Z2, cc);
+
+        *P = PointX::new(&X1, &Z1);
+    }
+
+    /// Return P + n*Q, X-only variant given the x-only basis x(P), x(Q) and x(P - Q).
+    /// Integer `n` is encoded as unsigned little-endian, with length `nbitlen bits`.
+    /// Bits beyond that length are ignored.
+    pub fn three_point_ladder(self, B: &BasisX<Fq>, n: &[u8], nbitlen: usize) -> PointX<Fq> {
+        let mut PnQ = PointX::INFINITY;
+        self.three_point_ladder_into(&mut PnQ, B, n, nbitlen);
+        PnQ
     }
 }
 

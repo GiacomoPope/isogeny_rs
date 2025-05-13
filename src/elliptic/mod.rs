@@ -1,3 +1,4 @@
+pub mod basis;
 pub mod cubical_pairings;
 pub mod curve;
 pub mod isomorphism;

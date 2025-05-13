@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-fp2 = "0.1.2"
+fp2 = "0.1.4"
+rand = "0.9"
 rand_core = "0.6"
 hex = "0.4.3"

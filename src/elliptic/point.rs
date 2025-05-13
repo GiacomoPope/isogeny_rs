@@ -20,6 +20,10 @@ impl<Fq: FqTrait> PointX<Fq> {
         Self { X: *X, Z: *Z }
     }
 
+    pub const fn from_x_coord(X: &Fq) -> Self {
+        Self { X: *X, Z: Fq::ONE }
+    }
+
     /// Recover the (X : Z) coordinates of a PointX
     pub fn coords(self) -> (Fq, Fq) {
         (self.X, self.Z)

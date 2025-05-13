@@ -3,4 +3,5 @@
 
 pub mod elliptic;
 pub mod fields;
+pub mod protocols;
 pub mod theta;
