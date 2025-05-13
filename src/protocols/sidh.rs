@@ -21,11 +21,22 @@ pub struct SidhParameters<Fq: FqTrait, const N: usize> {
     three_torsion: BasisX<Fq>,
 }
 
-/// A SIDH public key contains the codomain of phi_i : E0 -> E0/<Ki> as well
-/// as the images phi_i(Pj), phi_i(!j), phi_i(Pj - Qj) for (i, j) = (2, 3) and (3, 2)
-/// for Alice and Bob respectively.
+/// Alice's SIDH public key contains the codomain of phi_2 : E0 -> E0/<K2> with
+/// K2 = P2 + \[s\] * Q2, with P2, Q2 as public parameters and `s` as the scalar
+/// stored in `SidhAlicePrivateKey`. Additionally, it contains the images of
+/// phi_2(P3), phi_2(Q3) and phi_2(P3 - Q3)
 #[derive(Clone, Copy, Debug)]
-pub struct SidhPublicKey<Fq: FqTrait> {
+pub struct SidhAlicePublicKey<Fq: FqTrait> {
+    E: Curve<Fq>,
+    basis_img: BasisX<Fq>,
+}
+
+/// Bob's SIDH public key contains the codomain of phi_3 : E0 -> E0/<K3> with
+/// K3 = P3 + \[s\] * Q3, with P3, Q3 as public parameters and `s` as the scalar
+/// stored in `SidhBobPrivateKey`. Additionally, it contains the images of
+/// phi_3(P2), phi_3(Q2) and phi_3(P2 - Q2)
+#[derive(Clone, Copy, Debug)]
+pub struct SidhBobPublicKey<Fq: FqTrait> {
     E: Curve<Fq>,
     basis_img: BasisX<Fq>,
 }
@@ -40,7 +51,7 @@ pub struct SidhAlicePrivateKey<Fq: FqTrait, const N: usize> {
 }
 
 /// SIDH pivate key for Alice, simply a scalar represented as an array of bytes
-/// of length N. We additionally keep track of the exponent ea for the final isogeny.
+/// of length N. We additionally keep track of the exponent eb for the final isogeny.
 #[derive(Clone, Copy, Debug)]
 pub struct SidhBobPrivateKey<Fq: FqTrait, const N: usize> {
     exp: usize,
@@ -81,7 +92,7 @@ impl<Fq: FqTrait, const N: usize> SidhParameters<Fq, N> {
     pub fn keygen_alice<R: TryRngCore>(
         self,
         rng: &mut R,
-    ) -> (SidhPublicKey<Fq>, SidhAlicePrivateKey<Fq, N>) {
+    ) -> (SidhAlicePublicKey<Fq>, SidhAlicePrivateKey<Fq, N>) {
         // Sample a secret key, which is an array of bytes used as a scalar to
         // generate a kernel
         let scalar = Self::sample_secret_key(rng);
@@ -97,7 +108,7 @@ impl<Fq: FqTrait, const N: usize> SidhParameters<Fq, N> {
         let codomain = two_isogeny_chain(&E, &kernel, self.ea, &mut three_torsion_img);
 
         // Package the data above into public and private keys
-        let public_key = SidhPublicKey::new(&codomain, three_torsion_img);
+        let public_key = SidhAlicePublicKey::new(&codomain, three_torsion_img);
         let secret_key = SidhAlicePrivateKey::new(self.ea, scalar);
         (public_key, secret_key)
     }
@@ -105,7 +116,7 @@ impl<Fq: FqTrait, const N: usize> SidhParameters<Fq, N> {
     pub fn keygen_bob<R: TryRngCore>(
         self,
         rng: &mut R,
-    ) -> (SidhPublicKey<Fq>, SidhBobPrivateKey<Fq, N>) {
+    ) -> (SidhBobPublicKey<Fq>, SidhBobPrivateKey<Fq, N>) {
         // Sample a secret key, which is an array of bytes used as a scalar to
         // generate a kernel
         let scalar = Self::sample_secret_key(rng);
@@ -121,7 +132,7 @@ impl<Fq: FqTrait, const N: usize> SidhParameters<Fq, N> {
         let codomain = three_isogeny_chain(&E, &kernel, self.eb, &mut two_torsion_img);
 
         // Package the data above into public and private keys
-        let public_key = SidhPublicKey::new(&codomain, two_torsion_img);
+        let public_key = SidhBobPublicKey::new(&codomain, two_torsion_img);
         let secret_key = SidhBobPrivateKey::new(self.eb, scalar);
         (public_key, secret_key)
     }
@@ -136,7 +147,7 @@ impl<Fq: FqTrait, const N: usize> SidhAlicePrivateKey<Fq, N> {
         }
     }
 
-    pub fn shared_secret(self, public_key: &SidhPublicKey<Fq>) -> Fq {
+    pub fn shared_secret(self, public_key: &SidhBobPublicKey<Fq>) -> Fq {
         // Extract out the codomain of phi_3 : E -> E/<K3>
         let E = public_key.E;
 
@@ -158,7 +169,7 @@ impl<Fq: FqTrait, const N: usize> SidhBobPrivateKey<Fq, N> {
         }
     }
 
-    pub fn shared_secret(self, public_key: &SidhPublicKey<Fq>) -> Fq {
+    pub fn shared_secret(self, public_key: &SidhAlicePublicKey<Fq>) -> Fq {
         // Extract out the codomain of phi_2 : E -> E/<K2>
         let E = public_key.E;
 
@@ -171,7 +182,16 @@ impl<Fq: FqTrait, const N: usize> SidhBobPrivateKey<Fq, N> {
     }
 }
 
-impl<Fq: FqTrait> SidhPublicKey<Fq> {
+impl<Fq: FqTrait> SidhAlicePublicKey<Fq> {
+    pub fn new(E: &Curve<Fq>, basis_img: [PointX<Fq>; 3]) -> Self {
+        Self {
+            E: *E,
+            basis_img: BasisX::from_array(basis_img),
+        }
+    }
+}
+
+impl<Fq: FqTrait> SidhBobPublicKey<Fq> {
     pub fn new(E: &Curve<Fq>, basis_img: [PointX<Fq>; 3]) -> Self {
         Self {
             E: *E,
