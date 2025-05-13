@@ -2,6 +2,18 @@ use fp2::fq::Fq as FqTrait;
 
 use super::{curve::Curve, point::PointX};
 
+/// Compute a curve from the projective coordinates of (A + 2) / 4 = (A24 : C24)
+#[inline]
+fn curve_from_A24_proj<Fq: FqTrait>(A24: &Fq, C24: &Fq) -> Curve<Fq> {
+    // Compute A from (A24 : C24)
+    let mut A = (*A24) + (*A24);
+    A -= *C24;
+    A += A;
+    A /= *C24;
+
+    Curve::new(&A)
+}
+
 /// Compute [2]P in place using projective (A + 2) / 4 = (A24 : C24)
 /// Cost: 2S + 4M
 #[inline(always)]
@@ -126,12 +138,61 @@ pub fn two_isogeny_chain_naive<Fq: FqTrait>(
             }
         }
     }
+    curve_from_A24_proj(&A24, &C24)
+}
 
-    // Compute A from (A24 : C24)
-    let mut A = A24 + A24;
-    A -= C24;
-    A += A;
-    A /= C24;
+/// Compute a 2^n isogeny using a balanced strategy
+pub fn two_isogeny_chain<Fq: FqTrait>(
+    domain: &Curve<Fq>,
+    kernel: &PointX<Fq>,
+    n: usize,
+    images: &mut [PointX<Fq>],
+) -> Curve<Fq> {
+    // For 2-isogenies we represent (A + 2) / 4 projectively as (A24 : C24)
+    let mut A24 = domain.A24;
+    let mut C24 = Fq::ONE;
 
-    Curve::new(&A)
+    // Compute the amount of space we need for the balanced strategy.
+    let space = (usize::BITS - n.leading_zeros() + 1) as usize;
+
+    // These are a set of points of order 2^i
+    let mut stategy_points: Vec<PointX<Fq>> = vec![PointX::INFINITY; space];
+
+    // The values i such that each point in stategy_points has order 2^i
+    let mut orders: Vec<usize> = vec![0; space];
+
+    // Initalise the first values for the strategy
+    stategy_points[0] = *kernel;
+    orders[0] = n;
+
+    let mut k = 0;
+    for _ in 0..n {
+        // Get the next point of order 2
+        while orders[k] != 1 {
+            k += 1;
+            let m = orders[k - 1] / 2;
+            stategy_points[k] = stategy_points[k - 1];
+            xdbl_proj_iter(&A24, &C24, &mut stategy_points[k], m);
+            orders[k] = orders[k - 1] - m;
+        }
+        // Point of order two to compute isogeny with
+        let ker_step = stategy_points[k];
+
+        // Compute the codomain from the current step
+        (A24, C24) = two_isogeny_codomain(&ker_step);
+
+        // Push through the kernel points and reduce the stored order
+        for i in 0..space {
+            two_isogeny_eval(&ker_step, &mut stategy_points[i]);
+            orders[i] = orders[i].saturating_sub(1);
+        }
+
+        // Push through the points to evaluate
+        for P in images.iter_mut() {
+            two_isogeny_eval(&ker_step, P);
+        }
+        k = k.saturating_sub(1);
+    }
+
+    curve_from_A24_proj(&A24, &C24)
 }

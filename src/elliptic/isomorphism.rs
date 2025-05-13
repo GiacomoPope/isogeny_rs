@@ -12,6 +12,7 @@ pub struct Isomorphism<Fq: FqTrait> {
 }
 
 impl<Fq: FqTrait> Isomorphism<Fq> {
+    // TODO: explain edge cases
     pub fn new(E1: &Curve<Fq>, E2: &Curve<Fq>) -> Self {
         // lambda_x = (2*A2^3 - 9*A2) * (3 - A1^2)
         // lambda_z = (2*A1^3 - 9*A1) * (3 - A2^2)

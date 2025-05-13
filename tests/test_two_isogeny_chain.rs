@@ -6,7 +6,7 @@ mod test_two_isogeny_chain {
     use isogeny::elliptic::curve::Curve;
     use isogeny::elliptic::isomorphism::Isomorphism;
     use isogeny::elliptic::point::PointX;
-    use isogeny::elliptic::two_isogeny_chain::two_isogeny_chain_naive;
+    use isogeny::elliptic::two_isogeny_chain::{two_isogeny_chain, two_isogeny_chain_naive};
     use isogeny::fields::sqisign::SqiSqignI as Fp2;
 
     // Domain of isogenies for testing
@@ -121,6 +121,53 @@ mod test_two_isogeny_chain {
         // compare points we compute an isomorphism and evaluate.
         // Compute an isomorphism between our output and Sage's
         let isomorphism = Isomorphism::new(&E2_test, &E2);
+        isomorphism.isomorphism_eval(&mut R_img_test);
+
+        // Assert the two points are equal after isomorphism.
+        assert!(R_img.x().equals(&R_img_test.x()) == u32::MAX);
+    }
+
+    #[test]
+    fn test_two_isogeny() {
+        // Ensure all Fp2 elements from Sage decode correctly.
+        let (A, check) = Fp2::decode(&hex::decode(A0_STR).unwrap());
+        assert!(check == u32::MAX);
+
+        let (A_test, check) = Fp2::decode(&hex::decode(A1_STR).unwrap());
+        assert!(check == u32::MAX);
+
+        let (xP, check) = Fp2::decode(&hex::decode(XP_STR).unwrap());
+        assert!(check == u32::MAX);
+
+        let (xR, check) = Fp2::decode(&hex::decode(XR_STR).unwrap());
+        assert!(check == u32::MAX);
+
+        let (xR_img_test, check) = Fp2::decode(&hex::decode(XR1_STR).unwrap());
+        assert!(check == u32::MAX);
+
+        // Domain, kernel and point to eval
+        let E = Curve::new(&A);
+        let ker = PointX::new(&xP, &Fp2::ONE);
+        let R = PointX::new(&xR, &Fp2::ONE);
+
+        // Values from Sage to compare against
+        let E1_test = Curve::new(&A_test);
+        let j1_test = E1_test.j_invariant();
+        let mut R_img_test = PointX::new(&xR_img_test, &Fp2::ONE);
+
+        // Compute chain
+        let images = &mut [R];
+        let E1 = two_isogeny_chain(&E, &ker, 248, images);
+        let R_img = images[0];
+
+        // Assert that the codomains are isomorphic
+        let j1 = E1.j_invariant();
+        assert!(j1.equals(&j1_test) == u32::MAX);
+
+        // The output from Sage might not be exactly equal, so to
+        // compare points we compute an isomorphism and evaluate.
+        // Compute an isomorphism between our output and Sage's
+        let isomorphism = Isomorphism::new(&E1_test, &E1);
         isomorphism.isomorphism_eval(&mut R_img_test);
 
         // Assert the two points are equal after isomorphism.
