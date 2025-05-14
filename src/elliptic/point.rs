@@ -77,6 +77,12 @@ impl<Fq: FqTrait> PointX<Fq> {
 
         Self::new(&X_new, &Z_new)
     }
+
+    #[inline]
+    pub fn condswap(P: &mut Self, Q: &mut Self, ctl: u32) {
+        Fq::condswap(&mut P.X, &mut Q.X, ctl);
+        Fq::condswap(&mut P.Z, &mut Q.Z, ctl);
+    }
 }
 
 impl<Fq: FqTrait> ::std::fmt::Display for PointX<Fq> {

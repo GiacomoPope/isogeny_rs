@@ -247,24 +247,18 @@ impl<Fq: FqTrait> Curve<Fq> {
         PointX::new(&X1, &Z1)
     }
 
-    // TODO: constant time
     fn encode_to_odd_binary(a_bits: &mut Vec<u8>, a: &[u8], a_bitlen: usize) {
-        let mut flip_bit = if a[0] & 1 == 1 { 0 } else { 1 };
+        let mut flip_bit = (a[0] & 1) as u8;
         for i in 0..a_bitlen {
             // We want to compute the binary of a when a is odd and the
             // binary of (a - 1) when a is even. To do this, we compute
-            // each bit of a. If a is even, we want to flip every zero
-            // bit we encounter, flip the first 1 bit and then stop flipping
-            // bits...
-            let bit = (a[i >> 3] >> (i & 7)) & 1;
-            if flip_bit == 1 {
-                a_bits[i] = bit ^ flip_bit;
-                if bit == 1 {
-                    flip_bit = 0;
-                }
-            } else {
-                a_bits[i] = bit
-            }
+            // each bit of a.
+            // When a is odd we set flip_bit to zero and compute a ^ 0 = a
+            // When a is even we set flip_bit to 1 and compute ai ^ 1
+            // then set flip_bit to flip_bit & (ai ^ 1). This sets flip_bit
+            // to zero after encountering ai = 1 terminating the flipping.
+            a_bits[i] = ((a[i >> 3] >> (i & 7)) & 1) ^ flip_bit;
+            flip_bit &= a_bits[i];
         }
     }
 
@@ -296,12 +290,10 @@ impl<Fq: FqTrait> Curve<Fq> {
         let mut b_bits = vec![0u8; k + 1];
         Self::encode_to_odd_binary(&mut a_bits, a, a_bitlen);
         Self::encode_to_odd_binary(&mut b_bits, b, b_bitlen);
-
         let ab_bits: &[Vec<u8>] = &[a_bits, b_bits];
 
         // Create a new vector of length 2*k
         let mut r = vec![0; 2 * k];
-
         for i in 0..k {
             let s0_index = (s0 & 1) as usize;
             let s1_index = (s1 & 1) as usize;
@@ -353,30 +345,23 @@ impl<Fq: FqTrait> Curve<Fq> {
 
         // Main ladder loop, compute [a]P + [b]Q
         for i in (0..k).rev() {
+            // Compute indices.
             let r1 = r[2 * i] as usize;
             let r2 = r[2 * i + 1] as usize;
             let h = r1 + r2;
 
-            // Compute new T values and swap differential points conditionally
+            // Compute new T values and swap differential points conditionally.
             T[0] = R[h & 1];
             T[1] = R[2];
             T[0] = self.xdouble(&T[h >> 1]);
             T[1] = R[r2];
             T[2] = R[r2 + 1];
-
-            // TODO: constant time
-            if r2 == 1 {
-                (D1, D2) = (D2, D1);
-            }
-
+            PointX::condswap(&mut D1, &mut D2, (r2 as u32).wrapping_neg());
             T[1] = Self::xdiff_add(&T[1], &T[2], &D1);
             T[2] = Self::xdiff_add(&R[0], &R[2], &F1);
+            PointX::condswap(&mut F1, &mut F2, ((h & 1) as u32).wrapping_neg());
 
-            // TODO: constant time
-            if h & 1 == 1 {
-                (F1, F2) = (F2, F1);
-            }
-
+            // Update R values from T values.
             R = T;
         }
 

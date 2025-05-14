@@ -69,13 +69,13 @@ mod test_ladders {
         let A = Fp2::from_i32(6);
         let E = Curve::new(&A);
 
-        let mut a: [u8; 32] = [0; 32];
-        let mut b: [u8; 32] = [0; 32];
-        rng.fill_bytes(&mut a);
-        rng.fill_bytes(&mut b);
-
         // Try truncating the scalar by a few bits by setting the bit length.
         for i in 0..20 {
+            let mut a: [u8; 32] = [0; 32];
+            let mut b: [u8; 32] = [0; 32];
+            rng.fill_bytes(&mut a);
+            rng.fill_bytes(&mut b);
+
             // Compute [a]P + [b]Q with projective points
             let P = E.rand_point(&mut rng);
             let Q = E.rand_point(&mut rng);
