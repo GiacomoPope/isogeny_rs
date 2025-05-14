@@ -1,4 +1,4 @@
-use super::{basis::BasisX, point::PointX, projective_point::Point};
+use super::{point::PointX, projective_point::Point};
 use fp2::fq::Fq as FqTrait;
 
 /// Curve y^2 = x^3 + A*x^2 + x, for a given constant A
@@ -51,7 +51,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         y *= x; // y = x^2 + A*x
         y += <Fq>::ONE; // x^2 + A*x + 1
         y *= x; // y = x^3 + A*x^2 + x
-        !(y.legendre() as u32 >> 1)
+        y.is_square()
     }
 
     /// Given the x-coordinate of a point, lift it to a projective point

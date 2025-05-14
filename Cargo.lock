@@ -187,9 +187,9 @@ checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
 name = "fp2"
-version = "0.1.5"
+version = "0.1.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa2b56dae54b822ed0e1e88c14d3d5c3711757165c206ee181f8c3de72d41b68"
+checksum = "54a3935d2d2b292066580ebd41d0ae047a7041caa57c11339b40d5d92d6245c1"
 dependencies = [
  "rand_core 0.6.4",
 ]
