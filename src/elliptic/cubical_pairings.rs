@@ -27,7 +27,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         let x = (*xQ) * v1;
         let Q = Point::new(&x, &y, &v1);
 
-        return (P, Q);
+        (P, Q)
     }
 
     /// Given the x-coordinates of two bases, compute pairs of differences

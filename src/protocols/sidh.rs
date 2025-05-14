@@ -143,7 +143,7 @@ impl<Fq: FqTrait, const N: usize> SidhAlicePrivateKey<Fq, N> {
         Self {
             exp,
             scalar,
-            _phantom: PhantomData::default(),
+            _phantom: PhantomData,
         }
     }
 
@@ -165,7 +165,7 @@ impl<Fq: FqTrait, const N: usize> SidhBobPrivateKey<Fq, N> {
         Self {
             exp,
             scalar,
-            _phantom: PhantomData::default(),
+            _phantom: PhantomData,
         }
     }
 

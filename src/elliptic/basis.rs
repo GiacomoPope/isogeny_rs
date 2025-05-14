@@ -18,7 +18,7 @@ impl<Fq: FqTrait> BasisX<Fq> {
 
     /// Set the basis given an array [P, Q, PQ]
     pub fn from_array(basis: [PointX<Fq>; 3]) -> Self {
-        Self { basis: basis }
+        Self { basis }
     }
 
     /// Return the array of points [P, Q, PQ]

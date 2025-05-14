@@ -139,8 +139,6 @@ impl<Fq: FqTrait> Curve<Fq> {
             self.full_even_torsion_point_from_nqr()
         };
 
-        println!("xP: {}", xP);
-
         // We can compute another linearly independent point from xP
         // which also has full even torsion.
         let mut xPQ = PointX::new(&-(xP.X + self.A), &Fq::ONE);
@@ -204,8 +202,6 @@ impl<Fq: FqTrait> Curve<Fq> {
             (PointX::new(&x, &Fq::ONE), 0)
         };
 
-        println!("xP: {}", xP);
-
         // We can compute another linearly independent point from xP
         // which also has full even torsion.
         let mut xPQ = PointX::new(&-(xP.X + self.A), &Fq::ONE);
@@ -220,8 +216,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
         // Compute the difference point to get the basis x(P), x(Q) and x(P-Q)
         let xQ = self.projective_difference(&xP, &xPQ);
-        let basis = BasisX::from_array([xP, xQ, xPQ]);
 
-        basis
+        BasisX::from_array([xP, xQ, xPQ])
     }
 }

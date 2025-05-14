@@ -26,7 +26,7 @@ fn xdbl_proj<Fq: FqTrait>(A24: &Fq, C24: &Fq, P: &mut PointX<Fq>) {
     t1 *= *C24;
     P.X = t0 * t1;
     t0 = t2 * (*A24);
-    t0 = t0 + t1;
+    t0 += t1;
     P.Z = t0 * t2;
 }
 
