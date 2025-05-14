@@ -1,5 +1,6 @@
 use super::{point::PointX, projective_point::Point};
 use fp2::fq::Fq as FqTrait;
+use rand_core::{CryptoRng, RngCore};
 
 /// Curve y^2 = x^3 + A*x^2 + x, for a given constant A
 /// (special case of a Montgomery curve).
@@ -88,6 +89,35 @@ impl<Fq: FqTrait> Curve<Fq> {
         let mut P3 = Point::INFINITY;
         let ok = self.complete_pointX_into(&mut P3, P);
         (P3, ok)
+    }
+
+    /// Set P to a random curve point.
+    pub fn set_rand_point<R: CryptoRng + RngCore>(self, rng: &mut R, P: &mut Point<Fq>) {
+        // This function cannot actually return the point-at-infinity;
+        // this is not a problem as long as the curve order is larger
+        // than 2^128.
+        P.Z = Fq::ONE;
+        loop {
+            P.X.set_rand(rng);
+            P.Y = (((P.X + self.A) * P.X) * P.X) + P.X;
+            if P.Y.legendre() >= 0 {
+                P.Y.set_sqrt();
+
+                // Randomly chooses the square root to use.
+                let mut tmp = [0u8; 1];
+                rng.fill_bytes(&mut tmp);
+                let ctl = 0u32.wrapping_sub((tmp[0] as u32) & 1);
+                P.Y.set_condneg(ctl);
+                return;
+            }
+        }
+    }
+
+    /// Return a new random curve point.
+    pub fn rand_point<R: CryptoRng + RngCore>(self, rng: &mut R) -> Point<Fq> {
+        let mut P = Point::INFINITY;
+        self.set_rand_point(rng, &mut P);
+        P
     }
 }
 

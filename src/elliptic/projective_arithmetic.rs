@@ -175,4 +175,96 @@ impl<Fq: FqTrait> Curve<Fq> {
         }
         P3
     }
+
+    /// P3 <- n*P
+    /// Integer n is encoded as unsigned little-endian, with length
+    /// nbitlen bits. Bits beyond that length are ignored.
+    pub fn mul_into(self, P3: &mut Point<Fq>, P: &Point<Fq>, n: &[u8], nbitlen: usize) {
+        // Montgomery ladder: see https://eprint.iacr.org/2017/212
+
+        // We will need the complete 2*P at the end, to handle some
+        // special cases of the formulas.
+        let dP = self.double(P);
+        let mut X0 = Fq::ONE;
+        let mut Z0 = Fq::ZERO;
+        let mut X1 = P.X;
+        let mut Z1 = P.Z;
+        let mut cc = 0u32;
+        if nbitlen > 21 {
+            // If n is large enough then it is worthwhile to
+            // normalize the source point to affine.
+            // We do not care if P = inf, since that is handled at
+            // the end in the corrective steps.
+            let Xp = P.X / P.Z;
+            for i in (0..nbitlen).rev() {
+                let ctl = (((n[i >> 3] >> (i & 7)) as u32) & 1).wrapping_neg();
+                Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
+                Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
+                Self::xadd_aff(&Xp, &X0, &Z0, &mut X1, &mut Z1);
+                self.xdbl(&mut X0, &mut Z0);
+                cc = ctl;
+            }
+        } else {
+            for i in (0..nbitlen).rev() {
+                let ctl = (((n[i >> 3] >> (i & 7)) as u32) & 1).wrapping_neg();
+                Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
+                Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
+                Self::xadd(&P.X, &P.Z, &X0, &Z0, &mut X1, &mut Z1);
+                self.xdbl(&mut X0, &mut Z0);
+                cc = ctl;
+            }
+        }
+        Fq::condswap(&mut X0, &mut X1, cc);
+        Fq::condswap(&mut Z0, &mut Z1, cc);
+
+        // Special cases:
+        //  - ladder fails if P = (0,0) (a point of order 2)
+        //  - y is not reconstructed correctly if P has order 2,
+        //    or if (n+1)*P = P, -P or infinity.
+        let z0z = Z0.is_zero();
+        let z1z = Z1.is_zero();
+        let x1ex = (X1 * P.Z).equals(&(P.X * Z1));
+
+        // (X0/Z0) is the X coordinate of P0 = n*P
+        // (X1/Z1) is the X coordinate of P1 = (n + 1)*P
+        // We recompute the Y coordinate of n*P (formulas from
+        // Okeya and Sakurai).
+        let xxzz = (P.X * X0) + (P.Z * Z0);
+        let xpz0 = P.X * Z0;
+        let x0zp = X0 * P.Z;
+        let zz = P.Z * Z0;
+        let zzdA = self.A.mul2() * zz;
+        let u = (xxzz * (xpz0 + x0zp + zzdA)) - (zzdA * zz);
+        let v = P.Y.mul2() * zz * Z1;
+        P3.X = X0 * v;
+        P3.Y = (u * Z1) - ((xpz0 - x0zp).square() * X1);
+        P3.Z = Z0 * v;
+
+        // Fix result for the special cases.
+        //  P = inf                          -> inf
+        //  P != inf, 2*P = inf              -> inf or P (depending on n_0)
+        //  2*P != inf, P0 = inf             -> inf
+        //  2*P != inf, P0 != inf, P1 = inf  -> -P
+        //  2*P != inf, P0 != inf, P1 = -P   -> -2*P
+        let order1 = P.Z.is_zero();
+        let order2 = !order1 & P.Y.is_zero();
+        let z0inf = !order1 & !order2 & z0z;
+        let z1inf = !order1 & !order2 & !z0z & z1z;
+        let p1mp = !order1 & !order2 & !z0z & !z1z & x1ex;
+
+        let n_odd = ((n[0] as u32) & 1).wrapping_neg();
+        P3.Z.set_cond(&Fq::ZERO, order1 | (order2 & !n_odd) | z0inf);
+        P3.set_cond(&P, z1inf | (order2 & n_odd));
+        P3.set_cond(&dP, p1mp);
+        P3.set_condneg(z1inf | p1mp);
+    }
+
+    /// Return n*P as a new point.
+    /// Integer n is encoded as unsigned little-endian, with length
+    /// nbitlen bits. Bits beyond that length are ignored.
+    pub fn mul(self, P: &Point<Fq>, n: &[u8], nbitlen: usize) -> Point<Fq> {
+        let mut P3 = Point::INFINITY;
+        self.mul_into(&mut P3, P, n, nbitlen);
+        P3
+    }
 }

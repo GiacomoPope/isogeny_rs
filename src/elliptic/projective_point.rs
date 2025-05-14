@@ -1,5 +1,7 @@
 use fp2::fq::Fq as FqTrait;
 
+use super::point::PointX;
+
 /// Projective representation of a point (X : Y : Z)
 #[derive(Clone, Copy, Debug)]
 pub struct Point<Fq: FqTrait> {
@@ -46,6 +48,11 @@ impl<Fq: FqTrait> Point<Fq> {
     /// Returns the X and Z coordinates of the projective point
     pub fn to_xz(self) -> (Fq, Fq) {
         (self.X, self.Z)
+    }
+
+    /// Returns the X and Z coordinates of the projective point
+    pub fn to_point_x(self) -> PointX<Fq> {
+        PointX::new(&self.X, &self.Z)
     }
 
     /// Negate the point in place.

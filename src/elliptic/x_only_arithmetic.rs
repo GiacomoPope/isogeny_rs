@@ -21,7 +21,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// x-only doubling formula
     #[inline(always)]
-    fn xdbl(self, X: &mut Fq, Z: &mut Fq) {
+    pub fn xdbl(self, X: &mut Fq, Z: &mut Fq) {
         let mut V1 = (*X + *Z).square();
         let V2 = (*X - *Z).square();
         *X = V1 * V2;
@@ -32,22 +32,63 @@ impl<Fq: FqTrait> Curve<Fq> {
         *Z *= V1;
     }
 
+    /// x-only doubling, set `R` to the value of \[2\]P
+    #[inline]
+    fn set_xdouble(self, xR: &mut PointX<Fq>) {
+        self.xdbl(&mut xR.X, &mut xR.Z);
+    }
+
+    /// Return the value [2]P
+    #[inline]
+    fn xdouble(self, xP: &PointX<Fq>) -> PointX<Fq> {
+        let mut xR = *xP;
+        self.set_xdouble(&mut xR);
+        xR
+    }
+
+    /// Return the value [2^n]P
+    #[inline]
+    fn xdouble_iter(self, xP: &PointX<Fq>, n: usize) -> PointX<Fq> {
+        let mut xR = *xP;
+        for _ in 0..n {
+            self.set_xdouble(&mut xR);
+        }
+        xR
+    }
+
     /// x-only differential formula Note: order of arguments:
     /// (XPQ : ZPQ), (XP : ZP), (XQ : ZQ) For PQ = P - Q
     /// Sets Q  = P + Q in place
     #[inline(always)]
-    fn xadd(XPQ: &Fq, ZPQ: &Fq, XP: &Fq, ZP: &Fq, XQ: &mut Fq, ZQ: &mut Fq) {
+    pub fn xadd(XPQ: &Fq, ZPQ: &Fq, XP: &Fq, ZP: &Fq, XQ: &mut Fq, ZQ: &mut Fq) {
         let V1 = (*XP - *ZP) * (*XQ + *ZQ);
         let V2 = (*XP + *ZP) * (*XQ - *ZQ);
         *XQ = *ZPQ * (V1 + V2).square();
         *ZQ = *XPQ * (V1 - V2).square();
     }
 
+    /// x-only differential addition with PointX type, sets `R` to x(P + Q) given x(P)
+    /// x(Q) and x(P - Q) as `PointX<Fq>`.
+    #[inline]
+    fn xdiff_add_into(R: &mut PointX<Fq>, xP: &PointX<Fq>, xQ: &PointX<Fq>, xPmQ: &PointX<Fq>) {
+        R.X = xQ.X;
+        R.Z = xQ.Z;
+        Self::xadd(&xPmQ.X, &xPmQ.Z, &xP.X, &xP.Z, &mut R.X, &mut R.Z);
+    }
+
+    /// Return x(P + Q) given x(P), x(Q) and x(P - Q) as `PointX<Fq>`.
+    #[inline]
+    fn xdiff_add(xP: &PointX<Fq>, xQ: &PointX<Fq>, xPmQ: &PointX<Fq>) -> PointX<Fq> {
+        let mut R = PointX::INFINITY;
+        Self::xdiff_add_into(&mut R, xP, xQ, xPmQ);
+        R
+    }
+
     /// x-only differential formula Note: order of arguments:
     /// (XPQ : 1), (XP : ZP), (XQ : ZQ) For PQ = P - Q
     /// Sets Q  = P + Q in place
     #[inline(always)]
-    fn xadd_aff(XPQ: &Fq, XP: &Fq, ZP: &Fq, XQ: &mut Fq, ZQ: &mut Fq) {
+    pub fn xadd_aff(XPQ: &Fq, XP: &Fq, ZP: &Fq, XQ: &mut Fq, ZQ: &mut Fq) {
         let V1 = (*XP - *ZP) * (*XQ + *ZQ);
         let V2 = (*XP + *ZP) * (*XQ - *ZQ);
         *XQ = (V1 + V2).square();
@@ -180,7 +221,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     }
 
     /// Return P + n*Q, X-only variant given the x-only basis x(P), x(Q) and x(P - Q).
-    /// Integer `n` is encoded as unsigned little-endian, with length `nbitlen bits`.
+    /// Integer `n` is encoded as unsigned little-endian, with length `nbitlen` bits.
     /// Bits beyond that length are ignored.
     pub fn three_point_ladder(self, B: &BasisX<Fq>, n: &[u8], nbitlen: usize) -> PointX<Fq> {
         if nbitlen == 0 {
@@ -204,5 +245,144 @@ impl<Fq: FqTrait> Curve<Fq> {
         Fq::condswap(&mut Z1, &mut Z2, cc);
 
         PointX::new(&X1, &Z1)
+    }
+
+    // TODO: constant time
+    fn encode_to_odd_binary(a_bits: &mut Vec<u8>, a: &[u8], a_bitlen: usize) {
+        let mut flip_bit = if a[0] & 1 == 1 { 0 } else { 1 };
+        for i in 0..a_bitlen {
+            // We want to compute the binary of a when a is odd and the
+            // binary of (a - 1) when a is even. To do this, we compute
+            // each bit of a. If a is even, we want to flip every zero
+            // bit we encounter, flip the first 1 bit and then stop flipping
+            // bits...
+            let bit = (a[i >> 3] >> (i & 7)) & 1;
+            if flip_bit == 1 {
+                a_bits[i] = bit ^ flip_bit;
+                if bit == 1 {
+                    flip_bit = 0;
+                }
+            } else {
+                a_bits[i] = bit
+            }
+        }
+    }
+
+    /// Helper function for `ladder_biscalar` which re-encodes the scalars `a` and `b` into
+    /// two bit-values `(s0, s1)` and a bit-vector `r`.
+    ///
+    fn ladder_biscalar_reencoding(
+        a: &[u8],
+        b: &[u8],
+        a_bitlen: usize,
+        b_bitlen: usize,
+    ) -> (usize, usize, Vec<u8>) {
+        // Compute the max bit-length of a and b to set the length of r
+        let k = usize::max(a_bitlen, b_bitlen);
+
+        // First we derive the bit s0 and s1, which are set from
+        // if a is even and b is odd then s0, s1 = (1, 0) otherwise (0, 1)
+        let a_is_odd = ((a[0] & 1) as u32).wrapping_neg();
+        let b_is_odd = ((b[0] & 1) as u32).wrapping_neg();
+        let mask: u32 = !a_is_odd & b_is_odd;
+        let mut s0: u32 = mask;
+        let mut s1: u32 = !mask;
+
+        // We now want to ensure both scalars are odd for the encoding, which
+        // means we want to subtract 1 when the scalar is even, and 0 otherwise.
+        // We also need to encode each scalar into binary, so we do these two
+        // operations together.
+        let mut a_bits = vec![0u8; k + 1];
+        let mut b_bits = vec![0u8; k + 1];
+        Self::encode_to_odd_binary(&mut a_bits, a, a_bitlen);
+        Self::encode_to_odd_binary(&mut b_bits, b, b_bitlen);
+
+        let ab_bits: &[Vec<u8>] = &[a_bits, b_bits];
+
+        // Create a new vector of length 2*k
+        let mut r = vec![0; 2 * k];
+
+        for i in 0..k {
+            let s0_index = (s0 & 1) as usize;
+            let s1_index = (s1 & 1) as usize;
+
+            // Set bits in r from bits from the a and b scalars
+            r[2 * i] = ab_bits[s0_index][i] ^ ab_bits[s0_index][i + 1];
+            r[2 * i + 1] = ab_bits[s1_index][i] ^ ab_bits[s1_index][i + 1];
+
+            // Swap s0 and s1 when r[2*i + 1] is 1.
+            // As we know s0 and s1 are 0 or -1 then when r[2*i + 1] = 0
+            // mask = 0 and si ^ mask = si. When r[2*i + 1] = 1 then mask
+            // is 0xFF..FF and si ^ mask = sj as it will flip all the bits.
+            let mask = (r[2 * i + 1] as u32).wrapping_neg();
+            s0 ^= mask;
+            s1 ^= mask;
+        }
+
+        ((s0 & 1) as usize, (s1 & 1) as usize, r)
+    }
+
+    /// Return [a]P + [b]*Q, X-only variant given the x-only basis x(P), x(Q) and x(P - Q).
+    /// The integers `a` and `b` are encoded as unsigned little-endian.
+    pub fn ladder_biscalar(
+        self,
+        B: &BasisX<Fq>,
+        a: &[u8],
+        b: &[u8],
+        a_bitlen: usize,
+        b_bitlen: usize,
+    ) -> PointX<Fq> {
+        // Encode the scalars a and b into the appropriate form for the biscalar ladder.
+        let (s0, s1, r) = Self::ladder_biscalar_reencoding(a, b, a_bitlen, b_bitlen);
+        let k = r.len() >> 1;
+
+        let mut T: [PointX<Fq>; 3] = [PointX::INFINITY; 3];
+        let mut R: [PointX<Fq>; 3] = [PointX::INFINITY; 3];
+        T[0] = B.P();
+        T[1] = B.Q();
+
+        R[1] = T[s0];
+        R[2] = T[s1];
+
+        // Compute the difference points for T, R
+        let mut D1 = R[1];
+        let mut D2 = R[2];
+        R[2] = Self::xdiff_add(&R[1], &R[2], &B.PQ());
+        let mut F1 = R[2];
+        let mut F2 = B.PQ();
+
+        // Main ladder loop, compute [a]P + [b]Q
+        for i in (0..k).rev() {
+            let r1 = r[2 * i] as usize;
+            let r2 = r[2 * i + 1] as usize;
+            let h = r1 + r2;
+
+            // Compute new T values and swap differential points conditionally
+            T[0] = R[h & 1];
+            T[1] = R[2];
+            T[0] = self.xdouble(&T[h >> 1]);
+            T[1] = R[r2];
+            T[2] = R[r2 + 1];
+
+            // TODO: constant time
+            if r2 == 1 {
+                (D1, D2) = (D2, D1);
+            }
+
+            T[1] = Self::xdiff_add(&T[1], &T[2], &D1);
+            T[2] = Self::xdiff_add(&R[0], &R[2], &F1);
+
+            // TODO: constant time
+            if h & 1 == 1 {
+                (F1, F2) = (F2, F1);
+            }
+
+            R = T;
+        }
+
+        // When a and b are both even we want R[0], if a and b are both odd
+        // we want R[2], otherwise we want R[1]
+        let index = ((a[0] & 1) + (b[0] & 1)) as usize;
+        R[index]
     }
 }

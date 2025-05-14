@@ -7,7 +7,7 @@ use crate::elliptic::{
     two_isogeny_chain::two_isogeny_chain,
 };
 
-use rand::TryRngCore;
+use rand_core::{CryptoRng, RngCore};
 
 /// Public parameters used for a SIDH key exchange.
 /// `two_torsion` is the x-only basis for the \[2^ea\] torsion <P2, Q2>
@@ -76,9 +76,9 @@ impl<Fq: FqTrait, const N: usize> SidhParameters<Fq, N> {
 
     // TODO: find a better way to work with randomness.
     /// Sample a secret scalar represented as N bytes.
-    fn sample_secret_key<R: TryRngCore>(rng: &mut R) -> [u8; N] {
+    fn sample_secret_key<R: CryptoRng + RngCore>(rng: &mut R) -> [u8; N] {
         let mut scalar: [u8; N] = [0; N];
-        rng.try_fill_bytes(&mut scalar).unwrap();
+        rng.fill_bytes(&mut scalar);
 
         scalar
     }
@@ -89,7 +89,7 @@ impl<Fq: FqTrait, const N: usize> SidhParameters<Fq, N> {
         Curve::new(&A)
     }
 
-    pub fn keygen_alice<R: TryRngCore>(
+    pub fn keygen_alice<R: CryptoRng + RngCore>(
         self,
         rng: &mut R,
     ) -> (SidhAlicePublicKey<Fq>, SidhAlicePrivateKey<Fq, N>) {
@@ -113,7 +113,7 @@ impl<Fq: FqTrait, const N: usize> SidhParameters<Fq, N> {
         (public_key, secret_key)
     }
 
-    pub fn keygen_bob<R: TryRngCore>(
+    pub fn keygen_bob<R: CryptoRng + RngCore>(
         self,
         rng: &mut R,
     ) -> (SidhBobPublicKey<Fq>, SidhBobPrivateKey<Fq, N>) {

@@ -2,11 +2,11 @@
 mod test_sidh {
     use fp2::fq::Fq;
     use isogeny::protocols::sidh_parameters::SIDH_434;
-    use rand::rngs::OsRng;
+    use isogeny::utilities::drng::DRNG;
 
     #[test]
     fn test_key_exchange() {
-        let mut rng = OsRng;
+        let mut rng = DRNG::from_seed("sidh_key_exchange".as_bytes());
 
         // Test 5 different public key pairs.
         for _ in 0..5 {
