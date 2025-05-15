@@ -12,7 +12,6 @@ use crate::{
         basis::BasisX,
         curve::Curve,
         product::{CouplePoint, EllipticProduct},
-        two_isogeny_chain::{two_isogeny_chain, two_isogeny_chain_naive},
     },
     theta::theta_chain::product_isogeny_no_strategy,
 };
@@ -278,6 +277,59 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         BasisX::from_array([R, S, RS])
     }
 
+    fn compute_bases<'a>(
+        self,
+        E_chl: &Curve<Fq>,
+        sig: &SqisignSignature<'a, Fq>,
+        e_rsp_prime: usize,
+        chl_order: usize,
+    ) -> (BasisX<Fq>, BasisX<Fq>) {
+        // Compute the deterministic torsion basis on E_aux and E_chl
+        let mut aux_basis = sig.aux_curve.torsion_basis_2e_from_hint(
+            0,
+            &[self.cofactor],
+            self.cofactor_bitsize,
+            sig.hint_aux,
+        );
+        let mut chl_basis = E_chl.torsion_basis_2e_from_hint(
+            0,
+            &[self.cofactor],
+            self.cofactor_bitsize,
+            sig.hint_chl,
+        );
+
+        // Double the bases to get points of the correct even order.
+        aux_basis = sig
+            .aux_curve
+            .basis_xmul_2e(&aux_basis, self.f - e_rsp_prime - 2);
+        chl_basis = E_chl.basis_xmul_2e(&chl_basis, self.f - e_rsp_prime - sig.two_resp_length - 2);
+
+        // Apply the change of basis dictated by the matrix aij contained in the signature.
+        chl_basis = Self::apply_change_of_basis(&E_chl, &chl_basis, &sig.aij, chl_order);
+
+        (chl_basis, aux_basis)
+    }
+
+    fn compute_small_isogeny<'a>(
+        E: &mut Curve<Fq>,
+        B: &mut BasisX<Fq>,
+        sig: &SqisignSignature<'a, Fq>,
+        e_rsp_prime: usize,
+    ) {
+        // Compute the kernel as [2^(e_rsp_prime + 2)] P or [2^(e_rsp_prime + 2)] Q
+        // depending on aij values
+        let mut basis_img = B.to_array();
+        let kernel = if sig.aij[0][0] & 1 == 0 && sig.aij[2][0] & 1 == 0 {
+            E.xmul_2e(&B.Q(), e_rsp_prime + 2)
+        } else {
+            E.xmul_2e(&B.P(), e_rsp_prime + 2)
+        };
+
+        // Compute the two isogeny and push the challenge basis through
+        *E = E.two_isogeny_chain_naive(&kernel, sig.two_resp_length, &mut basis_img);
+        *B = BasisX::from_array(basis_img);
+    }
+
     pub fn verify(self, msg: &[u8], sig_bytes: &[u8], pk_bytes: &[u8]) -> bool
     where
         [(); Fq::ENCODED_LENGTH]: Sized,
@@ -315,47 +367,16 @@ impl<Fq: FqTrait> Sqisign<Fq> {
 
         // TODO: we need this chain to return errors on bad input.
         let mut curve_chl =
-            two_isogeny_chain(&pk.curve, &chl_kernel, self.f - sig.backtracking, &mut []);
+            pk.curve
+                .two_isogeny_chain(&chl_kernel, self.f - sig.backtracking, &mut []);
 
-        // Compute the deterministic torsion basis on E_aux and E_chl
-        let mut aux_basis = sig.aux_curve.torsion_basis_2e_from_hint(
-            0,
-            &[self.cofactor],
-            self.cofactor_bitsize,
-            sig.hint_aux,
-        );
-        let mut chl_basis = curve_chl.torsion_basis_2e_from_hint(
-            0,
-            &[self.cofactor],
-            self.cofactor_bitsize,
-            sig.hint_chl,
-        );
-
-        aux_basis = sig
-            .aux_curve
-            .basis_xmul_2e(&aux_basis, self.f - e_rsp_prime - 2);
-        chl_basis =
-            curve_chl.basis_xmul_2e(&chl_basis, self.f - e_rsp_prime - sig.two_resp_length - 2);
-
-        // Apply the change of basis dictated by the matrix aij contained in the signature.
-        chl_basis = Self::apply_change_of_basis(&curve_chl, &chl_basis, &sig.aij, chl_order);
+        let (mut chl_basis, aux_basis) =
+            self.compute_bases(&curve_chl, &sig, e_rsp_prime, chl_order);
 
         // Compute the small 2-isogeny conditionally.
         if sig.two_resp_length > 0 {
-            // Compute the kernel as [2^(e_rsp_prime + 2)] P or [2^(e_rsp_prime + 2)] Q
-            // depending on aij values
-            let mut basis_img = chl_basis.to_array();
-            let kernel = if sig.aij[0][0] & 1 == 0 && sig.aij[2][0] & 1 == 0 {
-                curve_chl.xmul_2e(&chl_basis.Q(), e_rsp_prime + 2)
-            } else {
-                curve_chl.xmul_2e(&chl_basis.P(), e_rsp_prime + 2)
-            };
-
-            // Compute the two isogeny and push the challenge basis through
-            curve_chl =
-                two_isogeny_chain_naive(&curve_chl, &kernel, sig.two_resp_length, &mut basis_img);
-            chl_basis = BasisX::from_array(basis_img);
-        }
+            Self::compute_small_isogeny(&mut curve_chl, &mut chl_basis, &sig, e_rsp_prime)
+        };
 
         // In very exceptional cases, no (2,2)-isogeny is needed and the signature
         // can be verified from E_chl directly.

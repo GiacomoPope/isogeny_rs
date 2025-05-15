@@ -6,7 +6,6 @@ mod test_three_isogeny_chain {
     use isogeny::elliptic::curve::Curve;
     use isogeny::elliptic::isomorphism::Isomorphism;
     use isogeny::elliptic::point::PointX;
-    use isogeny::elliptic::three_isogeny_chain::{three_isogeny_chain, three_isogeny_chain_naive};
     use isogeny::fields::sike::SikeOne as Fp2;
 
     // Kernel for phi_1 : E -> E/<P> with P not above (0 : 1)
@@ -58,7 +57,7 @@ mod test_three_isogeny_chain {
 
         // Compute chain
         let images = &mut [R];
-        let E1 = three_isogeny_chain_naive(&E, &ker, 137, images);
+        let E1 = E.three_isogeny_chain_naive(&ker, 137, images);
         let R_img = images[0];
 
         // Assert that the codomains are isomorphic
@@ -103,7 +102,7 @@ mod test_three_isogeny_chain {
 
         // Compute chain
         let images = &mut [R];
-        let E2 = three_isogeny_chain(&E, &ker, 137, images);
+        let E2 = E.three_isogeny_chain(&ker, 137, images);
         let R_img = images[0];
 
         // Assert that the codomains are isomorphic

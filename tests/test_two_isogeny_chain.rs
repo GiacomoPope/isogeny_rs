@@ -6,7 +6,6 @@ mod test_two_isogeny_chain {
     use isogeny::elliptic::curve::Curve;
     use isogeny::elliptic::isomorphism::Isomorphism;
     use isogeny::elliptic::point::PointX;
-    use isogeny::elliptic::two_isogeny_chain::{two_isogeny_chain, two_isogeny_chain_naive};
     use isogeny::fields::sqisign::SqiSignI as Fp2;
 
     // Domain of isogenies for testing
@@ -63,7 +62,7 @@ mod test_two_isogeny_chain {
 
         // Compute chain
         let images = &mut [R];
-        let E1 = two_isogeny_chain_naive(&E, &ker, 248, images);
+        let E1 = E.two_isogeny_chain_naive(&ker, 248, images);
         let R_img = images[0];
 
         // Assert that the codomains are isomorphic
@@ -110,7 +109,7 @@ mod test_two_isogeny_chain {
 
         // Compute chain
         let images = &mut [R];
-        let E2 = two_isogeny_chain_naive(&E, &ker, 248, images);
+        let E2 = E.two_isogeny_chain_naive(&ker, 248, images);
         let R_img = images[0];
 
         // Assert that the codomains are isomorphic
@@ -157,7 +156,7 @@ mod test_two_isogeny_chain {
 
         // Compute chain
         let images = &mut [R];
-        let E1 = two_isogeny_chain(&E, &ker, 248, images);
+        let E1 = E.two_isogeny_chain(&ker, 248, images);
         let R_img = images[0];
 
         // Assert that the codomains are isomorphic

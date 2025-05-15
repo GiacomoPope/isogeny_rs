@@ -2,10 +2,7 @@ use std::marker::PhantomData;
 
 use fp2::fq::Fq as FqTrait;
 
-use crate::elliptic::{
-    basis::BasisX, curve::Curve, point::PointX, three_isogeny_chain::three_isogeny_chain,
-    two_isogeny_chain::two_isogeny_chain,
-};
+use crate::elliptic::{basis::BasisX, curve::Curve, point::PointX};
 
 use rand_core::{CryptoRng, RngCore};
 
@@ -103,9 +100,9 @@ impl<Fq: FqTrait, const N: usize> SidhParameters<Fq, N> {
         // Compute the kernel K2 = P2 + [s]Q2
         let kernel = E.three_point_ladder(&self.two_torsion, &scalar, N << 3);
 
-        // Compute phi_2 : E0 -> E/<K2> and phi(P3), phi(Q3), phi(P3 - Q3)
+        // Compute phi_2 : E0 -> E/<K2> and phi_2(P3), phi_2(Q3), phi_2(P3 - Q3)
         let mut three_torsion_img = self.three_torsion.to_array();
-        let codomain = two_isogeny_chain(&E, &kernel, self.ea, &mut three_torsion_img);
+        let codomain = E.two_isogeny_chain(&kernel, self.ea, &mut three_torsion_img);
 
         // Package the data above into public and private keys
         let public_key = SidhAlicePublicKey::new(&codomain, three_torsion_img);
@@ -127,9 +124,9 @@ impl<Fq: FqTrait, const N: usize> SidhParameters<Fq, N> {
         // Compute the kernel K3 = P3 + [s]Q3
         let kernel = E.three_point_ladder(&self.three_torsion, &scalar, N << 3);
 
-        // Compute phi_3 : E0 -> E/<K3> and phi(P2), phi(Q2), phi(P2 - Q2)
+        // Compute phi_3 : E0 -> E/<K3> and phi_3(P2), phi_3(Q2), phi_3(P2 - Q2)
         let mut two_torsion_img = self.two_torsion.to_array();
-        let codomain = three_isogeny_chain(&E, &kernel, self.eb, &mut two_torsion_img);
+        let codomain = E.three_isogeny_chain(&kernel, self.eb, &mut two_torsion_img);
 
         // Package the data above into public and private keys
         let public_key = SidhBobPublicKey::new(&codomain, two_torsion_img);
@@ -155,7 +152,7 @@ impl<Fq: FqTrait, const N: usize> SidhAlicePrivateKey<Fq, N> {
         let kernel = E.three_point_ladder(&public_key.basis_img, &self.scalar, N << 3);
 
         // Compute the codomain of E0 -> E3 -> ES = (E / <K3>) / <K>
-        let codomain = two_isogeny_chain(&E, &kernel, self.exp, &mut []);
+        let codomain = E.two_isogeny_chain(&kernel, self.exp, &mut []);
         codomain.j_invariant()
     }
 }
@@ -177,7 +174,7 @@ impl<Fq: FqTrait, const N: usize> SidhBobPrivateKey<Fq, N> {
         let kernel = E.three_point_ladder(&public_key.basis_img, &self.scalar, N << 3);
 
         // Compute the codomain of E0 -> E2 -> ES = (E / <K2>) / <K>
-        let codomain = three_isogeny_chain(&E, &kernel, self.exp, &mut []);
+        let codomain = E.three_isogeny_chain(&kernel, self.exp, &mut []);
         codomain.j_invariant()
     }
 }
