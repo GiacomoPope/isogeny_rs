@@ -234,9 +234,14 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         // Finally we need to reduce this value modulo 2^(f - response_length)
         let mut modulus_bit_length = self.f - self.response_length;
         for val in scalar.iter_mut() {
-            if modulus_bit_length < 8 {
-                *val &= (1 << modulus_bit_length) - 1;
-            }
+            // TODO: I don't like this.
+            let mask = if modulus_bit_length < 8 {
+                (1 << modulus_bit_length) - 1 as u8
+            } else {
+                u8::MAX
+            };
+            *val &= mask;
+            // I'm not even sure I like this...
             modulus_bit_length = modulus_bit_length.saturating_sub(8);
         }
 
@@ -372,6 +377,9 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         let (_, E4) = E3E4.curves();
 
         // The signature is valid if the derived bytes from the hash match the signature scalar.
+        println!("{:?}", sig.chl_scalar);
+        println!("{:?}", self.hash_challenge(&pk.curve, &E4, msg));
+
         return sig.chl_scalar == self.hash_challenge(&pk.curve, &E4, msg);
     }
 }
