@@ -5,7 +5,7 @@
 mod test_point_compression {
     use fp2::fq::Fq;
     use isogeny::elliptic::curve::Curve;
-    use isogeny::fields::sqisign::SqiSqignI as Fp2;
+    use isogeny::fields::sqisign::SqiSignI as Fp2;
 
     // Characteristic: p = 5*2^248 - 1
     static F: usize = 248;

@@ -6,7 +6,7 @@ mod test_product_isogeny {
     use isogeny::elliptic::curve::Curve;
     use isogeny::elliptic::point::PointX;
     use isogeny::elliptic::product::{CouplePoint, EllipticProduct};
-    use isogeny::fields::sqisign::SqiSqignI as Fp2;
+    use isogeny::fields::sqisign::SqiSignI as Fp2;
     use isogeny::theta::theta_chain::product_isogeny_no_strategy;
 
     static A1_STR: &str = "baa79b0dc07508bb6fea4685db4b48f237686ad1e12964c985814261bcee97015c28136967c8faa77df1d28ffe4f81c68369091bc503d27ab21c459ce88eb101";

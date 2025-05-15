@@ -7,7 +7,7 @@ static SQISIGN_ONE_MODULUS: [u64; 4] = [
 ];
 
 fp2::define_fp2_from_modulus!(
-    typename = SqiSqignI,
+    typename = SqiSignI,
     base_typename = SqiSignIBase,
     modulus = SQISIGN_ONE_MODULUS,
 );

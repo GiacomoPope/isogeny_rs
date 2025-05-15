@@ -7,7 +7,7 @@ mod test_torsion_basis {
     use isogeny::elliptic::basis::BasisX;
     use isogeny::elliptic::curve::Curve;
     use isogeny::elliptic::point::PointX;
-    use isogeny::fields::sqisign::SqiSqignI as Fp2;
+    use isogeny::fields::sqisign::SqiSignI as Fp2;
 
     // Characteristic: p = 5*2^248 - 1
     static f: usize = 248;
