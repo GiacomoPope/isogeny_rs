@@ -36,7 +36,7 @@ impl<Fq: FqTrait> PointX<Fq> {
 impl<Fq: FqTrait> Curve<Fq> {
     /// Given the x-coordinates of x(P), x(Q) and x(P - Q) lift the points
     /// onto the curve <P, Q>.
-    fn lift_basis(self, xP: &Fq, xQ: &Fq, xPQ: &Fq) -> (Point<Fq>, Point<Fq>) {
+    pub fn lift_basis(self, xP: &Fq, xQ: &Fq, xPQ: &Fq) -> (Point<Fq>, Point<Fq>) {
         let P = self.lift_point(xP);
 
         // Okeya-Sakurai algorithm to recover Q.Y without a sqrt

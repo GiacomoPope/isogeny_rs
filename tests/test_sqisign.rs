@@ -1,6 +1,5 @@
 #[cfg(test)]
 mod test_sqisign {
-    use fp2::fq::Fq;
     use isogeny::protocols::sqisign_parameters::SQISIGN_I;
 
     static MSG: &str = "D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8";
@@ -14,7 +13,6 @@ mod test_sqisign {
         let msg: &[u8] = &hex::decode(MSG).unwrap();
         let pk_bytes: &[u8] = &hex::decode(PK).unwrap();
         let sig_bytes: &[u8] = &hex::decode(SIG).unwrap();
-
         assert!(SQISIGN_I.verify(msg, sig_bytes, pk_bytes))
     }
 }

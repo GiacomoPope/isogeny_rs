@@ -2,8 +2,20 @@ use core::{error::Error, fmt::Display};
 use std::marker::PhantomData;
 
 use fp2::fq::Fq as FqTrait;
+use sha3::{
+    Shake256,
+    digest::{ExtendableOutputReset, Update},
+};
 
-use crate::elliptic::{basis::BasisX, curve::Curve, two_isogeny_chain::two_isogeny_chain};
+use crate::{
+    elliptic::{
+        basis::BasisX,
+        curve::Curve,
+        product::{CouplePoint, EllipticProduct},
+        two_isogeny_chain::{two_isogeny_chain, two_isogeny_chain_naive},
+    },
+    theta::theta_chain::product_isogeny_no_strategy,
+};
 
 /// Various Errors for SQIsign
 #[derive(Debug)]
@@ -193,24 +205,78 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         })
     }
 
+    fn hash_challenge(self, E_pk: &Curve<Fq>, E_chl: &Curve<Fq>, msg: &[u8]) -> Vec<u8>
+    where
+        [(); Fq::ENCODED_LENGTH]: Sized,
+    {
+        let hash_bytes = ((self.security_bits << 1) + 7) >> 3;
+        let mut xof_bytes = vec![0; hash_bytes];
+
+        // The first iteration hashes j(E_pk) || j(E_chl) || msg
+        let mut sponge = Shake256::default();
+        sponge.update(&E_pk.j_invariant().encode());
+        sponge.update(&E_chl.j_invariant().encode());
+        sponge.update(msg);
+        sponge.finalize_xof_reset_into(&mut xof_bytes);
+
+        // Now iterate the hash many times to reach security goal
+        for _ in 0..(self.hash_iterations - 2) {
+            sponge.update(&xof_bytes);
+            sponge.finalize_xof_reset_into(&mut xof_bytes);
+        }
+
+        // For the last iteration we request a new number of bytes
+        let scalar_hash_bytes = (self.security_bits + 7) >> 3;
+        let mut scalar = vec![0; scalar_hash_bytes];
+        sponge.update(&xof_bytes);
+        sponge.finalize_xof_reset_into(&mut scalar);
+
+        // Finally we need to reduce this value modulo 2^(f - response_length)
+        let mut modulus_bit_length = self.f - self.response_length;
+        for val in scalar.iter_mut() {
+            if modulus_bit_length < 8 {
+                *val &= (1 << modulus_bit_length) - 1;
+            }
+            modulus_bit_length = modulus_bit_length.saturating_sub(8);
+        }
+
+        scalar
+    }
+
+    // TODO: move this
+    fn byte_slice_difference(a: &[u8], b: &[u8]) -> Vec<u8> {
+        let mut a_diff = a.to_vec();
+        let mut borrow = false;
+        for (i, val) in b.iter().enumerate() {
+            (a_diff[i], borrow) = a_diff[i].overflowing_sub(val + (borrow as u8))
+        }
+        a_diff
+    }
+
     fn apply_change_of_basis(
         E: &Curve<Fq>,
         B: &BasisX<Fq>,
         aij: &[&[u8]],
         bitlen: usize,
     ) -> BasisX<Fq> {
-        let xR = E.ladder_biscalar(B, aij[0], aij[2], bitlen, bitlen);
-        let xS = E.ladder_biscalar(B, aij[1], aij[3], bitlen, bitlen);
+        // Compute R = [a00] P + [a10] Q and S = [a01] P + [a11] Q
+        let R = E.ladder_biscalar(B, aij[0], aij[2], bitlen, bitlen);
+        let S = E.ladder_biscalar(B, aij[1], aij[3], bitlen, bitlen);
 
-        let diff_a = &[0];
-        let diff_b = &[0];
+        // Compute a00 - a01 and a10 - a11 modulo 2^bitlen
+        let diff_a = Self::byte_slice_difference(aij[0], aij[1]);
+        let diff_b = Self::byte_slice_difference(aij[2], aij[3]);
 
-        let xRS = E.ladder_biscalar(B, diff_a, diff_b, bitlen, bitlen);
+        // Compute R - S = [a00 - a01] P + [a10 - a11] Q
+        let RS = E.ladder_biscalar(B, &diff_a, &diff_b, bitlen, bitlen);
 
-        BasisX::from_array([xR, xS, xRS])
+        BasisX::from_array([R, S, RS])
     }
 
-    pub fn verify(self, msg: &[u8], sig_bytes: &[u8], pk_bytes: &[u8]) -> bool {
+    pub fn verify(self, msg: &[u8], sig_bytes: &[u8], pk_bytes: &[u8]) -> bool
+    where
+        [(); Fq::ENCODED_LENGTH]: Sized,
+    {
         // Decode the byte encoded public key and signature.
         let pk = self.decode_public_key(pk_bytes).unwrap();
         let sig = self.decode_signature(sig_bytes).unwrap();
@@ -243,7 +309,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         chl_kernel = pk.curve.xmul_2e(&chl_kernel, sig.backtracking);
 
         // TODO: we need this chain to return errors on bad input.
-        let curve_chl =
+        let mut curve_chl =
             two_isogeny_chain(&pk.curve, &chl_kernel, self.f - sig.backtracking, &mut []);
 
         // Compute the deterministic torsion basis on E_aux and E_chl
@@ -267,10 +333,45 @@ impl<Fq: FqTrait> Sqisign<Fq> {
             curve_chl.basis_xmul_2e(&chl_basis, self.f - e_rsp_prime - sig.two_resp_length - 2);
 
         // Apply the change of basis dictated by the matrix aij contained in the signature.
-        // chl_basis = Self::apply_change_of_basis(&curve_chl, &chl_basis, &sig.aij, chl_order);
+        chl_basis = Self::apply_change_of_basis(&curve_chl, &chl_basis, &sig.aij, chl_order);
 
-        // Double the basis down to correct the order
+        // Compute the small 2-isogeny conditionally.
+        if sig.two_resp_length > 0 {
+            // Compute the kernel as [2^(e_rsp_prime + 2)] P or [2^(e_rsp_prime + 2)] Q
+            // depending on aij values
+            let mut basis_img = chl_basis.to_array();
+            let kernel = if sig.aij[0][0] & 1 == 0 && sig.aij[2][0] & 1 == 0 {
+                curve_chl.xmul_2e(&chl_basis.Q(), e_rsp_prime + 2)
+            } else {
+                curve_chl.xmul_2e(&chl_basis.P(), e_rsp_prime + 2)
+            };
 
-        return false;
+            // Compute the two isogeny and push the challenge basis through
+            curve_chl =
+                two_isogeny_chain_naive(&curve_chl, &kernel, sig.two_resp_length, &mut basis_img);
+            chl_basis = BasisX::from_array(basis_img);
+        }
+
+        // In very exceptional cases, no (2,2)-isogeny is needed and the signature
+        // can be verified from E_chl directly.
+        if e_rsp_prime == 0 {
+            return sig.chl_scalar == self.hash_challenge(&pk.curve, &curve_chl, msg);
+        }
+
+        // Create the kernel for the (2, 2) isogeny given the x-only bases on E_chl and E_aux.
+        // TODO: this will need to change when the chain changes
+        let E1E2 = EllipticProduct::new(&curve_chl, &sig.aux_curve);
+        let (P_chl, Q_chl) =
+            curve_chl.lift_basis(&chl_basis.P().x(), &chl_basis.Q().x(), &chl_basis.PQ().x());
+        let (P_aux, Q_aux) =
+            sig.aux_curve
+                .lift_basis(&aux_basis.P().x(), &aux_basis.Q().x(), &aux_basis.PQ().x());
+        let P1P2 = CouplePoint::new(&P_chl, &P_aux);
+        let Q1Q2 = CouplePoint::new(&Q_chl, &Q_aux);
+        let (E3E4, _) = product_isogeny_no_strategy(&E1E2, &P1P2, &Q1Q2, &[], e_rsp_prime);
+        let (_, E4) = E3E4.curves();
+
+        // The signature is valid if the derived bytes from the hash match the signature scalar.
+        return sig.chl_scalar == self.hash_challenge(&pk.curve, &E4, msg);
     }
 }

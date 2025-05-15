@@ -1,5 +1,5 @@
 use rand_core::{CryptoRng, RngCore};
-use sha2::{Digest, Sha512};
+use sha3::{Digest, Sha3_512};
 
 // Custom PRNG for tests.
 // FOR TESTS ONLY. IT IS NOT NECESSARILY SECURE.
@@ -14,7 +14,7 @@ impl DRNG {
             buf: [0u8; 64],
             ptr: 0,
         };
-        let mut sh = Sha512::new();
+        let mut sh = Sha3_512::new();
         sh.update(seed);
         d.buf[..].copy_from_slice(&sh.finalize());
         d
@@ -46,7 +46,7 @@ impl RngCore for DRNG {
             self.ptr += clen;
             off += clen;
             if self.ptr == 32 {
-                let mut sh = Sha512::new();
+                let mut sh = Sha3_512::new();
                 sh.update(&self.buf);
                 self.buf[..].copy_from_slice(&sh.finalize());
                 self.ptr = 0;
