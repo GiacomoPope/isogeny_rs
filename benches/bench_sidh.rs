@@ -1,24 +1,24 @@
 mod benchmark_sidh {
     use isogeny::protocols::sidh_parameters::SIDH_434;
-    use rand::rngs::OsRng;
+    use isogeny::utilities::drng::DRNG;
 
     use criterion::{Criterion, black_box, criterion_group};
     use std::time::Duration;
 
     fn benchmark_keygen_alice(c: &mut Criterion) {
-        let mut rng = OsRng;
+        let mut rng = DRNG::from_seed("keygen_alice".as_bytes());
         let bench_id = format!("Benchmarking Alice Keygen for SIKE434 Parameters",);
         c.bench_function(&bench_id, |b| b.iter(|| SIDH_434.keygen_alice(&mut rng)));
     }
 
     fn benchmark_keygen_bob(c: &mut Criterion) {
-        let mut rng = OsRng;
+        let mut rng = DRNG::from_seed("keygen_bob".as_bytes());
         let bench_id = format!("Benchmarking Bob Keygen for SIKE434 Parameters",);
-        c.bench_function(&bench_id, |b| b.iter(|| SIDH_434.keygen_alice(&mut rng)));
+        c.bench_function(&bench_id, |b| b.iter(|| SIDH_434.keygen_bob(&mut rng)));
     }
 
     fn benchmark_secret_alice(c: &mut Criterion) {
-        let mut rng = OsRng;
+        let mut rng = DRNG::from_seed("alice shared_secret".as_bytes());
         let (_, alice_priv) = SIDH_434.keygen_alice(&mut rng);
         let (bob_pub, _) = SIDH_434.keygen_bob(&mut rng);
 
@@ -29,7 +29,7 @@ mod benchmark_sidh {
     }
 
     fn benchmark_secret_bob(c: &mut Criterion) {
-        let mut rng = OsRng;
+        let mut rng = DRNG::from_seed("bob shared_secret".as_bytes());
         let (alice_pub, _) = SIDH_434.keygen_alice(&mut rng);
         let (_, bob_priv) = SIDH_434.keygen_bob(&mut rng);
 
