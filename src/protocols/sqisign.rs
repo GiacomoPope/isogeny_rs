@@ -204,6 +204,30 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         })
     }
 
+    fn compute_challenge_curve<'a>(
+        self,
+        pk: &SqisignPublicKey<Fq>,
+        sig: &SqisignSignature<'a, Fq>,
+    ) -> Curve<Fq> {
+        // Create a torsion basis from the supplied hint
+        let pk_basis = pk.curve.torsion_basis_2e_from_hint(
+            0,
+            &[self.cofactor],
+            self.cofactor_bitsize,
+            pk.hint,
+        );
+
+        // Compute the challenge kernel 2^bt * (P + [scalar]Q)
+        let mut chl_kernel =
+            pk.curve
+                .three_point_ladder(&pk_basis, sig.chl_scalar, self.security_bits);
+        chl_kernel = pk.curve.xmul_2e(&chl_kernel, sig.backtracking);
+
+        // TODO: we need this chain to return errors on bad input.
+        pk.curve
+            .two_isogeny_chain(&chl_kernel, self.f - sig.backtracking, &mut [])
+    }
+
     fn hash_challenge(self, E_pk: &Curve<Fq>, E_chl: &Curve<Fq>, msg: &[u8]) -> Vec<u8>
     where
         [(); Fq::ENCODED_LENGTH]: Sized,
@@ -351,44 +375,29 @@ impl<Fq: FqTrait> Sqisign<Fq> {
             }
         }
 
-        // Create a torsion basis from the supplied hint
-        let pk_basis = pk.curve.torsion_basis_2e_from_hint(
-            0,
-            &[self.cofactor],
-            self.cofactor_bitsize,
-            pk.hint,
-        );
+        // Compute the challenge kernel and from this, E_chl from E_pk / <K>
+        let mut chl_curve = self.compute_challenge_curve(&pk, &sig);
 
-        // Compute the challenge kernel 2^bt * (P + [scalar]Q)
-        let mut chl_kernel =
-            pk.curve
-                .three_point_ladder(&pk_basis, sig.chl_scalar, self.security_bits);
-        chl_kernel = pk.curve.xmul_2e(&chl_kernel, sig.backtracking);
-
-        // TODO: we need this chain to return errors on bad input.
-        let mut curve_chl =
-            pk.curve
-                .two_isogeny_chain(&chl_kernel, self.f - sig.backtracking, &mut []);
-
+        // Compute canonical bases on E_chl and E_aux which will be used in the (2^n, 2^n)-isogeny
         let (mut chl_basis, aux_basis) =
-            self.compute_bases(&curve_chl, &sig, e_rsp_prime, chl_order);
+            self.compute_bases(&chl_curve, &sig, e_rsp_prime, chl_order);
 
-        // Compute the small 2-isogeny conditionally.
+        // Compute the small 2-isogeny conditionally and push through the challenge basis.
         if sig.two_resp_length > 0 {
-            Self::compute_small_isogeny(&mut curve_chl, &mut chl_basis, &sig, e_rsp_prime)
+            Self::compute_small_isogeny(&mut chl_curve, &mut chl_basis, &sig, e_rsp_prime)
         };
 
         // In very exceptional cases, no (2,2)-isogeny is needed and the signature
         // can be verified from E_chl directly.
         if e_rsp_prime == 0 {
-            return sig.chl_scalar == self.hash_challenge(&pk.curve, &curve_chl, msg);
+            return sig.chl_scalar == self.hash_challenge(&pk.curve, &chl_curve, msg);
         }
 
         // Create the kernel for the (2, 2) isogeny given the x-only bases on E_chl and E_aux.
         // TODO: this will need to change when the chain changes
-        let E1E2 = EllipticProduct::new(&curve_chl, &sig.aux_curve);
+        let E1E2 = EllipticProduct::new(&chl_curve, &sig.aux_curve);
         let (P_chl, Q_chl) =
-            curve_chl.lift_basis(&chl_basis.P().x(), &chl_basis.Q().x(), &chl_basis.PQ().x());
+            chl_curve.lift_basis(&chl_basis.P().x(), &chl_basis.Q().x(), &chl_basis.PQ().x());
         let (P_aux, Q_aux) =
             sig.aux_curve
                 .lift_basis(&aux_basis.P().x(), &aux_basis.Q().x(), &aux_basis.PQ().x());
@@ -398,9 +407,6 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         let (_, E4) = E3E4.curves();
 
         // The signature is valid if the derived bytes from the hash match the signature scalar.
-        println!("{:?}", sig.chl_scalar);
-        println!("{:?}", self.hash_challenge(&pk.curve, &E4, msg));
-
         return sig.chl_scalar == self.hash_challenge(&pk.curve, &E4, msg);
     }
 }
