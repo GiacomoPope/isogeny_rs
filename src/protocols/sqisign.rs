@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 
 use fp2::fq::Fq as FqTrait;
 
-use crate::elliptic::curve::Curve;
+use crate::elliptic::{basis::BasisX, curve::Curve, two_isogeny_chain::two_isogeny_chain};
 
 /// Various Errors for SQIsign
 #[derive(Debug)]
@@ -41,6 +41,7 @@ impl Error for SqisignError {}
 pub struct Sqisign<Fq: FqTrait> {
     security_bits: usize,
     cofactor: u8,
+    cofactor_bitsize: usize,
     f: usize,
     response_length: usize,
     hash_iterations: usize,
@@ -54,7 +55,7 @@ pub struct Sqisign<Fq: FqTrait> {
 /// a torsion basis E[2^f].
 #[derive(Clone, Copy, Debug)]
 pub struct SqisignPublicKey<Fq: FqTrait> {
-    pk_curve: Curve<Fq>,
+    curve: Curve<Fq>,
     hint: u8,
 }
 
@@ -62,8 +63,8 @@ pub struct SqisignPublicKey<Fq: FqTrait> {
 #[derive(Clone, Copy, Debug)]
 pub struct SqisignSignature<'a, Fq: FqTrait> {
     aux_curve: Curve<Fq>,
-    backtracking: u8,
-    two_resp_length: u8,
+    backtracking: usize,
+    two_resp_length: usize,
     // TODO: should I make these array rather than slices by adding
     // in some consts to the structure? I know that aij will have
     // length (response_length + 9) // 8 and scalar will have length
@@ -78,6 +79,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
     pub const fn new(
         security_bits: usize,
         cofactor: u8,
+        cofactor_bitsize: usize,
         f: usize,
         response_length: usize,
         hash_iterations: usize,
@@ -88,6 +90,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         Self {
             security_bits,
             cofactor,
+            cofactor_bitsize,
             f,
             response_length,
             hash_iterations,
@@ -109,7 +112,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
     }
 
     /// Decode a buffer of bytes into a `SqisignPublicKey<Fq>`.
-    pub fn decode_public_key(self, buf: &[u8]) -> Result<SqisignPublicKey<Fq>, SqisignError> {
+    fn decode_public_key(self, buf: &[u8]) -> Result<SqisignPublicKey<Fq>, SqisignError> {
         assert!(self.pk_len == Fq::ENCODED_LENGTH + 1);
 
         // Ensure that the byte length matches what is expected for the parameter sets.
@@ -122,19 +125,16 @@ impl<Fq: FqTrait> Sqisign<Fq> {
 
         // Decode all but the last bytes for the Montgomery coefficient A
         let pk_curve_bytes = &buf[..Fq::ENCODED_LENGTH];
-        let pk_curve = Self::decode_curve(pk_curve_bytes)?;
+        let curve = Self::decode_curve(pk_curve_bytes)?;
 
         // The remaining byte is the hint for the torsion basis generation
         let hint = *buf.last().unwrap();
 
-        Ok(SqisignPublicKey { pk_curve, hint })
+        Ok(SqisignPublicKey { curve, hint })
     }
 
     /// Decode a buffer of bytes into a `SqisignPublicKey<Fq>`.
-    pub fn decode_signature<'a>(
-        self,
-        buf: &'a [u8],
-    ) -> Result<SqisignSignature<'a, Fq>, SqisignError> {
+    fn decode_signature<'a>(self, buf: &'a [u8]) -> Result<SqisignSignature<'a, Fq>, SqisignError> {
         let aij_n_bytes = self.security_bits >> 3;
         let chl_n_bytes = (self.response_length + 9) >> 3;
 
@@ -159,9 +159,9 @@ impl<Fq: FqTrait> Sqisign<Fq> {
 
         // Extract the two u8 to track backtracking and r such that the
         // response length is 2^r.
-        let backtracking: u8 = buf[read];
+        let backtracking = buf[read] as usize;
         read += 1;
-        let two_resp_length: u8 = buf[Fq::ENCODED_LENGTH + 1];
+        let two_resp_length = buf[Fq::ENCODED_LENGTH + 1] as usize;
         read += 1;
 
         // Extract out the four scalars used for the change of basis
@@ -191,5 +191,85 @@ impl<Fq: FqTrait> Sqisign<Fq> {
             hint_aux,
             hint_chl,
         })
+    }
+
+    fn apply_change_of_basis(
+        E: &Curve<Fq>,
+        B: &BasisX<Fq>,
+        aij: &[&[u8]],
+        bitlen: usize,
+    ) -> BasisX<Fq> {
+        let xR = E.ladder_biscalar(B, aij[0], aij[1], bitlen, bitlen);
+        let xS = E.ladder_biscalar(B, aij[2], aij[3], bitlen, bitlen);
+
+        let diff_a = &[0];
+        let diff_b = &[0];
+
+        let xRS = E.ladder_biscalar(B, diff_a, diff_b, bitlen, bitlen);
+
+        BasisX::from_array([xR, xS, xRS])
+    }
+
+    pub fn verify(self, msg: &[u8], sig_bytes: &[u8], pk_bytes: &[u8]) -> bool {
+        // Decode the byte encoded public key and signature.
+        let pk = self.decode_public_key(pk_bytes).unwrap();
+        let sig = self.decode_signature(sig_bytes).unwrap();
+
+        // Set the modified response length from the signature data;
+        let e_rsp_prime = self.response_length - sig.backtracking - sig.two_resp_length;
+
+        // Ensure that all elements of aij have the expected bit length.
+        let chl_order = e_rsp_prime + sig.two_resp_length + 2;
+        for scalar in sig.aij.iter() {
+            let scalar_bitlen =
+                (scalar.len() << 3) - (scalar.last().unwrap().leading_zeros() as usize);
+            if scalar_bitlen > chl_order {
+                return false;
+            }
+        }
+
+        // Create a torsion basis from the supplied hint
+        let pk_basis = pk.curve.torsion_basis_2e_from_hint(
+            0,
+            &[self.cofactor],
+            self.cofactor_bitsize,
+            pk.hint,
+        );
+
+        // Compute the challenge kernel 2^bt * (P + [scalar]Q)
+        let mut chl_kernel =
+            pk.curve
+                .three_point_ladder(&pk_basis, sig.chl_scalar, self.security_bits);
+        chl_kernel = pk.curve.xmul_2e(&chl_kernel, sig.backtracking);
+
+        // TODO: we need this chain to return errors on bad input.
+        let curve_chl =
+            two_isogeny_chain(&pk.curve, &chl_kernel, self.f - sig.backtracking, &mut []);
+
+        // Compute the deterministic torsion basis on E_aux and E_chl
+        let mut aux_basis = sig.aux_curve.torsion_basis_2e_from_hint(
+            0,
+            &[self.cofactor],
+            self.cofactor_bitsize,
+            sig.hint_aux,
+        );
+        let mut chl_basis = curve_chl.torsion_basis_2e_from_hint(
+            0,
+            &[self.cofactor],
+            self.cofactor_bitsize,
+            sig.hint_chl,
+        );
+
+        aux_basis = sig
+            .aux_curve
+            .basis_xmul_2e(&aux_basis, self.f - e_rsp_prime - 2);
+        chl_basis = curve_chl.basis_xmul_2e(&chl_basis, self.f - e_rsp_prime - 2);
+
+        // Apply the change of basis dictated by the matrix aij contained in the signature.
+        chl_basis = Self::apply_change_of_basis(&curve_chl, &chl_basis, &sig.aij, chl_order);
+
+        // Double the basis down to correct the order
+
+        return false;
     }
 }

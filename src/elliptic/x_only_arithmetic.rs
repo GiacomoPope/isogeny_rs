@@ -178,11 +178,19 @@ impl<Fq: FqTrait> Curve<Fq> {
         P3.Z = Z;
     }
 
-    /// Return (2^e)*P (X-only variant).
+    /// Return (2^e)*P (x-only variant).
     pub fn xmul_2e(self, P: &PointX<Fq>, e: usize) -> PointX<Fq> {
         let mut Q = PointX::INFINITY;
         self.xmul_2e_into(&mut Q, P, e);
         Q
+    }
+
+    /// Return (2^e)*R for R in [P, Q, P - Q] (x-only variant).
+    pub fn basis_xmul_2e(self, B: &BasisX<Fq>, e: usize) -> BasisX<Fq> {
+        let P = self.xmul_2e(&B.P(), e);
+        let Q = self.xmul_2e(&B.Q(), e);
+        let PQ = self.xmul_2e(&B.PQ(), e);
+        BasisX::from_array([P, Q, PQ])
     }
 
     /// x-only doubling and differential addition formula

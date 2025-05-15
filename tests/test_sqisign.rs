@@ -11,11 +11,10 @@ mod test_sqisign {
     fn test_verification() {
         // For now, just convert the hex strings to bytes within the test, will be handled later
         // by proper KAT stuff I suppose.
-        let _msg: &[u8] = &hex::decode(MSG).unwrap();
+        let msg: &[u8] = &hex::decode(MSG).unwrap();
         let pk_bytes: &[u8] = &hex::decode(PK).unwrap();
         let sig_bytes: &[u8] = &hex::decode(SIG).unwrap();
 
-        let _pk = SQISIGN_I.decode_public_key(pk_bytes).unwrap();
-        let _sig = SQISIGN_I.decode_signature(sig_bytes).unwrap();
+        assert!(SQISIGN_I.verify(msg, sig_bytes, pk_bytes))
     }
 }
