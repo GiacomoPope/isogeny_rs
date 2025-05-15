@@ -199,8 +199,8 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         aij: &[&[u8]],
         bitlen: usize,
     ) -> BasisX<Fq> {
-        let xR = E.ladder_biscalar(B, aij[0], aij[1], bitlen, bitlen);
-        let xS = E.ladder_biscalar(B, aij[2], aij[3], bitlen, bitlen);
+        let xR = E.ladder_biscalar(B, aij[0], aij[2], bitlen, bitlen);
+        let xS = E.ladder_biscalar(B, aij[1], aij[3], bitlen, bitlen);
 
         let diff_a = &[0];
         let diff_b = &[0];
@@ -263,10 +263,11 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         aux_basis = sig
             .aux_curve
             .basis_xmul_2e(&aux_basis, self.f - e_rsp_prime - 2);
-        chl_basis = curve_chl.basis_xmul_2e(&chl_basis, self.f - e_rsp_prime - 2);
+        chl_basis =
+            curve_chl.basis_xmul_2e(&chl_basis, self.f - e_rsp_prime - sig.two_resp_length - 2);
 
         // Apply the change of basis dictated by the matrix aij contained in the signature.
-        chl_basis = Self::apply_change_of_basis(&curve_chl, &chl_basis, &sig.aij, chl_order);
+        // chl_basis = Self::apply_change_of_basis(&curve_chl, &chl_basis, &sig.aij, chl_order);
 
         // Double the basis down to correct the order
 
