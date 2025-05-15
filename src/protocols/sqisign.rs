@@ -361,6 +361,20 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         *B = BasisX::from_array(basis_img);
     }
 
+    /// Return `0` if any element of aij is larger than expected, otherwise return the maximum
+    /// bit-length of the matrix coefficients.
+    fn check_aij_bitlen<'a>(sig: &SqisignSignature<'a, Fq>, e_rsp_prime: usize) -> usize {
+        let chl_order = e_rsp_prime + sig.two_resp_length + 2;
+        for scalar in sig.aij.iter() {
+            let scalar_bitlen =
+                (scalar.len() << 3) - (scalar.last().unwrap().leading_zeros() as usize);
+            if scalar_bitlen > chl_order {
+                return 0;
+            }
+        }
+        chl_order
+    }
+
     /// SQIsign verification.
     pub fn verify(self, msg: &[u8], sig_bytes: &[u8], pk_bytes: &[u8]) -> bool
     where
@@ -374,15 +388,10 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         let e_rsp_prime = self.response_length - sig.backtracking - sig.two_resp_length;
 
         // Ensure that all elements of aij have the expected bit length.
-        let chl_order = e_rsp_prime + sig.two_resp_length + 2;
-        for scalar in sig.aij.iter() {
-            let scalar_bitlen =
-                (scalar.len() << 3) - (scalar.last().unwrap().leading_zeros() as usize);
-            if scalar_bitlen > chl_order {
-                return false;
-            }
+        let chl_order = Self::check_aij_bitlen(&sig, e_rsp_prime);
+        if chl_order == 0 {
+            return false;
         }
-
         // Compute the challenge kernel and from this, E_chl from E_pk / <K>
         let mut chl_curve = self.compute_challenge_curve(&pk, &sig);
 
@@ -415,6 +424,6 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         let (_, E4) = E3E4.curves();
 
         // The signature is valid if the derived bytes from the hash match the signature scalar.
-        return sig.chl_scalar == self.hash_challenge(&pk.curve, &E4, msg);
+        sig.chl_scalar == self.hash_challenge(&pk.curve, &E4, msg)
     }
 }
