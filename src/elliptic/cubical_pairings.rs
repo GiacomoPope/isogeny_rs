@@ -1,9 +1,37 @@
 use super::curve::Curve;
-
-// use super::curve::Curve;
 use super::point::PointX;
 use super::projective_point::Point;
 use fp2::fq::Fq as FqTrait;
+
+impl<Fq: FqTrait> PointX<Fq> {
+    /// Affine translation by a two torsion point needed for even degree
+    /// Tate pairings
+    pub fn translate(self, T: Self) -> Self {
+        let (A, B) = T.coords();
+        // When we translates three things can happen.
+        // - If T = (X : 0) then the translation of P is P
+        // - If T = (0 : Z) with Z != 0, the translation of P = (X : Z)
+        //   is (Z : X)
+        // - Otherwise T = (A : B) and the translation of P = (X : Z) is
+        // (A X - B Z : B X - A Z)
+
+        // Compute generic values
+        let mut X_new = (A * self.X) - (B * self.Z);
+        let mut Z_new = (B * self.X) - (A * self.Z);
+
+        // If A is zero, we should return (Z : X) instead
+        let A_is_zero = A.is_zero();
+        X_new.set_cond(&self.Z, A_is_zero);
+        Z_new.set_cond(&self.X, A_is_zero);
+
+        // If B is zero, we should return (X : Z) instead
+        let B_is_zero = B.is_zero();
+        X_new.set_cond(&self.X, B_is_zero);
+        Z_new.set_cond(&self.Z, B_is_zero);
+
+        Self::new(&X_new, &Z_new)
+    }
+}
 
 impl<Fq: FqTrait> Curve<Fq> {
     /// Given the x-coordinates of x(P), x(Q) and x(P - Q) lift the points
