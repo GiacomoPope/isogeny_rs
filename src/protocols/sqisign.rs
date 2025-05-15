@@ -14,9 +14,10 @@ use crate::{
         product::{CouplePoint, EllipticProduct},
     },
     theta::theta_chain::product_isogeny_no_strategy,
+    utilities::le_bytes::byte_slice_difference,
 };
 
-/// Various Errors for SQIsign
+/// Various Errors for SQIsign, to be modified further.
 #[derive(Debug)]
 pub enum SqisignError {
     LengthError {
@@ -70,7 +71,11 @@ pub struct SqisignPublicKey<Fq: FqTrait> {
     hint: u8,
 }
 
-/// SQIsign signature consists of
+/// SQIsign signature consists of the curve E_aux, integers tracking whether
+/// any backtracking was detected during the signature, the length of the
+/// response isogeny, four scalars used for a change in bases computation,
+/// the scalar to compute the challenge kernel ker(phi_chl) = P + [s]Q and
+/// two hints used for deriving torsion bases on E_aux and E_chl.
 #[derive(Clone, Copy, Debug)]
 pub struct SqisignSignature<'a, Fq: FqTrait> {
     aux_curve: Curve<Fq>,
@@ -82,10 +87,12 @@ pub struct SqisignSignature<'a, Fq: FqTrait> {
     // security_bits // 8.
     aij: [&'a [u8]; 4],
     chl_scalar: &'a [u8],
-    hint_aux: u8,
-    hint_chl: u8,
+    aux_hint: u8,
+    chl_hint: u8,
 }
 
+/// SQIsign type which holds parameters for a given security level and implements the
+/// methods required. Currently verification only.
 impl<Fq: FqTrait> Sqisign<Fq> {
     pub const fn new(
         security_bits: usize,
@@ -111,6 +118,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
             _phantom: PhantomData,
         }
     }
+
     /// Decode a buffer of bytes into an Elliptic Curve in Montgomery form.
     fn decode_curve(buf: &[u8]) -> Result<Curve<Fq>, SqisignError> {
         // Ensure that the value was canonically encoded.
@@ -199,11 +207,13 @@ impl<Fq: FqTrait> Sqisign<Fq> {
             two_resp_length,
             aij,
             chl_scalar,
-            hint_aux,
-            hint_chl,
+            aux_hint: hint_aux,
+            chl_hint: hint_chl,
         })
     }
 
+    /// Compute the challenge curve E_chl from the scalar in the signature and
+    /// a deterministic basis of E_pk.
     fn compute_challenge_curve<'a>(
         self,
         pk: &SqisignPublicKey<Fq>,
@@ -228,6 +238,8 @@ impl<Fq: FqTrait> Sqisign<Fq> {
             .two_isogeny_chain(&chl_kernel, self.f - sig.backtracking, &mut [])
     }
 
+    /// Given the public key curve and challenge curve, compute a challenge scalar
+    /// from the message. Used for generating and verifiying signatures.
     fn hash_challenge(self, E_pk: &Curve<Fq>, E_chl: &Curve<Fq>, msg: &[u8]) -> Vec<u8>
     where
         [(); Fq::ENCODED_LENGTH]: Sized,
@@ -255,32 +267,23 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         sponge.finalize_xof_reset_into(&mut scalar);
 
         // Finally we need to reduce this value modulo 2^(f - response_length)
-        let mut modulus_bit_length = self.f - self.response_length;
-        for val in scalar.iter_mut() {
-            // TODO: I don't like this.
-            let mask = if modulus_bit_length < 8 {
-                (1 << modulus_bit_length) - 1 as u8
-            } else {
-                u8::MAX
-            };
-            *val &= mask;
-            // I'm not even sure I like this...
-            modulus_bit_length = modulus_bit_length.saturating_sub(8);
+        let modulus_bit_length = self.f - self.response_length;
+        let scalar_len = scalar.len();
+        let i = (modulus_bit_length >> 3) as usize;
+        if i < scalar_len {
+            // Partial mask of top non-zero element.
+            scalar[i] &= u8::MAX >> (8 - (modulus_bit_length & 7));
+            // All other elements are set to zero after modulus.
+            for j in (i + 1)..scalar_len {
+                scalar[j] = 0;
+            }
         }
 
         scalar
     }
 
-    // TODO: move this
-    fn byte_slice_difference(a: &[u8], b: &[u8]) -> Vec<u8> {
-        let mut a_diff = a.to_vec();
-        let mut borrow = false;
-        for (i, val) in b.iter().enumerate() {
-            (a_diff[i], borrow) = a_diff[i].overflowing_sub(val + (borrow as u8))
-        }
-        a_diff
-    }
-
+    /// Apply the change of basis for the torsion basis <P, Q> given entries
+    /// of the 2x2 matrix aij such that R = [a00] P + [a10] Q and S = [a01] P + [a11] Q.
     fn apply_change_of_basis(
         E: &Curve<Fq>,
         B: &BasisX<Fq>,
@@ -292,8 +295,8 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         let S = E.ladder_biscalar(B, aij[1], aij[3], bitlen, bitlen);
 
         // Compute a00 - a01 and a10 - a11 modulo 2^bitlen
-        let diff_a = Self::byte_slice_difference(aij[0], aij[1]);
-        let diff_b = Self::byte_slice_difference(aij[2], aij[3]);
+        let diff_a = byte_slice_difference(aij[0], aij[1]);
+        let diff_b = byte_slice_difference(aij[2], aij[3]);
 
         // Compute R - S = [a00 - a01] P + [a10 - a11] Q
         let RS = E.ladder_biscalar(B, &diff_a, &diff_b, bitlen, bitlen);
@@ -301,7 +304,10 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         BasisX::from_array([R, S, RS])
     }
 
-    fn compute_bases<'a>(
+    /// Compute the deterministic torsion bases for E_chl and E_aux and then
+    /// reduce their order and apply a change of basis computation to prepare
+    /// the kernel for the (2^n, 2^n)-isogeny.
+    fn compute_torsion_bases<'a>(
         self,
         E_chl: &Curve<Fq>,
         sig: &SqisignSignature<'a, Fq>,
@@ -313,13 +319,13 @@ impl<Fq: FqTrait> Sqisign<Fq> {
             0,
             &[self.cofactor],
             self.cofactor_bitsize,
-            sig.hint_aux,
+            sig.aux_hint,
         );
         let mut chl_basis = E_chl.torsion_basis_2e_from_hint(
             0,
             &[self.cofactor],
             self.cofactor_bitsize,
-            sig.hint_chl,
+            sig.chl_hint,
         );
 
         // Double the bases to get points of the correct even order.
@@ -334,6 +340,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         (chl_basis, aux_basis)
     }
 
+    /// Compute the short 2^r isogeny and push through the torsion basis of E_chl.
     fn compute_small_isogeny<'a>(
         E: &mut Curve<Fq>,
         B: &mut BasisX<Fq>,
@@ -354,6 +361,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         *B = BasisX::from_array(basis_img);
     }
 
+    /// SQIsign verification.
     pub fn verify(self, msg: &[u8], sig_bytes: &[u8], pk_bytes: &[u8]) -> bool
     where
         [(); Fq::ENCODED_LENGTH]: Sized,
@@ -380,7 +388,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
 
         // Compute canonical bases on E_chl and E_aux which will be used in the (2^n, 2^n)-isogeny
         let (mut chl_basis, aux_basis) =
-            self.compute_bases(&chl_curve, &sig, e_rsp_prime, chl_order);
+            self.compute_torsion_bases(&chl_curve, &sig, e_rsp_prime, chl_order);
 
         // Compute the small 2-isogeny conditionally and push through the challenge basis.
         if sig.two_resp_length > 0 {

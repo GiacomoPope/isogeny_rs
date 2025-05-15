@@ -1,5 +1,7 @@
 use fp2::fq::Fq as FqTrait;
 
+use crate::utilities::le_bytes::encode_to_odd_binary;
+
 use super::{basis::BasisX, curve::Curve, point::PointX};
 
 impl<Fq: FqTrait> Curve<Fq> {
@@ -255,24 +257,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         PointX::new(&X1, &Z1)
     }
 
-    fn encode_to_odd_binary(a_bits: &mut Vec<u8>, a: &[u8], a_bitlen: usize) {
-        let mut flip_bit = (a[0] & 1) as u8;
-        for i in 0..a_bitlen {
-            // We want to compute the binary of a when a is odd and the
-            // binary of (a - 1) when a is even. To do this, we compute
-            // each bit of a.
-            // When a is odd we set flip_bit to zero and compute a ^ 0 = a
-            // When a is even we set flip_bit to 1 and compute ai ^ 1
-            // then set flip_bit to flip_bit & (ai ^ 1). This sets flip_bit
-            // to zero after encountering ai = 1 terminating the flipping.
-            a_bits[i] = ((a[i >> 3] >> (i & 7)) & 1) ^ flip_bit;
-            flip_bit &= a_bits[i];
-        }
-    }
-
     /// Helper function for `ladder_biscalar` which re-encodes the scalars `a` and `b` into
     /// two bit-values `(s0, s1)` and a bit-vector `r`.
-    ///
     fn ladder_biscalar_reencoding(
         a: &[u8],
         b: &[u8],
@@ -296,8 +282,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         // operations together.
         let mut a_bits = vec![0u8; k + 1];
         let mut b_bits = vec![0u8; k + 1];
-        Self::encode_to_odd_binary(&mut a_bits, a, a_bitlen);
-        Self::encode_to_odd_binary(&mut b_bits, b, b_bitlen);
+        encode_to_odd_binary(&mut a_bits, a, a_bitlen);
+        encode_to_odd_binary(&mut b_bits, b, b_bitlen);
         let ab_bits: &[Vec<u8>] = &[a_bits, b_bits];
 
         // Create a new vector of length 2*k
