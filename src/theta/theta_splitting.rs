@@ -9,7 +9,7 @@ use fp2::fq::Fq as FqTrait;
 use crate::elliptic::curve::Curve;
 use crate::elliptic::point::PointX;
 
-use super::elliptic_product::{CouplePoint, EllipticProduct};
+use super::elliptic_product::{EllipticProduct, ProductPoint};
 use super::theta_point::ThetaPoint;
 use super::theta_structure::ThetaStructure;
 use super::theta_util::apply_base_change;
@@ -413,7 +413,7 @@ pub fn split_to_product<Fq: FqTrait>(
     Th: &ThetaStructure<Fq>,
     image_points: &[ThetaPoint<Fq>],
     num_image_points: usize,
-) -> (EllipticProduct<Fq>, Vec<CouplePoint<Fq>>) {
+) -> (EllipticProduct<Fq>, Vec<ProductPoint<Fq>>) {
     // First we take the domain theta null point and
     // split this to two level-1 theta null points
     let null_point = Th.null_point();
@@ -426,8 +426,8 @@ pub fn split_to_product<Fq: FqTrait>(
     let E3E4 = EllipticProduct::new(&E3, &E4);
 
     // Now compute points on E3 x E4
-    let mut C: CouplePoint<Fq>;
-    let mut couple_points: Vec<CouplePoint<Fq>> = vec![];
+    let mut C: ProductPoint<Fq>;
+    let mut couple_points: Vec<ProductPoint<Fq>> = vec![];
 
     for P in image_points.iter().take(num_image_points) {
         // Split to level 1
@@ -442,7 +442,7 @@ pub fn split_to_product<Fq: FqTrait>(
 
         // Package these points into a CouplePoint on
         // E3 x E4
-        C = CouplePoint::new(&Q1, &Q2);
+        C = ProductPoint::new(&Q1, &Q2);
 
         // Push this into the output
         couple_points.push(C);

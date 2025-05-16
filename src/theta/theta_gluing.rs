@@ -8,7 +8,7 @@
 // compatible with the isogeny formula
 // ========================================================
 
-use super::elliptic_product::{CouplePoint, EllipticProduct};
+use super::elliptic_product::{EllipticProduct, ProductPoint};
 use super::theta_point::ThetaPoint;
 use super::theta_structure::ThetaStructure;
 use super::theta_util::{apply_base_change, to_hadamard};
@@ -54,8 +54,8 @@ fn get_base_submatrix<Fq: FqTrait>(E: &Curve<Fq>, T: &Point<Fq>) -> (Fq, Fq, Fq,
 /// Cost 100M + 8S + 4I
 fn get_base_matrix<Fq: FqTrait>(
     E1E2: &EllipticProduct<Fq>,
-    P1P2: &CouplePoint<Fq>,
-    Q1Q2: &CouplePoint<Fq>,
+    P1P2: &ProductPoint<Fq>,
+    Q1Q2: &ProductPoint<Fq>,
 ) -> [Fq; 16] {
     // First compute the submatrices from each point
     let (E1, E2) = E1E2.curves();
@@ -132,7 +132,7 @@ fn get_base_matrix<Fq: FqTrait>(
 /// Given a couple point as input, compute the corresponding ThetaPoint on
 /// the level two structure and then apply the basis change on this point
 /// Cost: 20M
-fn base_change_couple_point<Fq: FqTrait>(P1P2: &CouplePoint<Fq>, M: [Fq; 16]) -> ThetaPoint<Fq> {
+fn base_change_couple_point<Fq: FqTrait>(P1P2: &ProductPoint<Fq>, M: [Fq; 16]) -> ThetaPoint<Fq> {
     let (P1, P2) = P1P2.points();
     let (mut X1, mut Z1) = P1.to_xz();
     let (mut X2, mut Z2) = P2.to_xz();
@@ -295,9 +295,9 @@ fn gluing_image<Fq: FqTrait>(
 /// from an elliptic product.
 pub fn gluing_isogeny<Fq: FqTrait>(
     E1E2: &EllipticProduct<Fq>,
-    P1P2_8: &CouplePoint<Fq>,
-    Q1Q2_8: &CouplePoint<Fq>,
-    image_points: &[CouplePoint<Fq>],
+    P1P2_8: &ProductPoint<Fq>,
+    Q1Q2_8: &ProductPoint<Fq>,
+    image_points: &[ProductPoint<Fq>],
 ) -> (ThetaStructure<Fq>, Vec<ThetaPoint<Fq>>) {
     // First recover the four torsion below the 8 torsion
     let P1P2_4 = E1E2.double(&P1P2_8);

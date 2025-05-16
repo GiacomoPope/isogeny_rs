@@ -1,6 +1,6 @@
 use fp2::fq::Fq as FqTrait;
 
-use super::elliptic_product::{CouplePoint, EllipticProduct};
+use super::elliptic_product::{EllipticProduct, ProductPoint};
 use super::theta_gluing::gluing_isogeny;
 use super::theta_isogeny::{two_isogeny, two_isogeny_to_product};
 use super::theta_point::ThetaPoint;
@@ -16,11 +16,11 @@ use super::theta_splitting::{split_to_product, splitting_isomorphism};
 impl<Fq: FqTrait> EllipticProduct<Fq> {
     pub fn elliptic_product_isogeny_no_strategy(
         self,
-        P1P2: &CouplePoint<Fq>,
-        Q1Q2: &CouplePoint<Fq>,
+        P1P2: &ProductPoint<Fq>,
+        Q1Q2: &ProductPoint<Fq>,
         n: usize,
-        image_points: &[CouplePoint<Fq>],
-    ) -> (EllipticProduct<Fq>, Vec<CouplePoint<Fq>>) {
+        image_points: &[ProductPoint<Fq>],
+    ) -> (EllipticProduct<Fq>, Vec<ProductPoint<Fq>>) {
         // Store the number of image points we wish to evaluate to
         // ensure we return them all from the points we push through
         let num_image_points = image_points.len();

@@ -9,7 +9,7 @@ use sha3::{
 
 use crate::{
     elliptic::{basis::BasisX, curve::Curve},
-    theta::elliptic_product::{CouplePoint, EllipticProduct},
+    theta::elliptic_product::{EllipticProduct, ProductPoint},
     utilities::le_bytes::byte_slice_difference,
 };
 
@@ -388,15 +388,15 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         E2: &Curve<Fq>,
         B1: &BasisX<Fq>,
         B2: &BasisX<Fq>,
-    ) -> (EllipticProduct<Fq>, CouplePoint<Fq>, CouplePoint<Fq>) {
+    ) -> (EllipticProduct<Fq>, ProductPoint<Fq>, ProductPoint<Fq>) {
         let E1E2 = EllipticProduct::new(E1, E2);
         // TODO: lift_basis requires an inversion, we could write a function
         // which normallises B1 and B2 simultaneously to save one inversion
         // here.
         let (P_chl, Q_chl) = E1.lift_basis(&B1);
         let (P_aux, Q_aux) = E2.lift_basis(&B2);
-        let P1P2 = CouplePoint::new(&P_chl, &P_aux);
-        let Q1Q2 = CouplePoint::new(&Q_chl, &Q_aux);
+        let P1P2 = ProductPoint::new(&P_chl, &P_aux);
+        let Q1Q2 = ProductPoint::new(&Q_chl, &Q_aux);
 
         (E1E2, P1P2, Q1Q2)
     }

@@ -4,7 +4,7 @@
 mod test_product_isogeny {
     use isogeny::{
         elliptic::{curve::Curve, projective_point::Point},
-        theta::elliptic_product::{CouplePoint, EllipticProduct},
+        theta::elliptic_product::{EllipticProduct, ProductPoint},
     };
 
     // Modulus used in test
@@ -72,13 +72,13 @@ mod test_product_isogeny {
         let P2 = Point::new_xy(&P2_X, &P2_Y);
         let Q1 = Point::new_xy(&Q1_X, &Q1_Y);
         let Q2 = Point::new_xy(&Q2_X, &Q2_Y);
-        let P1P2 = CouplePoint::new(&P1, &P2);
-        let Q1Q2 = CouplePoint::new(&Q1, &Q2);
+        let P1P2 = ProductPoint::new(&P1, &P2);
+        let Q1Q2 = ProductPoint::new(&Q1, &Q2);
 
         // Point to push through isogeny
         let PA = Point::INFINITY;
         let PB = Point::new_xy(&PA_X, &PA_Y);
-        let PAPB = CouplePoint::new(&PA, &PB);
+        let PAPB = ProductPoint::new(&PA, &PB);
         let image_points = [PAPB];
 
         // Points to compare against
