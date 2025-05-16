@@ -66,10 +66,9 @@ impl<Fq: FqTrait> ThetaPoint<Fq> {
     }
 }
 
-// TODO: need Display on the Fq trait.
-// /// For debugging, pretty print out the coordinates of a point
-// impl<Fq: FqTrait> fmt::Display for ThetaPoint<Fq> {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         write!(f, "{}\n{}\n{}\n{}\n", self.X, self.Y, self.Z, self.T)
-//     }
-// }
+/// For debugging, pretty print out the coordinates of a point
+impl<Fq: FqTrait> ::std::fmt::Display for ThetaPoint<Fq> {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        write!(f, "{}\n{}\n{}\n{}\n", self.X, self.Y, self.Z, self.T)
+    }
+}

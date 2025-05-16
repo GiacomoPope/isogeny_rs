@@ -412,7 +412,6 @@ fn theta_point_to_montgomery_point<Fq: FqTrait>(O0: &(Fq, Fq), P: &(Fq, Fq)) -> 
 pub fn split_to_product<Fq: FqTrait>(
     Th: &ThetaStructure<Fq>,
     image_points: &[ThetaPoint<Fq>],
-    num_image_points: usize,
 ) -> (EllipticProduct<Fq>, Vec<ProductPoint<Fq>>) {
     // First we take the domain theta null point and
     // split this to two level-1 theta null points
@@ -429,7 +428,7 @@ pub fn split_to_product<Fq: FqTrait>(
     let mut C: ProductPoint<Fq>;
     let mut couple_points: Vec<ProductPoint<Fq>> = vec![];
 
-    for P in image_points.iter().take(num_image_points) {
+    for P in image_points.iter() {
         // Split to level 1
         let (P1, P2) = split_theta_point(P);
         // Compute the XPoint (X : Z) from each theta point

@@ -456,7 +456,12 @@ impl<Fq: FqTrait> Sqisign<Fq> {
 
         // Compute the isogeny E1 x E2 -> E3 x E4, target codomain is always E4 currently
         // because of linear alegbra choices.
-        let (E3E4, _) = E1E2.elliptic_product_isogeny_no_strategy(&P1P2, &Q1Q2, e_rsp_prime, &[]);
+        // If check is zero then an error was detected at some point in the (2, 2) isogeny and the signature
+        // is rejected.
+        let (E3E4, _, check) = E1E2.elliptic_product_isogeny(&P1P2, &Q1Q2, e_rsp_prime, &[]);
+        if check == 0 {
+            return false;
+        }
         let (_, E4) = E3E4.curves();
 
         // The signature is valid if the derived bytes from the hash match the signature scalar.
