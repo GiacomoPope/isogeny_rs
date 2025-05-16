@@ -24,10 +24,10 @@ mod test_ladders {
             let P = E.rand_point(&mut rng);
             let Q = E.mul(&P, &scalar, (32 << 3) - i);
 
-            let xP = P.to_point_x();
+            let xP = P.to_pointx();
             let xQ = E.xmul(&xP, &scalar, (32 << 3) - i);
 
-            assert!(xQ.equals(&Q.to_point_x()) == u32::MAX);
+            assert!(xQ.equals(&Q.to_pointx()) == u32::MAX);
         }
     }
 
@@ -51,14 +51,14 @@ mod test_ladders {
             let PnQ = E.add(&P, &nQ);
 
             // Compute P + [n]Q with x-only points
-            let xP = P.to_point_x();
-            let xQ = Q.to_point_x();
-            let xPQ = PQ.to_point_x();
+            let xP = P.to_pointx();
+            let xQ = Q.to_pointx();
+            let xPQ = PQ.to_pointx();
             let basis = BasisX::from_points(&xP, &xQ, &xPQ);
             let xPnQ = E.three_point_ladder(&basis, &scalar, (32 << 3) - i);
 
             // Ensure they're the same.
-            assert!(xPnQ.equals(&PnQ.to_point_x()) == u32::MAX);
+            assert!(xPnQ.equals(&PnQ.to_pointx()) == u32::MAX);
         }
     }
 
@@ -86,14 +86,14 @@ mod test_ladders {
             let aPbQ = E.add(&aP, &bQ);
 
             // Compute  [a]P + [b]Q with x-only points
-            let xP = P.to_point_x();
-            let xQ = Q.to_point_x();
-            let xPQ = PQ.to_point_x();
+            let xP = P.to_pointx();
+            let xQ = Q.to_pointx();
+            let xPQ = PQ.to_pointx();
             let basis = BasisX::from_points(&xP, &xQ, &xPQ);
             let xaPbQ = E.ladder_biscalar(&basis, &a, &b, (32 << 3) - i, (32 << 3) - 2 * i);
 
             // Ensure they're the same.
-            assert!(xaPbQ.equals(&aPbQ.to_point_x()) == u32::MAX);
+            assert!(xaPbQ.equals(&aPbQ.to_pointx()) == u32::MAX);
         }
     }
 }

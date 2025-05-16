@@ -1,7 +1,6 @@
 use fp2::fq::Fq as FqTrait;
 
 use super::elliptic_product::{EllipticProduct, ProductPoint};
-use super::theta_gluing::gluing_isogeny;
 use super::theta_isogeny::{two_isogeny, two_isogeny_to_product};
 use super::theta_point::ThetaPoint;
 use super::theta_splitting::{split_to_product, splitting_isomorphism};
@@ -47,7 +46,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
 
         // Compute Gluing isogeny
         let (mut domain, mut kernel_pts) =
-            gluing_isogeny(&self, &P1P2_8, &Q1Q2_8, &kernel_couple_pts);
+            self.gluing_isogeny(&P1P2_8, &Q1Q2_8, &kernel_couple_pts);
 
         // Do all remaining steps
         let mut Tp1: ThetaPoint<Fq>;
@@ -146,8 +145,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
 
         // Compute the Gluing isogeny and push through stategy_points to get a new
         // vector of ThetaPoints of the same length.
-        let (mut domain, mut strategy_pts) = gluing_isogeny(
-            &self,
+        let (mut domain, mut strategy_pts) = self.gluing_isogeny(
             &product_strategy_pts[2 * k],
             &product_strategy_pts[2 * k + 1],
             &product_strategy_pts,

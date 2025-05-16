@@ -34,30 +34,6 @@ impl<Fq: FqTrait> Curve<Fq> {
         *Z *= V1;
     }
 
-    /// x-only doubling, set `R` to the value of \[2\]P
-    #[inline]
-    fn set_xdouble(self, xR: &mut PointX<Fq>) {
-        self.xdbl(&mut xR.X, &mut xR.Z);
-    }
-
-    /// Return the value [2]P
-    #[inline]
-    fn xdouble(self, xP: &PointX<Fq>) -> PointX<Fq> {
-        let mut xR = *xP;
-        self.set_xdouble(&mut xR);
-        xR
-    }
-
-    /// Return the value [2^n]P
-    #[inline]
-    fn xdouble_iter(self, xP: &PointX<Fq>, n: usize) -> PointX<Fq> {
-        let mut xR = *xP;
-        for _ in 0..n {
-            self.set_xdouble(&mut xR);
-        }
-        xR
-    }
-
     /// x-only differential formula Note: order of arguments:
     /// (XPQ : ZPQ), (XP : ZP), (XQ : ZQ) For PQ = P - Q
     /// Sets Q  = P + Q in place
@@ -97,7 +73,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         *ZQ = *XPQ * (V1 - V2).square();
     }
 
-    /// P3 <- n*P, X-only variant.
+    /// P3 <- n*P, x-only variant.
     /// Integer n is encoded as unsigned little-endian, with length
     /// nbitlen bits. Bits beyond that length are ignored.
     pub fn xmul_into(self, P3: &mut PointX<Fq>, P: &PointX<Fq>, n: &[u8], nbitlen: usize) {
@@ -153,7 +129,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         P3.Z.set_cond(&Fq::ONE, spec);
     }
 
-    /// Return n*P as a new point (X-only variant).
+    /// Return n*P as a new point (x-only variant).
     /// Integer n is encoded as unsigned little-endian, with length
     /// nbitlen bits. Bits beyond that length are ignored.
     pub fn xmul(self, P: &PointX<Fq>, n: &[u8], nbitlen: usize) -> PointX<Fq> {
@@ -162,8 +138,27 @@ impl<Fq: FqTrait> Curve<Fq> {
         P3
     }
 
-    /// P3 <- (2^e)*P (X-only variant)
-    fn xmul_2e_into(self, P3: &mut PointX<Fq>, P: &PointX<Fq>, e: usize) {
+    /// P3 <- [2]*P (x-only variant)
+    fn xdouble_into(self, P3: &mut PointX<Fq>, P: &PointX<Fq>) {
+        let mut V1 = (P.X + P.Z).square();
+        let V2 = (P.X - P.Z).square();
+        P3.X = V1 * V2;
+        V1 -= V2;
+        P3.Z = V1;
+        P3.Z *= self.A24;
+        P3.Z += V2;
+        P3.Z *= V1;
+    }
+
+    /// Return [2]*P (x-only variant).
+    pub fn xdouble(self, P: &PointX<Fq>) -> PointX<Fq> {
+        let mut Q = PointX::INFINITY;
+        self.xdouble_into(&mut Q, P);
+        Q
+    }
+
+    /// P3 <- (2^e)*P (x-only variant)
+    fn xdouble_iter_into(self, P3: &mut PointX<Fq>, P: &PointX<Fq>, e: usize) {
         let mut X = P.X;
         let mut Z = P.Z;
         for _ in 0..e {
@@ -181,17 +176,17 @@ impl<Fq: FqTrait> Curve<Fq> {
     }
 
     /// Return (2^e)*P (x-only variant).
-    pub fn xmul_2e(self, P: &PointX<Fq>, e: usize) -> PointX<Fq> {
+    pub fn xdouble_iter(self, P: &PointX<Fq>, e: usize) -> PointX<Fq> {
         let mut Q = PointX::INFINITY;
-        self.xmul_2e_into(&mut Q, P, e);
+        self.xdouble_iter_into(&mut Q, P, e);
         Q
     }
 
     /// Return (2^e)*R for R in [P, Q, P - Q] (x-only variant).
-    pub fn basis_xmul_2e(self, B: &BasisX<Fq>, e: usize) -> BasisX<Fq> {
-        let P = self.xmul_2e(&B.P, e);
-        let Q = self.xmul_2e(&B.Q, e);
-        let PQ = self.xmul_2e(&B.PQ, e);
+    pub fn basis_double_iter(self, B: &BasisX<Fq>, e: usize) -> BasisX<Fq> {
+        let P = self.xdouble_iter(&B.P, e);
+        let Q = self.xdouble_iter(&B.Q, e);
+        let PQ = self.xdouble_iter(&B.PQ, e);
         BasisX::from_points(&P, &Q, &PQ)
     }
 
@@ -230,7 +225,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         *ZQ = ZPQ;
     }
 
-    /// Return P + n*Q, X-only variant given the x-only basis x(P), x(Q) and x(P - Q).
+    /// Return P + n*Q, x-only variant given the x-only basis x(P), x(Q) and x(P - Q).
     /// Integer `n` is encoded as unsigned little-endian, with length `nbitlen` bits.
     /// Bits beyond that length are ignored.
     pub fn three_point_ladder(self, B: &BasisX<Fq>, n: &[u8], nbitlen: usize) -> PointX<Fq> {
@@ -308,7 +303,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         ((s0 & 1) as usize, (s1 & 1) as usize, r)
     }
 
-    /// Return [a]P + [b]*Q, X-only variant given the x-only basis x(P), x(Q) and x(P - Q).
+    /// Return [a]P + [b]*Q, x-only variant given the x-only basis x(P), x(Q) and x(P - Q).
     /// The integers `a` and `b` are encoded as unsigned little-endian.
     pub fn ladder_biscalar(
         self,

@@ -14,108 +14,6 @@ use super::theta_point::ThetaPoint;
 use super::theta_structure::ThetaStructure;
 use super::theta_util::apply_base_change;
 
-// This function is a bit of a mess. Ultimately, we want to know whether
-// given some pair of indices whether we should multiply by minus one.
-// We do this by returning either 0: do nothing, or 0xFF...FF: negate
-// the value, which concretely is performed with set_negcond() on the
-// field element.
-//
-// Mathematically we have a few things to juggle. Firstly, although the
-// index should really be tuples (x, y) for x,y in {0,1} we simply index
-// from {0, ..., 3}. So there is first the identification of:
-//
-// 0 : (0, 0)
-// 1 : (1, 0)
-// 2 : (0, 1)
-// 3 : (1, 1)
-//
-// The next thing we need is the dot product of these indices
-// For example:
-// Take i . j is the dot product, so input (x, y) = (1, 3)
-// corresponds to computing:
-// (1, 0) . (1, 1) = 1*1 + 0*1 = 1
-//
-// This means evaluation of chi means the sign is dictated by
-// => (-1)^(i.j) = (-1)^1 = -1
-//
-// A similar thing is done for all pairs of indices below.
-//
-// TODO: there may be a nicer way to organise this function, but
-// I couldn't find a nice closed form for ±1 from a pair (i, j)
-// which i could compute on the fly without first matching from
-// x,y in {0,..,3} to i,j in {(0,0)...(1,1)} (which would mean
-// using a match anyway!!).
-fn chi_eval(x: &usize, y: &usize) -> u32 {
-    match (x, y) {
-        (0, 0) => 0,
-        (0, 1) => 0,
-        (0, 2) => 0,
-        (0, 3) => 0,
-        (1, 0) => 0,
-        (1, 1) => u32::MAX,
-        (1, 2) => 0,
-        (1, 3) => u32::MAX,
-        (2, 0) => 0,
-        (2, 1) => 0,
-        (2, 2) => u32::MAX,
-        (2, 3) => u32::MAX,
-        (3, 0) => 0,
-        (3, 1) => u32::MAX,
-        (3, 2) => u32::MAX,
-        (3, 3) => 0,
-        _ => 1,
-    }
-}
-
-/// For a given index (chi, i) compute the level 2,2 constants (square).
-/// The purpose of this is to identify for which (chi, i) this constant
-/// is zero.
-fn level_22_constants_sqr<Fq: FqTrait>(null_point: &ThetaPoint<Fq>, chi: &usize, i: &usize) -> Fq {
-    let mut U_constant = Fq::ZERO;
-    let null_coords = null_point.list();
-
-    for t in 0..4 {
-        let mut U_it = null_coords[t] * null_coords[i ^ t];
-        U_it.set_condneg(chi_eval(chi, &t));
-        U_constant += U_it;
-    }
-    U_constant
-}
-
-/// For each possible even index compute the level 2,2 constant. Return
-/// the even index for which this constant is zero. This only fails for
-/// bad input in which case the whole chain would fail. Evaluates all
-/// positions, and so should run in constant time.
-fn identify_even_index<Fq: FqTrait>(null_point: &ThetaPoint<Fq>) -> (usize, usize) {
-    const EVEN_INDICIES: [(usize, usize); 10] = [
-        (0, 0),
-        (0, 1),
-        (0, 2),
-        (0, 3),
-        (1, 0),
-        (1, 2),
-        (2, 0),
-        (2, 1),
-        (3, 0),
-        (3, 3),
-    ];
-    // Initialise the return tuple
-    let mut chi_zero = 0;
-    let mut i_zero = 0;
-
-    for (chi, i) in EVEN_INDICIES.iter() {
-        let U_sqr = level_22_constants_sqr(null_point, chi, i);
-
-        // When U_sqr is zero, U_sqr_is_zero = 0xFF...FF
-        // and 0 otherwise, so we can use this as a mask
-        // to select the non-zero index through the loop
-        let U_sqr_is_zero = U_sqr.is_zero();
-        chi_zero |= *chi as u32 & U_sqr_is_zero;
-        i_zero |= *i as u32 & U_sqr_is_zero;
-    }
-    (chi_zero as usize, i_zero as usize)
-}
-
 fn splitting_maps<Fq: FqTrait>() -> [[Fq; 16]; 10] {
     [
         [
@@ -301,34 +199,67 @@ fn splitting_maps<Fq: FqTrait>() -> [[Fq; 16]; 10] {
     ]
 }
 
+/// Conditionally set the matrix M1 to M2 when ctl = `0xFF..FF`.
+fn set_cond_matrix<Fq: FqTrait>(M1: &mut [Fq], M2: &[Fq], ctl: u32) {
+    for i in 0..M1.len() {
+        M1[i].set_cond(&M2[i], ctl);
+    }
+}
+
 /// We can precompute 10 different symplectic transforms which
 /// correspond to each of the possible 10 even indicies which could be
 /// zero. We can select the right change of basis by using the above
 /// functions and then selecting the correct map accordingly.
 fn compute_splitting_matrix<Fq: FqTrait>(null_point: &ThetaPoint<Fq>) -> [Fq; 16] {
-    // Identity the current location of the zero
-    let zero_location = identify_even_index(null_point);
+    const EVEN_INDICIES: [[usize; 2]; 10] = [
+        [0, 2],
+        [3, 3],
+        [0, 3],
+        [2, 1],
+        [0, 1],
+        [1, 2],
+        [2, 0],
+        [3, 0],
+        [1, 0],
+        [0, 0],
+    ];
+    const CHI_EVAL: [[i8; 4]; 4] = [[1, 1, 1, 1], [1, -1, 1, -1], [1, 1, -1, -1], [1, -1, -1, 1]];
 
-    // Compute the corresponding matrix to map the zero to
-    // the desired place
-    // TODO: is a match like this the best thing to do in Rust??
-    let M: [Fq; 16];
-    let maps = splitting_maps();
-    match zero_location {
-        (0, 2) => M = maps[0],
-        (3, 3) => M = maps[1],
-        (0, 3) => M = maps[2],
-        (2, 1) => M = maps[3],
-        (0, 1) => M = maps[4],
-        (1, 2) => M = maps[5],
-        (2, 0) => M = maps[6],
-        (3, 0) => M = maps[7],
-        (1, 0) => M = maps[8],
-        (0, 0) => M = maps[9],
-        // The above locations are an exhaustive list of possible inputs, not sure how to tell rust this...
-        _ => panic!("Unreachable"),
+    // M is the matrix we return to compute the change of basis to find the split product.
+    let mut M = [Fq::ZERO; 16];
+
+    // M are the maps we will iterate over.
+    let maps: [[Fq; 16]; 10] = splitting_maps();
+
+    // We must iterate through all 10 even indicies and select the correct splitting matrix.
+    let mut t1: Fq;
+    let mut t2: Fq;
+    let mut U_sqr: Fq;
+    let null_coords = null_point.to_list();
+
+    // The number of zeros found should be exactly one.
+    let mut count = 0;
+
+    for i in 0..10 {
+        U_sqr = Fq::ZERO;
+        for j in 0..4 {
+            t1 = null_coords[j];
+            t2 = null_coords[j ^ EVEN_INDICIES[i][1]];
+            t1 *= t2;
+
+            // If chi(i, t) is +1 we want ctl to be 0x00..00
+            // If chi(i, t) is -1 we want ctl to be 0xFF..FF
+            let ctl = (CHI_EVAL[EVEN_INDICIES[i][0]][j] >> 1) as u32;
+            t1.set_condneg(ctl);
+            U_sqr += t1;
+        }
+
+        let ctl = U_sqr.is_zero();
+        count += ctl & 1;
+        set_cond_matrix(&mut M, &maps[i], ctl);
     }
 
+    assert!(count == 1);
     M
 }
 

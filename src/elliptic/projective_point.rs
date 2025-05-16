@@ -51,7 +51,7 @@ impl<Fq: FqTrait> Point<Fq> {
     }
 
     /// Returns the X and Z coordinates of the projective point
-    pub fn to_point_x(self) -> PointX<Fq> {
+    pub fn to_pointx(self) -> PointX<Fq> {
         PointX::new(&self.X, &self.Z)
     }
 

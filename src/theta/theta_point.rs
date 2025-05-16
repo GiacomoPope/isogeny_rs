@@ -50,7 +50,7 @@ impl<Fq: FqTrait> ThetaPoint<Fq> {
     }
 
     /// Recover the coordinates of the element
-    pub fn list(self) -> [Fq; 4] {
+    pub fn to_list(self) -> [Fq; 4] {
         [self.X, self.Y, self.Z, self.T]
     }
 

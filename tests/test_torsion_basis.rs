@@ -36,11 +36,11 @@ mod test_torsion_basis {
     static A_QR: Fp2 = Fp2::const_decode_no_check(&A_QR_RE_BYTES, &A_QR_IM_BYTES);
 
     fn point_has_order_n(E: &Curve<Fp2>, P: &PointX<Fp2>, n: usize) -> bool {
-        let P2 = E.xmul_2e(P, n - 1);
+        let P2 = E.xdouble_iter(P, n - 1);
         if P2.is_zero() == u32::MAX {
             return false;
         }
-        let O = E.xmul_2e(&P2, 1);
+        let O = E.xdouble_iter(&P2, 1);
         if O.is_zero() != u32::MAX {
             return false;
         }

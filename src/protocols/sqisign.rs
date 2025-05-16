@@ -227,7 +227,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         let mut chl_kernel =
             pk.curve
                 .three_point_ladder(&pk_basis, sig.chl_scalar, self.security_bits);
-        chl_kernel = pk.curve.xmul_2e(&chl_kernel, sig.backtracking);
+        chl_kernel = pk.curve.xdouble_iter(&chl_kernel, sig.backtracking);
 
         // Compute the isogeny chain, a failure u32 is returned for the case of
         // bad input.
@@ -333,8 +333,9 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         // Double the bases to get points of the correct even order.
         aux_basis = sig
             .aux_curve
-            .basis_xmul_2e(&aux_basis, self.f - e_rsp_prime - 2);
-        chl_basis = E_chl.basis_xmul_2e(&chl_basis, self.f - e_rsp_prime - sig.two_resp_length - 2);
+            .basis_double_iter(&aux_basis, self.f - e_rsp_prime - 2);
+        chl_basis =
+            E_chl.basis_double_iter(&chl_basis, self.f - e_rsp_prime - sig.two_resp_length - 2);
 
         // Apply the change of basis dictated by the matrix aij contained in the signature.
         chl_basis = Self::apply_change_of_basis(&E_chl, &chl_basis, &sig.aij, chl_order);
@@ -355,9 +356,9 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         // depending on aij values
         let mut basis_img = B.to_array();
         let kernel = if sig.aij[0][0] & 1 == 0 && sig.aij[2][0] & 1 == 0 {
-            E.xmul_2e(&B.Q, e_rsp_prime + 2)
+            E.xdouble_iter(&B.Q, e_rsp_prime + 2)
         } else {
-            E.xmul_2e(&B.P, e_rsp_prime + 2)
+            E.xdouble_iter(&B.P, e_rsp_prime + 2)
         };
 
         // Compute the two isogeny and push the challenge basis through

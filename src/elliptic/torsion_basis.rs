@@ -5,7 +5,7 @@ use super::point::PointX;
 use fp2::fq::Fq as FqTrait;
 
 impl<Fq: FqTrait> Curve<Fq> {
-    /// TODO:
+    /// Given xP and xQ as (X : Z) points, compute the point x(P ± Q) (sign is unknown).
     fn projective_difference(self, P: &PointX<Fq>, Q: &PointX<Fq>) -> PointX<Fq> {
         let mut t0 = P.X * Q.X;
         let mut t1 = P.Z * Q.Z;
@@ -24,12 +24,10 @@ impl<Fq: FqTrait> Curve<Fq> {
         bxz += t0; // bzz = (PX * QX + PZ * QZ) * (PX * QZ + PZ * QX) + 2 * A * PX * QZ * PZ * QX
 
         // We now normalise the result by \bar{(PZ * QZ)}^2
-        // TODO: I can remove a square here, right?
         t0 = P.Z.conjugate();
-        t0.set_square();
         t1 = Q.Z.conjugate();
-        t1.set_square();
         t0 *= t1;
+        t0.set_square();
         bxx *= t0;
         bxz *= t0;
         bzz *= t0;
@@ -148,8 +146,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         xPQ = self.xmul(&xPQ, cofactor, cofactor_bitsize);
 
         // We clear the 2^(f - e) order with repeated doubling.
-        xP = self.xmul_2e(&xP, e_diff);
-        xPQ = self.xmul_2e(&xPQ, e_diff);
+        xP = self.xdouble_iter(&xP, e_diff);
+        xPQ = self.xdouble_iter(&xPQ, e_diff);
 
         // Compute the difference point to get the basis x(P), x(Q) and x(P-Q)
         let xQ = self.projective_difference(&xP, &xPQ);
@@ -211,8 +209,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         xPQ = self.xmul(&xPQ, cofactor, cofactor_bitsize);
 
         // We clear the 2^(f - e) order with repeated doubling.
-        xP = self.xmul_2e(&xP, e_diff);
-        xPQ = self.xmul_2e(&xPQ, e_diff);
+        xP = self.xdouble_iter(&xP, e_diff);
+        xPQ = self.xdouble_iter(&xPQ, e_diff);
 
         // Compute the difference point to get the basis x(P), x(Q) and x(P-Q)
         let xQ = self.projective_difference(&xP, &xPQ);
