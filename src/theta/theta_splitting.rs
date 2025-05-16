@@ -209,8 +209,10 @@ fn set_cond_matrix<Fq: FqTrait>(M1: &mut [Fq], M2: &[Fq], ctl: u32) {
 /// We can precompute 10 different symplectic transforms which
 /// correspond to each of the possible 10 even indicies which could be
 /// zero. We can select the right change of basis by using the above
-/// functions and then selecting the correct map accordingly.
-fn compute_splitting_matrix<Fq: FqTrait>(null_point: &ThetaPoint<Fq>) -> [Fq; 16] {
+/// functions and then selecting the correct map accordingly. Return this
+/// matrix, together with a u32 with `0xFF..FF` indicating success and
+/// `0x00..00` failure.
+fn compute_splitting_matrix<Fq: FqTrait>(null_point: &ThetaPoint<Fq>) -> ([Fq; 16], u32) {
     const EVEN_INDICIES: [[usize; 2]; 10] = [
         [0, 2],
         [3, 3],
@@ -238,7 +240,7 @@ fn compute_splitting_matrix<Fq: FqTrait>(null_point: &ThetaPoint<Fq>) -> [Fq; 16
     let null_coords = null_point.to_list();
 
     // The number of zeros found should be exactly one.
-    let mut count = 0;
+    let mut count: u32 = 0;
 
     for i in 0..10 {
         U_sqr = Fq::ZERO;
@@ -259,20 +261,23 @@ fn compute_splitting_matrix<Fq: FqTrait>(null_point: &ThetaPoint<Fq>) -> [Fq; 16
         set_cond_matrix(&mut M, &maps[i], ctl);
     }
 
-    assert!(count == 1);
-    M
+    // TODO: fix this dumb hack
+    let ok = if count == 1 { u32::MAX } else { 0 };
+    (M, ok)
 }
 
 /// Map from a theta point to one which admits a splitting to elliptic
 /// products. Essentially requires computing the correct splitting
-/// matrix and then applying the isomorphism
+/// matrix and then applying the isomorphism. Return the correct structure
+/// together with a u32 with `0xFF..FF` indicating success and
+/// `0x00..00` failure (determined by the ability to find a unique matrix).
 pub fn splitting_isomorphism<Fq: FqTrait>(
     Th: ThetaStructure<Fq>,
     image_points: &mut [ThetaPoint<Fq>],
-) -> ThetaStructure<Fq> {
+) -> (ThetaStructure<Fq>, u32) {
     // Compute the correct splitting matrix
     let mut O0 = Th.null_point();
-    let M = compute_splitting_matrix(&O0);
+    let (M, ok) = compute_splitting_matrix(&O0);
 
     // Map the Theta Structure through the symplectic transform
     apply_base_change(&mut O0, M);
@@ -282,7 +287,7 @@ pub fn splitting_isomorphism<Fq: FqTrait>(
         apply_base_change(P, M);
     }
 
-    ThetaStructure::new_from_point(&mut O0)
+    (ThetaStructure::new_from_point(&mut O0), ok)
 }
 
 /// Given a Theta point in the correct representation, compute two

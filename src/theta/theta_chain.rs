@@ -28,8 +28,9 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         n: usize,
         image_points: &[ProductPoint<Fq>],
     ) -> (EllipticProduct<Fq>, Vec<ProductPoint<Fq>>, u32) {
-        // A value to track whether the isogeny has been computed successfully
+        // Values to track whether the isogeny has been computed successfully
         let mut ok = u32::MAX;
+        let mut check;
 
         // Store the number of image points we wish to evaluate to
         // ensure we return them all from the points we push through
@@ -59,18 +60,21 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
             // For the last two steps, we need to be careful because of the zero-null
             // coordinates appearing from the product structure. To avoid these, we
             // use the hadamard transform to avoid them,
-            if k == (n - 2) {
-                domain = two_isogeny(&Tp1, &Tp2, &mut kernel_pts, [false, false])
+            (domain, check) = if k == (n - 2) {
+                two_isogeny(&Tp1, &Tp2, &mut kernel_pts, [false, false])
             } else if k == (n - 1) {
-                domain = two_isogeny_to_product(&Tp1, &Tp2, &mut kernel_pts)
+                two_isogeny_to_product(&Tp1, &Tp2, &mut kernel_pts)
             } else {
-                domain = two_isogeny(&Tp1, &Tp2, &mut kernel_pts, [false, true])
-            }
+                two_isogeny(&Tp1, &Tp2, &mut kernel_pts, [false, true])
+            };
+            ok &= check;
         }
 
         // Use a symplectic transform to first get the domain into a compatible form
         // for splitting
-        domain = splitting_isomorphism(domain, &mut kernel_pts);
+        let check: u32;
+        (domain, check) = splitting_isomorphism(domain, &mut kernel_pts);
+        ok &= check;
 
         // Split from the level 2 theta model to the elliptic product E3 x E4 and map points
         // onto this product
@@ -117,6 +121,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
 
         // Value to determine success / failure of isogeny chain
         let mut ok = u32::MAX;
+        let mut check: u32;
 
         // Step One: Perform doubling on the ProductPoints and compute the
         // codomain from gluing. Keep intermediate doubles to push through
@@ -178,13 +183,14 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
             // For the last two steps, we need to be careful because of the zero-null
             // coordinates appearing from the product structure. To avoid these, we
             // use the hadamard transform to avoid them,
-            if i == (n - 2) {
-                domain = two_isogeny(&T1, &T2, &mut strategy_pts, [false, false])
+            (domain, check) = if i == (n - 2) {
+                two_isogeny(&T1, &T2, &mut strategy_pts, [false, false])
             } else if i == (n - 1) {
-                domain = two_isogeny_to_product(&T1, &T2, &mut strategy_pts)
+                two_isogeny_to_product(&T1, &T2, &mut strategy_pts)
             } else {
-                domain = two_isogeny(&T1, &T2, &mut strategy_pts, [false, true])
-            }
+                two_isogeny(&T1, &T2, &mut strategy_pts, [false, true])
+            };
+            ok &= check;
 
             // Reduce the order of the points we evaluated
             for i in 0..k {
@@ -195,7 +201,8 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
 
         // Use a symplectic transform to first get the domain into a compatible form
         // for splitting
-        domain = splitting_isomorphism(domain, &mut strategy_pts);
+        (domain, check) = splitting_isomorphism(domain, &mut strategy_pts);
+        ok &= check;
 
         // Split from the level 2 theta model to the elliptic product E3 x E4 and map points
         // onto this product

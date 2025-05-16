@@ -64,6 +64,11 @@ impl<Fq: FqTrait> ThetaPoint<Fq> {
     pub fn squared_theta(self) -> (Fq, Fq, Fq, Fq) {
         to_squared_theta(&self.X, &self.Y, &self.Z, &self.T)
     }
+
+    /// Returns if any of the coordinates of `self` are zero
+    pub fn has_zero_coordinate(self) -> u32 {
+        self.X.is_zero() | self.Y.is_zero() | self.Z.is_zero() | self.T.is_zero()
+    }
 }
 
 /// For debugging, pretty print out the coordinates of a point
