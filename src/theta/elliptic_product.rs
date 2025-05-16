@@ -28,7 +28,7 @@ impl<Fq: FqTrait> ProductPoint<Fq> {
 
 impl<Fq: FqTrait> ::std::fmt::Display for ProductPoint<Fq> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        write!(f, "CouplePoint with Points:\n{}\n{}", self.P1, self.P2)
+        write!(f, "ProductPoint with Points:\n{}\n{}", self.P1, self.P2)
     }
 }
 
