@@ -45,8 +45,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         xRS: &Fq,
     ) -> (Fq, Fq, Fq, Fq) {
         // Lift x-coordinates to projective points on curve
-        let (P, Q) = self.lift_basis(xP, xQ, xPQ);
-        let (R, S) = self.lift_basis(xR, xS, xRS);
+        let (P, Q) = self.lift_basis_normalised(xP, xQ, xPQ);
+        let (R, S) = self.lift_basis_normalised(xR, xS, xRS);
 
         // Compute R - P, R - Q, S - P, S - Q
         let RmP = self.add(&R, &P);

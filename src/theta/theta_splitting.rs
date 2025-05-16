@@ -8,8 +8,8 @@ use fp2::fq::Fq as FqTrait;
 
 use crate::elliptic::curve::Curve;
 use crate::elliptic::point::PointX;
-use crate::elliptic::product::{CouplePoint, EllipticProduct};
 
+use super::elliptic_product::{CouplePoint, EllipticProduct};
 use super::theta_point::ThetaPoint;
 use super::theta_structure::ThetaStructure;
 use super::theta_util::apply_base_change;

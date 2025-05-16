@@ -8,12 +8,8 @@ use sha3::{
 };
 
 use crate::{
-    elliptic::{
-        basis::BasisX,
-        curve::Curve,
-        product::{CouplePoint, EllipticProduct},
-    },
-    theta::theta_chain::product_isogeny_no_strategy,
+    elliptic::{basis::BasisX, curve::Curve},
+    theta::elliptic_product::{CouplePoint, EllipticProduct},
     utilities::le_bytes::byte_slice_difference,
 };
 
@@ -394,8 +390,11 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         B2: &BasisX<Fq>,
     ) -> (EllipticProduct<Fq>, CouplePoint<Fq>, CouplePoint<Fq>) {
         let E1E2 = EllipticProduct::new(E1, E2);
-        let (P_chl, Q_chl) = E1.lift_basis(&B1.P.x(), &B1.Q.x(), &B1.PQ.x());
-        let (P_aux, Q_aux) = E2.lift_basis(&B2.P.x(), &B2.Q.x(), &B2.PQ.x());
+        // TODO: lift_basis requires an inversion, we could write a function
+        // which normallises B1 and B2 simultaneously to save one inversion
+        // here.
+        let (P_chl, Q_chl) = E1.lift_basis(&B1);
+        let (P_aux, Q_aux) = E2.lift_basis(&B2);
         let P1P2 = CouplePoint::new(&P_chl, &P_aux);
         let Q1Q2 = CouplePoint::new(&Q_chl, &Q_aux);
 
@@ -448,14 +447,16 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         }
 
         // Create the kernel for the (2, 2) isogeny given the x-only bases on E_chl and E_aux.
-        // TODO: this will need to change when the chain changes
         let (E1E2, P1P2, Q1Q2) = Self::prepare_product_isogeny_kernel(
             &chl_curve,
             &sig.aux_curve,
             &chl_basis,
             &aux_basis,
         );
-        let (E3E4, _) = product_isogeny_no_strategy(&E1E2, &P1P2, &Q1Q2, &[], e_rsp_prime);
+
+        // Compute the isogeny E1 x E2 -> E3 x E4, target codomain is always E4 currently
+        // because of linear alegbra choices.
+        let (E3E4, _) = E1E2.elliptic_product_isogeny_no_strategy(&P1P2, &Q1Q2, e_rsp_prime, &[]);
         let (_, E4) = E3E4.curves();
 
         // The signature is valid if the derived bytes from the hash match the signature scalar.

@@ -1,6 +1,6 @@
-use super::curve::Curve;
-use super::projective_point::Point;
 use fp2::fq::Fq as FqTrait;
+
+use crate::elliptic::{curve::Curve, projective_point::Point};
 
 #[derive(Clone, Copy, Debug)]
 pub struct CouplePoint<Fq: FqTrait> {

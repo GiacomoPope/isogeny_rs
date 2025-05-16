@@ -1,3 +1,4 @@
+pub mod elliptic_product;
 pub mod theta_chain;
 pub mod theta_gluing;
 pub mod theta_isogeny;

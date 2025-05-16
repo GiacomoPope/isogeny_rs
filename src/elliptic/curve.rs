@@ -1,4 +1,4 @@
-use super::{point::PointX, projective_point::Point};
+use super::{basis::BasisX, point::PointX, projective_point::Point};
 use fp2::fq::Fq as FqTrait;
 use rand_core::{CryptoRng, RngCore};
 
@@ -69,7 +69,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// Given the x-coordinates of x(P), x(Q) and x(P - Q) lift the points
     /// onto the curve <P, Q>.
-    pub fn lift_basis(self, xP: &Fq, xQ: &Fq, xPQ: &Fq) -> (Point<Fq>, Point<Fq>) {
+    pub fn lift_basis_normalised(self, xP: &Fq, xQ: &Fq, xPQ: &Fq) -> (Point<Fq>, Point<Fq>) {
         let P = self.lift_point(xP);
 
         // Okeya-Sakurai algorithm to recover Q.Y without a sqrt
@@ -89,6 +89,17 @@ impl<Fq: FqTrait> Curve<Fq> {
         let Q = Point::new(&x, &y, &v1);
 
         (P, Q)
+    }
+
+    pub fn lift_basis(self, basis: &BasisX<Fq>) -> (Point<Fq>, Point<Fq>) {
+        let mut zs = [basis.P.Z, basis.Q.Z, basis.PQ.Z];
+        Fq::batch_invert(&mut zs);
+
+        let xP = basis.P.X * zs[0];
+        let xQ = basis.Q.X * zs[1];
+        let xPQ = basis.PQ.X * zs[2];
+
+        self.lift_basis_normalised(&xP, &xQ, &xPQ)
     }
 
     /// Complete an X-only point into a full point;
