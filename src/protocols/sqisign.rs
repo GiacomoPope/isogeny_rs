@@ -233,7 +233,8 @@ impl<Fq: FqTrait> Sqisign<Fq> {
                 .three_point_ladder(&pk_basis, sig.chl_scalar, self.security_bits);
         chl_kernel = pk.curve.xmul_2e(&chl_kernel, sig.backtracking);
 
-        // TODO: we need this chain to return errors on bad input.
+        // Compute the isogeny chain, a failure u32 is returned for the case of
+        // bad input.
         pk.curve
             .two_isogeny_chain(&chl_kernel, self.f - sig.backtracking, &mut [])
     }
@@ -244,27 +245,32 @@ impl<Fq: FqTrait> Sqisign<Fq> {
     where
         [(); Fq::ENCODED_LENGTH]: Sized,
     {
+        let mut shake_256 = Shake256::default();
+
+        // For all but the last steps, we extract out hash_bytes from
+        // Shake256.
         let hash_bytes = ((self.security_bits << 1) + 7) >> 3;
         let mut xof_bytes = vec![0; hash_bytes];
 
         // The first iteration hashes j(E_pk) || j(E_chl) || msg
-        let mut sponge = Shake256::default();
-        sponge.update(&E_pk.j_invariant().encode());
-        sponge.update(&E_chl.j_invariant().encode());
-        sponge.update(msg);
-        sponge.finalize_xof_reset_into(&mut xof_bytes);
+        shake_256.update(&E_pk.j_invariant().encode());
+        shake_256.update(&E_chl.j_invariant().encode());
+        shake_256.update(msg);
+        shake_256.finalize_xof_reset_into(&mut xof_bytes);
 
         // Now iterate the hash many times to reach security goal
+        // We compute xof_bytes = Shake256(xof_bytes).read(hash_bytes)
         for _ in 0..(self.hash_iterations - 2) {
-            sponge.update(&xof_bytes);
-            sponge.finalize_xof_reset_into(&mut xof_bytes);
+            shake_256.update(&xof_bytes);
+            shake_256.finalize_xof_reset_into(&mut xof_bytes);
         }
 
-        // For the last iteration we request a new number of bytes
+        // For the last iteration we request the number of bytes required
+        // for the scalar used to generate the challenge kernel.
         let scalar_hash_bytes = (self.security_bits + 7) >> 3;
         let mut scalar = vec![0; scalar_hash_bytes];
-        sponge.update(&xof_bytes);
-        sponge.finalize_xof_reset_into(&mut scalar);
+        shake_256.update(&xof_bytes);
+        shake_256.finalize_xof_reset_into(&mut scalar);
 
         // Finally we need to reduce this value modulo 2^(f - response_length)
         let modulus_bit_length = self.f - self.response_length;
@@ -398,11 +404,11 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         if chl_order == 0 {
             return false;
         }
-        // Compute the challenge kernel and from this, E_chl from E_pk / <K>
-        let (mut chl_curve, check) = self.compute_challenge_curve(&pk, &sig);
 
-        // If there is an error with the kernel derived from the signature, the 2^n isogeny chain
-        // returns 0 and we reject the signature.
+        // Compute the challenge kernel and from this, E_chl from E_pk / <K>
+        // If the kernel is found to be maleformed in the 2^n isogeny chain.
+        // check = 0 and we must reject the signature.
+        let (mut chl_curve, check) = self.compute_challenge_curve(&pk, &sig);
         if check == 0 {
             return false;
         }
@@ -412,6 +418,8 @@ impl<Fq: FqTrait> Sqisign<Fq> {
             self.compute_torsion_bases(&chl_curve, &sig, e_rsp_prime, chl_order);
 
         // Compute the small 2-isogeny conditionally and push through the challenge basis.
+        // If the kernel is maleformed, `compute_small_isogeny` returns `false` and we must
+        // reject the signature.
         if sig.two_resp_length > 0 {
             if !Self::compute_small_isogeny(&mut chl_curve, &mut chl_basis, &sig, e_rsp_prime) {
                 return false;
