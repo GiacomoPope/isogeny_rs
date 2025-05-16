@@ -95,13 +95,15 @@ impl<Fq: FqTrait> Curve<Fq> {
         Q.Z *= t0;
     }
 
-    /// Compute a 3^n isogeny using a balanced strategy
+    /// Compute a 3^n isogeny using a balanced strategy.
+    /// Returns the codomain as well as a `u32` which is equal to `0xFF..FF` when
+    /// kernel has order 3^n and `0x00..00` otherwise.
     pub fn three_isogeny_chain(
         self,
         kernel: &PointX<Fq>,
         n: usize,
         images: &mut [PointX<Fq>],
-    ) -> Curve<Fq> {
+    ) -> (Curve<Fq>, u32) {
         // For codomain computation we track the constants (A + 2C : A - 2C)
         let mut A24_plus = self.A + Fq::TWO;
         let mut A24_minus = self.A - Fq::TWO;
@@ -123,8 +125,11 @@ impl<Fq: FqTrait> Curve<Fq> {
         stategy_points[0] = *kernel;
         orders[0] = n;
 
+        // Value to determine success / failure of isogeny chain
+        let mut ok = u32::MAX;
+
         let mut k = 0;
-        for _ in 0..n {
+        for i in 0..n {
             // Get the next point of order 2
             while orders[k] != 1 {
                 k += 1;
@@ -135,6 +140,14 @@ impl<Fq: FqTrait> Curve<Fq> {
             }
             // Point of order two to compute isogeny with
             let ker_step = stategy_points[k];
+
+            // For the first step we check that the kernel has exactly order 3^n
+            if i == 0 {
+                ok &= !ker_step.Z.is_zero();
+                let mut tmp = ker_step;
+                Self::xtpl_proj(&A24_plus, &A24_minus, &mut tmp);
+                ok &= tmp.Z.is_zero();
+            }
 
             // Compute the codomain from ker_step
             (A24_plus, A24_minus, c0, c1) = Self::three_isogeny_codomain(&ker_step);
@@ -151,6 +164,6 @@ impl<Fq: FqTrait> Curve<Fq> {
             }
             k = k.saturating_sub(1);
         }
-        Self::curve_from_A_plus_minus(&A24_plus, &A24_minus)
+        (Self::curve_from_A_plus_minus(&A24_plus, &A24_minus), ok)
     }
 }

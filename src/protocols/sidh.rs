@@ -143,8 +143,9 @@ impl<Fq: FqTrait, const N: usize> SidhParameters<Fq, N> {
         let kernel = E.three_point_ladder(&self.three_torsion, &scalar, N << 3);
 
         // Compute phi_3 : E0 -> E/<K3> and phi_3(P2), phi_3(Q2), phi_3(P2 - Q2)
+        // We ignore the check during keygen as the parameters are trusted.
         let mut two_torsion_img = self.two_torsion.to_array();
-        let codomain = E.three_isogeny_chain(&kernel, self.eb, &mut two_torsion_img);
+        let (codomain, _) = E.three_isogeny_chain(&kernel, self.eb, &mut two_torsion_img);
 
         // Package the data above into public and private keys
         let public_key = SidhBobPublicKey::new(&codomain, &two_torsion_img);
@@ -187,7 +188,7 @@ impl<Fq: FqTrait, const N: usize> SidhBobPrivateKey<Fq, N> {
         }
     }
 
-    pub fn shared_secret(self, public_key: &SidhAlicePublicKey<Fq>) -> Fq {
+    pub fn shared_secret(self, public_key: &SidhAlicePublicKey<Fq>) -> Result<Fq, SidhError> {
         // Extract out the codomain of phi_2 : E -> E/<K2>
         let E = public_key.E;
 
@@ -195,8 +196,11 @@ impl<Fq: FqTrait, const N: usize> SidhBobPrivateKey<Fq, N> {
         let kernel = E.three_point_ladder(&public_key.basis_img, &self.scalar, N << 3);
 
         // Compute the codomain of E0 -> E2 -> ES = (E / <K2>) / <K>
-        let codomain = E.three_isogeny_chain(&kernel, self.exp, &mut []);
-        codomain.j_invariant()
+        let (codomain, check) = E.three_isogeny_chain(&kernel, self.exp, &mut []);
+        if check == 0 {
+            return Err(SidhError::TorsionBasis);
+        }
+        Ok(codomain.j_invariant())
     }
 }
 

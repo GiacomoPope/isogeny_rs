@@ -48,8 +48,11 @@ mod test_three_isogeny_chain {
 
         // Compute chain
         let images = &mut [R];
-        let codomain = E.three_isogeny_chain(&ker, 137, images);
+        let (codomain, _) = E.three_isogeny_chain(&ker, 137, images);
         let R_img = images[0];
+
+        // Ensure that the chain was successful.
+        assert!(check == u32::MAX);
 
         // Assert that the codomains are isomorphic
         let j2 = codomain.j_invariant();
@@ -63,5 +66,35 @@ mod test_three_isogeny_chain {
 
         // Assert the two points are equal after isomorphism.
         assert!(R_img.x().equals(&R_img_test.x()) == u32::MAX);
+    }
+
+    #[test]
+    fn test_three_isogeny_too_long() {
+        let (xK, check) = Fp2::decode(&hex::decode(XK_STR).unwrap());
+        assert!(check == u32::MAX);
+
+        // Domain and kernel
+        let six = Fp2::THREE.mul2();
+        let E = Curve::new(&six);
+        let ker = PointX::new(&xK, &Fp2::ONE);
+
+        // the kernel does not have order 3^150, so this chain should fail.
+        let (_, check) = E.three_isogeny_chain(&ker, 150, &mut []);
+        assert!(check == 0)
+    }
+
+    #[test]
+    fn test_three_isogeny_too_short() {
+        let (xK, check) = Fp2::decode(&hex::decode(XK_STR).unwrap());
+        assert!(check == u32::MAX);
+
+        // Domain and kernel
+        let six = Fp2::THREE.mul2();
+        let E = Curve::new(&six);
+        let ker = PointX::new(&xK, &Fp2::ONE);
+
+        // the kernel does not have order 3^50, so this chain should fail.
+        let (_, check) = E.three_isogeny_chain(&ker, 50, &mut []);
+        assert!(check == 0)
     }
 }

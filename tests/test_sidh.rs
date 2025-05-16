@@ -14,7 +14,7 @@ mod test_sidh {
             let (bob_pub, bob_priv) = SIDH_434.keygen_bob(&mut rng);
 
             let alice_secret = alice_priv.shared_secret(&bob_pub).unwrap();
-            let bob_secret = bob_priv.shared_secret(&alice_pub);
+            let bob_secret = bob_priv.shared_secret(&alice_pub).unwrap();
             assert!(alice_secret.equals(&bob_secret) == u32::MAX);
         }
     }
