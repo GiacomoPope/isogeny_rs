@@ -97,13 +97,18 @@ impl<Fq: FqTrait> Curve<Fq> {
         Q.Z = t0 * (*c1);
     }
 
-    /// Compute a 2^n isogeny using the naive approach
-    pub fn two_isogeny_chain_naive(
+    /// Compute a 2^n isogeny using the naive approach. WARNING: branches on whether
+    /// the kernel is of the form (0 : 1) or not, and so is not constant time.
+    /// Returns the codomain as well as a `u32` which is equal to `0xFF..FF` on success
+    /// or `0x00..00` on failure, which happens when either the kernel is of the wrong
+    /// order, or the kernel contained the point (0 : 1) and `allow_singular` is `false`.
+    pub fn two_isogeny_chain_small_vartime(
         self,
         kernel: &PointX<Fq>,
         n: usize,
         images: &mut [PointX<Fq>],
-    ) -> Curve<Fq> {
+        allow_singular: bool,
+    ) -> (Curve<Fq>, u32) {
         let mut A24 = self.A24;
         let mut C24 = Fq::ONE;
 
@@ -115,31 +120,50 @@ impl<Fq: FqTrait> Curve<Fq> {
             ker_step = ker;
             Self::xdbl_proj_iter(&A24, &C24, &mut ker_step, n - i - 1);
 
-            if ker_step.X.is_zero() == u32::MAX {
-                // Compute the codomain from ker_step for kernel (0 : 1)
-                let (c0, c1) = Self::two_isogeny_codomain_singular(&mut A24, &mut C24);
-
-                // Push through the kernel
-                Self::two_isogeny_eval_singular(&c0, &c1, &mut ker);
-
-                // Push through the points to evaluate
-                for P in images.iter_mut() {
-                    Self::two_isogeny_eval_singular(&c0, &c1, P);
+            // For the first step, we check the kernel has exactly order 2^n
+            // we also allow the first step to be the singular isogeny with
+            // kernel (0 : 1) only if `allow_singular` is `true`.
+            if i == 0 {
+                // First check if the kernel has the correct order.
+                let mut inf = ker_step;
+                Self::xdbl_proj(&A24, &C24, &mut inf);
+                if (!ker_step.Z.is_zero() & inf.Z.is_zero()) != u32::MAX {
+                    return (self, 0);
                 }
-            } else {
-                // Compute the codomain from ker_step
-                (A24, C24) = Self::two_isogeny_codomain(&ker_step);
 
-                // Push through the kernel
-                Self::two_isogeny_eval(&ker_step, &mut ker);
+                // When the kernel is of the form (0 : 1) we need specialised isogenies.
+                // These should never occur in some cases and we identify this for failure
+                // cases.
+                if ker_step.X.is_zero() == u32::MAX {
+                    if !allow_singular {
+                        return (self, 0);
+                    }
+                    // Compute the codomain from ker_step for kernel (0 : 1)
+                    let (c0, c1) = Self::two_isogeny_codomain_singular(&mut A24, &mut C24);
 
-                // Push through the points to evaluate
-                for P in images.iter_mut() {
-                    Self::two_isogeny_eval(&ker_step, P);
+                    // Push through the kernel
+                    Self::two_isogeny_eval_singular(&c0, &c1, &mut ker);
+
+                    // Push through the points to evaluate
+                    for P in images.iter_mut() {
+                        Self::two_isogeny_eval_singular(&c0, &c1, P);
+                    }
+                    continue;
                 }
             }
+
+            // Compute the codomain from ker_step
+            (A24, C24) = Self::two_isogeny_codomain(&ker_step);
+
+            // Push through the kernel
+            Self::two_isogeny_eval(&ker_step, &mut ker);
+
+            // Push through the points to evaluate
+            for P in images.iter_mut() {
+                Self::two_isogeny_eval(&ker_step, P);
+            }
         }
-        Self::curve_from_A24_proj(&A24, &C24)
+        (Self::curve_from_A24_proj(&A24, &C24), u32::MAX)
     }
 
     /// Compute a 2^n isogeny using a balanced strategy

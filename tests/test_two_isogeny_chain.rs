@@ -33,7 +33,7 @@ mod test_two_isogeny_chain {
     static XR2_STR: &str = "d28e10f44aaacd2a8f4da6cb12e7be05513c6d144b16b145e78549c0cb4717049013072d85765c8661d9a1d9d3f6e24a06330ef1ec1a9065bcd9c48aeac2ae04";
 
     #[test]
-    fn test_two_isogeny_naive() {
+    fn test_two_isogeny_chain_small_vartime() {
         // Ensure all Fp2 elements from Sage decode correctly.
         let (A, check) = Fp2::decode(&hex::decode(A0_STR).unwrap());
         assert!(check == u32::MAX);
@@ -62,8 +62,11 @@ mod test_two_isogeny_chain {
 
         // Compute chain
         let images = &mut [R];
-        let E1 = E.two_isogeny_chain_naive(&ker, 248, images);
+        let (E1, check) = E.two_isogeny_chain_small_vartime(&ker, 248, images, false);
         let R_img = images[0];
+
+        // Ensure that the chain was successful.
+        assert!(check == u32::MAX);
 
         // Assert that the codomains are isomorphic
         let j1 = E1.j_invariant();
@@ -77,10 +80,32 @@ mod test_two_isogeny_chain {
 
         // Assert the two points are equal after isomorphism.
         assert!(R_img.x().equals(&R_img_test.x()) == u32::MAX);
+
+        // the kernel does not have order 2^250, so this chain should fail.
+        let (_, check) = E.two_isogeny_chain_small_vartime(&ker, 250, images, false);
+        assert!(check == 0);
     }
 
     #[test]
-    fn test_two_isogeny_singular_naive() {
+    fn test_two_isogeny_chain_small_vartime_wrong_order() {
+        // Ensure all Fp2 elements from Sage decode correctly.
+        let (A, check) = Fp2::decode(&hex::decode(A0_STR).unwrap());
+        assert!(check == u32::MAX);
+
+        let (xP, check) = Fp2::decode(&hex::decode(XP_STR).unwrap());
+        assert!(check == u32::MAX);
+
+        // Domain, kernel and point to eval
+        let E = Curve::new(&A);
+        let ker = PointX::new(&xP, &Fp2::ONE);
+
+        // the kernel does not have order 2^250, so this chain should fail.
+        let (_, check) = E.two_isogeny_chain_small_vartime(&ker, 250, &mut [], false);
+        assert!(check == 0);
+    }
+
+    #[test]
+    fn test_singular_two_isogeny_chain_small_vartime() {
         // Ensure all Fp2 elements from Sage decode correctly.
         let (A, check) = Fp2::decode(&hex::decode(A0_STR).unwrap());
         assert!(check == u32::MAX);
@@ -109,8 +134,11 @@ mod test_two_isogeny_chain {
 
         // Compute chain
         let images = &mut [R];
-        let E2 = E.two_isogeny_chain_naive(&ker, 248, images);
+        let (E2, check) = E.two_isogeny_chain_small_vartime(&ker, 248, images, true);
         let R_img = images[0];
+
+        // Ensure that the chain was successful.
+        assert!(check == u32::MAX);
 
         // Assert that the codomains are isomorphic
         let j2 = E2.j_invariant();
@@ -124,6 +152,42 @@ mod test_two_isogeny_chain {
 
         // Assert the two points are equal after isomorphism.
         assert!(R_img.x().equals(&R_img_test.x()) == u32::MAX);
+    }
+
+    #[test]
+    fn test_unexpected_singular_two_isogeny_chain() {
+        // Ensure all Fp2 elements from Sage decode correctly.
+        let (A, check) = Fp2::decode(&hex::decode(A0_STR).unwrap());
+        assert!(check == u32::MAX);
+
+        let (xQ, check) = Fp2::decode(&hex::decode(XQ_STR).unwrap());
+        assert!(check == u32::MAX);
+
+        // Domain, kernel and point to eval
+        let E = Curve::new(&A);
+        let ker = PointX::new(&xQ, &Fp2::ONE);
+
+        // the kernel is above (0 : 1), so this chain should fail.
+        let (_, check) = E.two_isogeny_chain_small_vartime(&ker, 248, &mut [], false);
+        assert!(check == 0);
+    }
+
+    #[test]
+    fn test_singular_two_isogeny_chain_small_vartime_wrong_order() {
+        // Ensure all Fp2 elements from Sage decode correctly.
+        let (A, check) = Fp2::decode(&hex::decode(A0_STR).unwrap());
+        assert!(check == u32::MAX);
+
+        let (xQ, check) = Fp2::decode(&hex::decode(XQ_STR).unwrap());
+        assert!(check == u32::MAX);
+
+        // Domain, kernel and point to eval
+        let E = Curve::new(&A);
+        let ker = PointX::new(&xQ, &Fp2::ONE);
+
+        // the kernel does not have order 2^250, so this chain should fail.
+        let (_, check) = E.two_isogeny_chain_small_vartime(&ker, 250, &mut [], true);
+        assert!(check == 0);
     }
 
     #[test]

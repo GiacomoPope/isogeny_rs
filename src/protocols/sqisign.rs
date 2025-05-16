@@ -341,12 +341,14 @@ impl<Fq: FqTrait> Sqisign<Fq> {
     }
 
     /// Compute the short 2^r isogeny and push through the torsion basis of E_chl.
+    /// Returns `true` if no error was detected during the 2-isogeny chain, otherwise
+    /// returns `false`.
     fn compute_small_isogeny<'a>(
         E: &mut Curve<Fq>,
         B: &mut BasisX<Fq>,
         sig: &SqisignSignature<'a, Fq>,
         e_rsp_prime: usize,
-    ) {
+    ) -> bool {
         // Compute the kernel as [2^(e_rsp_prime + 2)] P or [2^(e_rsp_prime + 2)] Q
         // depending on aij values
         let mut basis_img = B.to_array();
@@ -357,8 +359,12 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         };
 
         // Compute the two isogeny and push the challenge basis through
-        *E = E.two_isogeny_chain_naive(&kernel, sig.two_resp_length, &mut basis_img);
+        let ok: u32;
+        (*E, ok) =
+            E.two_isogeny_chain_small_vartime(&kernel, sig.two_resp_length, &mut basis_img, false);
         *B = BasisX::from_slice(&basis_img);
+
+        ok == u32::MAX
     }
 
     /// Return `0` if any element of aij is larger than expected, otherwise return the maximum
@@ -401,7 +407,9 @@ impl<Fq: FqTrait> Sqisign<Fq> {
 
         // Compute the small 2-isogeny conditionally and push through the challenge basis.
         if sig.two_resp_length > 0 {
-            Self::compute_small_isogeny(&mut chl_curve, &mut chl_basis, &sig, e_rsp_prime)
+            if !Self::compute_small_isogeny(&mut chl_curve, &mut chl_basis, &sig, e_rsp_prime) {
+                return false;
+            }
         };
 
         // In very exceptional cases, no (2,2)-isogeny is needed and the signature
