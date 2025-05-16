@@ -204,12 +204,15 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// Compute a 2^n isogeny using a balanced strategy with 4-isogenies for
     /// every step except the last in the case when n is odd.
+    /// Returns the codomain as well as a `u32` which is equal to `0xFF..FF` on success
+    /// or `0x00..00` on failure, which happens when the kernel found to have the wrong
+    /// order or the kernel is above the "singular" point (0 : 1).
     pub fn two_isogeny_chain(
         self,
         kernel: &PointX<Fq>,
         n: usize,
         images: &mut [PointX<Fq>],
-    ) -> Curve<Fq> {
+    ) -> (Curve<Fq>, u32) {
         // For 2-isogenies we represent (A + 2) / 4 projectively as (A24 : C24)
         let mut A24 = self.A24;
         let mut C24 = Fq::ONE;
@@ -232,9 +235,12 @@ impl<Fq: FqTrait> Curve<Fq> {
         stategy_points[0] = *kernel;
         orders[0] = n;
 
+        // Value to determine success / failure of isogeny chain
+        let mut ok = u32::MAX;
+
         let mut k = 0;
-        for _ in 0..(n >> 1) {
-            // Get the next point of order 2
+        for i in 0..(n >> 1) {
+            // Get the next point of order 4
             while orders[k] != 2 {
                 k += 1;
                 let m = 2 * (orders[k - 1] / 4) + (orders[k - 1] & 1);
@@ -242,8 +248,24 @@ impl<Fq: FqTrait> Curve<Fq> {
                 Self::xdbl_proj_iter(&A24, &C24, &mut stategy_points[k], m);
                 orders[k] = orders[k - 1] - m;
             }
-            // Point of order two to compute isogeny with
+            // Point of order four to compute isogeny with
             let ker_step = stategy_points[k];
+
+            // For the first step we perform a check that the kernel has the
+            // exact order and that the kernel is not above the point (0 : 1)
+            if i == 0 {
+                let mut tmp = ker_step;
+
+                // Ensure that the [2]ker is not (0 : 1)
+                Self::xdbl_proj(&A24, &C24, &mut tmp);
+                ok &= !tmp.X.is_zero();
+
+                // Ensure that the kernel has exact order
+                // [2]ker != 0 and [4]ker = 0
+                ok &= !tmp.Z.is_zero();
+                Self::xdbl_proj(&A24, &C24, &mut tmp);
+                ok &= tmp.Z.is_zero();
+            }
 
             // Compute the codomain from the current step
             (A24, C24, c0, c1, c2) = Self::four_isogeny_codomain(&ker_step);
@@ -261,6 +283,29 @@ impl<Fq: FqTrait> Curve<Fq> {
             k = k.saturating_sub(1);
         }
 
-        Self::curve_from_A24_proj(&A24, &C24)
+        // The chain had odd length, so we need to do one final 2-isogeny to finish
+        // the chain.
+        if n & 1 == 1 {
+            // Point of order two to finish isogeny with
+            let ker_step = stategy_points[0];
+
+            // Ensure that the [2]ker is not (0 : 1)
+            ok &= !ker_step.X.is_zero();
+
+            // Ensure the point has order exactly 2
+            let mut tmp = ker_step;
+            Self::xdbl_proj(&A24, &C24, &mut tmp);
+            ok &= tmp.Z.is_zero();
+
+            // Compute the codomain from ker_step
+            (A24, C24) = Self::two_isogeny_codomain(&ker_step);
+
+            // Push through the points to evaluate
+            for P in images.iter_mut() {
+                Self::two_isogeny_eval(&ker_step, P);
+            }
+        }
+
+        (Self::curve_from_A24_proj(&A24, &C24), ok)
     }
 }

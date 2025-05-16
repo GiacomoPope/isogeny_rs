@@ -1,3 +1,4 @@
+use core::{error::Error, fmt::Display};
 use std::marker::PhantomData;
 
 use fp2::fq::Fq as FqTrait;
@@ -56,6 +57,22 @@ pub struct SidhBobPrivateKey<Fq: FqTrait, const N: usize> {
     _phantom: PhantomData<Fq>,
 }
 
+/// Various Errors for SIDH, to be modified further.
+#[derive(Debug)]
+pub enum SidhError {
+    TorsionBasis,
+}
+
+impl Display for SidhError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            SidhError::TorsionBasis => f.write_str("Torsion basis does not have expected order"),
+        }
+    }
+}
+
+impl Error for SidhError {}
+
 impl<Fq: FqTrait, const N: usize> SidhParameters<Fq, N> {
     pub const fn new(
         ea: usize,
@@ -101,8 +118,9 @@ impl<Fq: FqTrait, const N: usize> SidhParameters<Fq, N> {
         let kernel = E.three_point_ladder(&self.two_torsion, &scalar, N << 3);
 
         // Compute phi_2 : E0 -> E/<K2> and phi_2(P3), phi_2(Q3), phi_2(P3 - Q3)
+        // We ignore the check during keygen as the parameters are trusted.
         let mut three_torsion_img = self.three_torsion.to_array();
-        let codomain = E.two_isogeny_chain(&kernel, self.ea, &mut three_torsion_img);
+        let (codomain, _) = E.two_isogeny_chain(&kernel, self.ea, &mut three_torsion_img);
 
         // Package the data above into public and private keys
         let public_key = SidhAlicePublicKey::new(&codomain, &three_torsion_img);
@@ -144,7 +162,7 @@ impl<Fq: FqTrait, const N: usize> SidhAlicePrivateKey<Fq, N> {
         }
     }
 
-    pub fn shared_secret(self, public_key: &SidhBobPublicKey<Fq>) -> Fq {
+    pub fn shared_secret(self, public_key: &SidhBobPublicKey<Fq>) -> Result<Fq, SidhError> {
         // Extract out the codomain of phi_3 : E -> E/<K3>
         let E = public_key.E;
 
@@ -152,8 +170,11 @@ impl<Fq: FqTrait, const N: usize> SidhAlicePrivateKey<Fq, N> {
         let kernel = E.three_point_ladder(&public_key.basis_img, &self.scalar, N << 3);
 
         // Compute the codomain of E0 -> E3 -> ES = (E / <K3>) / <K>
-        let codomain = E.two_isogeny_chain(&kernel, self.exp, &mut []);
-        codomain.j_invariant()
+        let (codomain, check) = E.two_isogeny_chain(&kernel, self.exp, &mut []);
+        if check == 0 {
+            return Err(SidhError::TorsionBasis);
+        }
+        Ok(codomain.j_invariant())
     }
 }
 

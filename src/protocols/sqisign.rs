@@ -218,7 +218,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         self,
         pk: &SqisignPublicKey<Fq>,
         sig: &SqisignSignature<'a, Fq>,
-    ) -> Curve<Fq> {
+    ) -> (Curve<Fq>, u32) {
         // Create a torsion basis from the supplied hint
         let pk_basis = pk.curve.torsion_basis_2e_from_hint(
             0,
@@ -399,7 +399,13 @@ impl<Fq: FqTrait> Sqisign<Fq> {
             return false;
         }
         // Compute the challenge kernel and from this, E_chl from E_pk / <K>
-        let mut chl_curve = self.compute_challenge_curve(&pk, &sig);
+        let (mut chl_curve, check) = self.compute_challenge_curve(&pk, &sig);
+
+        // If there is an error with the kernel derived from the signature, the 2^n isogeny chain
+        // returns 0 and we reject the signature.
+        if check == 0 {
+            return false;
+        }
 
         // Compute canonical bases on E_chl and E_aux which will be used in the (2^n, 2^n)-isogeny
         let (mut chl_basis, aux_basis) =
