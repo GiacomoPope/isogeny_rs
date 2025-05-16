@@ -67,9 +67,33 @@ impl<Fq: FqTrait> Curve<Fq> {
         Point::new(&x, &y, &<Fq>::ONE)
     }
 
+    /// Given the x-coordinates of x(P), x(Q) and x(P - Q) lift the points
+    /// onto the curve <P, Q>.
+    pub fn lift_basis(self, xP: &Fq, xQ: &Fq, xPQ: &Fq) -> (Point<Fq>, Point<Fq>) {
+        let P = self.lift_point(xP);
+
+        // Okeya-Sakurai algorithm to recover Q.Y without a sqrt
+        let mut v2 = (*xP) + (*xQ);
+        let mut v3 = (*xP) - (*xQ);
+        v3.set_square();
+        v3 *= *xPQ;
+        let mut v1 = self.A.mul2();
+        v2 += v1;
+        let mut v4 = (*xP) * (*xQ);
+        v4 += <Fq>::ONE;
+        v2 *= v4;
+        v2 -= v1;
+        let y = v3 - v2;
+        v1 = P.Y + P.Y;
+        let x = (*xQ) * v1;
+        let Q = Point::new(&x, &y, &v1);
+
+        (P, Q)
+    }
+
     /// Complete an X-only point into a full point;
     /// On error, P3 is set to the point-at-infinity.
-    fn complete_pointX_into(self, P3: &mut Point<Fq>, P: &PointX<Fq>) -> u32 {
+    fn lift_pointx_into(self, P3: &mut Point<Fq>, P: &PointX<Fq>) -> u32 {
         let XZ = P.X * P.Z;
         let V = (P.X + P.Z).square() + ((self.A - Fq::TWO) * XZ);
         P3.X = XZ;
@@ -85,9 +109,9 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// Complete an X-only point into a full point;
     /// On error, the output point is set to the point-at-infinity.
-    pub fn complete_pointX(self, P: &PointX<Fq>) -> (Point<Fq>, u32) {
+    pub fn lift_pointx(self, P: &PointX<Fq>) -> (Point<Fq>, u32) {
         let mut P3 = Point::INFINITY;
-        let ok = self.complete_pointX_into(&mut P3, P);
+        let ok = self.lift_pointx_into(&mut P3, P);
         (P3, ok)
     }
 

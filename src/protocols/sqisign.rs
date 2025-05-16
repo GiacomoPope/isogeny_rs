@@ -387,6 +387,21 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         chl_order
     }
 
+    fn prepare_product_isogeny_kernel(
+        E1: &Curve<Fq>,
+        E2: &Curve<Fq>,
+        B1: &BasisX<Fq>,
+        B2: &BasisX<Fq>,
+    ) -> (EllipticProduct<Fq>, CouplePoint<Fq>, CouplePoint<Fq>) {
+        let E1E2 = EllipticProduct::new(E1, E2);
+        let (P_chl, Q_chl) = E1.lift_basis(&B1.P.x(), &B1.Q.x(), &B1.PQ.x());
+        let (P_aux, Q_aux) = E2.lift_basis(&B2.P.x(), &B2.Q.x(), &B2.PQ.x());
+        let P1P2 = CouplePoint::new(&P_chl, &P_aux);
+        let Q1Q2 = CouplePoint::new(&Q_chl, &Q_aux);
+
+        (E1E2, P1P2, Q1Q2)
+    }
+
     /// SQIsign verification.
     pub fn verify(self, msg: &[u8], sig_bytes: &[u8], pk_bytes: &[u8]) -> bool
     where
@@ -434,14 +449,12 @@ impl<Fq: FqTrait> Sqisign<Fq> {
 
         // Create the kernel for the (2, 2) isogeny given the x-only bases on E_chl and E_aux.
         // TODO: this will need to change when the chain changes
-        let E1E2 = EllipticProduct::new(&chl_curve, &sig.aux_curve);
-        let (P_chl, Q_chl) =
-            chl_curve.lift_basis(&chl_basis.P.x(), &chl_basis.Q.x(), &chl_basis.PQ.x());
-        let (P_aux, Q_aux) =
-            sig.aux_curve
-                .lift_basis(&aux_basis.P.x(), &aux_basis.Q.x(), &aux_basis.PQ.x());
-        let P1P2 = CouplePoint::new(&P_chl, &P_aux);
-        let Q1Q2 = CouplePoint::new(&Q_chl, &Q_aux);
+        let (E1E2, P1P2, Q1Q2) = Self::prepare_product_isogeny_kernel(
+            &chl_curve,
+            &sig.aux_curve,
+            &chl_basis,
+            &aux_basis,
+        );
         let (E3E4, _) = product_isogeny_no_strategy(&E1E2, &P1P2, &Q1Q2, &[], e_rsp_prime);
         let (_, E4) = E3E4.curves();
 

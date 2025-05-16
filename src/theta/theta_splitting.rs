@@ -437,8 +437,8 @@ pub fn split_to_product<Fq: FqTrait>(
         let Q2X = theta_point_to_montgomery_point(&O2, &P2);
 
         // Lift these points to (X : Y : Z) on the curves
-        let (Q1, _) = E3.complete_pointX(&Q1X);
-        let (Q2, _) = E4.complete_pointX(&Q2X);
+        let (Q1, _) = E3.lift_pointx(&Q1X);
+        let (Q2, _) = E4.lift_pointx(&Q2X);
 
         // Package these points into a CouplePoint on
         // E3 x E4

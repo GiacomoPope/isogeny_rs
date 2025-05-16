@@ -60,10 +60,10 @@ mod test_product_isogeny {
         let xQ1 = PointX::new(&X_Q1, &Fp2::ONE);
         let xQ2 = PointX::new(&X_Q2, &Fp2::ONE);
 
-        let (P1, _) = E1.complete_pointX(&xP1);
-        let (P2, _) = E2.complete_pointX(&xP2);
-        let (Q1, _) = E1.complete_pointX(&xQ1);
-        let (Q2, _) = E2.complete_pointX(&xQ2);
+        let (P1, _) = E1.lift_pointx(&xP1);
+        let (P2, _) = E2.lift_pointx(&xP2);
+        let (Q1, _) = E1.lift_pointx(&xQ1);
+        let (Q2, _) = E2.lift_pointx(&xQ2);
 
         let P1P2 = CouplePoint::new(&P1, &P2);
         let Q1Q2 = CouplePoint::new(&Q1, &Q2);
