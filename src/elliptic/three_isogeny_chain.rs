@@ -95,46 +95,6 @@ impl<Fq: FqTrait> Curve<Fq> {
         Q.Z *= t0;
     }
 
-    /// Compute a 3^n isogeny using the naive approach
-    pub fn three_isogeny_chain_naive(
-        self,
-        kernel: &PointX<Fq>,
-        n: usize,
-        images: &mut [PointX<Fq>],
-    ) -> Curve<Fq> {
-        // For codomain computation we track the constants (A + 2C : A - 2C)
-        let mut A24_plus = self.A + Fq::TWO;
-        let mut A24_minus = self.A - Fq::TWO;
-
-        // To compute images we need two constants (c0, c1)
-        let mut c0;
-        let mut c1;
-
-        // ker is the kernel of the 3^n isogeny
-        let mut ker: PointX<Fq> = *kernel;
-
-        // ker_step is the kernel of each 3-isogeny
-        let mut ker_step: PointX<Fq>;
-
-        for i in 0..n {
-            // Triple the kernel to get a point of order 3
-            ker_step = ker;
-            Self::xtpl_proj_iter(&A24_plus, &A24_minus, &mut ker_step, n - i - 1);
-
-            // Compute the codomain from ker_step
-            (A24_plus, A24_minus, c0, c1) = Self::three_isogeny_codomain(&ker_step);
-
-            // Push through the kernel
-            Self::three_isogeny_eval(&c0, &c1, &mut ker);
-
-            // Push through the points to evaluate
-            for P in images.iter_mut() {
-                Self::three_isogeny_eval(&c0, &c1, P);
-            }
-        }
-        Self::curve_from_A_plus_minus(&A24_plus, &A24_minus)
-    }
-
     /// Compute a 3^n isogeny using a balanced strategy
     pub fn three_isogeny_chain(
         self,
