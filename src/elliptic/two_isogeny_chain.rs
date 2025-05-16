@@ -97,6 +97,42 @@ impl<Fq: FqTrait> Curve<Fq> {
         Q.Z = t0 * (*c1);
     }
 
+    /// Compute the codomain of the 4-isogeny E -> E/<ker> for [2]ker != (0 : 1)
+    /// Returns the codomain (A24 : C24) together with three constants (c0, c1, c1)
+    /// used for computing images.
+    fn four_isogeny_codomain(ker: &PointX<Fq>) -> (Fq, Fq, Fq, Fq, Fq) {
+        let mut c0 = ker.Z.square();
+        let c1 = ker.X - ker.Z;
+        let c2 = ker.X + ker.Z;
+        let t0 = ker.X.square();
+        let t1 = c0 + t0;
+        let t2 = c0 - t0;
+        let A24 = t1 * t2;
+        let C24 = c0.square();
+        c0.set_mul4();
+
+        (A24, C24, c0, c1, c2)
+    }
+
+    /// Evaluate a point Q in place under the action of the 4-isogeny E -> E/<ker>
+    /// for [2]ker != (0 : 1)
+    fn four_isogeny_eval(c0: &Fq, c1: &Fq, c2: &Fq, Q: &mut PointX<Fq>) {
+        let mut t0 = Q.X + Q.Z;
+        let mut t1 = Q.X - Q.Z;
+        Q.X = t0 * (*c1);
+        Q.Z = t1 * (*c2);
+        t0 *= t1;
+        t0 *= *c0;
+        t1 = Q.X + Q.Z;
+        Q.Z = Q.X - Q.Z;
+        t1.set_square();
+        Q.Z.set_square();
+        Q.X = t0 + t1;
+        t0 -= Q.Z;
+        Q.X *= t1;
+        Q.Z *= t0;
+    }
+
     /// Compute a 2^n isogeny using the naive approach. WARNING: branches on whether
     /// the kernel is of the form (0 : 1) or not, and so is not constant time.
     /// Returns the codomain as well as a `u32` which is equal to `0xFF..FF` on success
@@ -166,7 +202,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         (Self::curve_from_A24_proj(&A24, &C24), u32::MAX)
     }
 
-    /// Compute a 2^n isogeny using a balanced strategy
+    /// Compute a 2^n isogeny using a balanced strategy with 4-isogenies for
+    /// every step except the last in the case when n is odd.
     pub fn two_isogeny_chain(
         self,
         kernel: &PointX<Fq>,
@@ -177,8 +214,13 @@ impl<Fq: FqTrait> Curve<Fq> {
         let mut A24 = self.A24;
         let mut C24 = Fq::ONE;
 
+        // Precompute constants from the codomain at each step for computing images.
+        let mut c0;
+        let mut c1;
+        let mut c2;
+
         // Compute the amount of space we need for the balanced strategy.
-        let space = (usize::BITS - n.leading_zeros() + 1) as usize;
+        let space = (usize::BITS - n.leading_zeros()) as usize;
 
         // These are a set of points of order 2^i
         let mut stategy_points: Vec<PointX<Fq>> = vec![PointX::INFINITY; space];
@@ -191,11 +233,11 @@ impl<Fq: FqTrait> Curve<Fq> {
         orders[0] = n;
 
         let mut k = 0;
-        for _ in 0..n {
+        for _ in 0..(n >> 1) {
             // Get the next point of order 2
-            while orders[k] != 1 {
+            while orders[k] != 2 {
                 k += 1;
-                let m = orders[k - 1] / 2;
+                let m = 2 * (orders[k - 1] / 4) + (orders[k - 1] & 1);
                 stategy_points[k] = stategy_points[k - 1];
                 Self::xdbl_proj_iter(&A24, &C24, &mut stategy_points[k], m);
                 orders[k] = orders[k - 1] - m;
@@ -204,17 +246,17 @@ impl<Fq: FqTrait> Curve<Fq> {
             let ker_step = stategy_points[k];
 
             // Compute the codomain from the current step
-            (A24, C24) = Self::two_isogeny_codomain(&ker_step);
+            (A24, C24, c0, c1, c2) = Self::four_isogeny_codomain(&ker_step);
 
             // Push through the kernel points and reduce the stored order
             for i in 0..space {
-                Self::two_isogeny_eval(&ker_step, &mut stategy_points[i]);
-                orders[i] = orders[i].saturating_sub(1);
+                Self::four_isogeny_eval(&c0, &c1, &c2, &mut stategy_points[i]);
+                orders[i] = orders[i].saturating_sub(2);
             }
 
             // Push through the points to evaluate
             for P in images.iter_mut() {
-                Self::two_isogeny_eval(&ker_step, P);
+                Self::four_isogeny_eval(&&c0, &c1, &c2, P);
             }
             k = k.saturating_sub(1);
         }
