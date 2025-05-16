@@ -40,33 +40,30 @@ impl<Fq: FqTrait> ThetaStructure<Fq> {
 
     /// For doubling and also computing isogenies, we need the following
     /// constants, which we can precompute once for each ThetaStructure.
-    /// Cost: 14M + 5S
+    /// Cost: 12M + 4S
     #[inline]
     pub fn precomputation(O0: &ThetaPoint<Fq>) -> [Fq; 8] {
         let (a, b, c, d) = O0.coords();
         let (aa, bb, cc, dd) = to_squared_coords(&a, &b, &c, &d);
 
         // Compute projectively a/b = a^2*c*d, etc.
-        let ab = a * b;
-        let cd = c * d;
-        let x0 = ab * cd;
-        let y0 = aa * cd;
-        let aab = aa * b;
-        let z0 = aab * d;
-        let t0 = aab * c;
+        let t1 = a * b;
+        let t2 = c * d;
+        let abc = t1 * c;
+        let abd = t1 * d;
+        let acd = t2 * a;
+        let bcd = t2 * b;
 
         // Compute projectively A^2/B^2 = A^4*C^2*D^2, etc.
         let (AA, BB, CC, DD) = to_hadamard(&aa, &bb, &cc, &dd);
-        let A4 = AA.square();
-        let AABB = AA * BB;
-        let CCDD = CC * DD;
-        let X0 = AABB * CCDD;
-        let Y0 = A4 * CCDD;
-        let A4BB = A4 * BB;
-        let Z0 = A4BB * DD;
-        let T0 = A4BB * CC;
+        let t1 = AA * BB;
+        let t2 = CC * DD;
+        let AABBCC = t1 * CC;
+        let AABBDD = t1 * DD;
+        let AACCDD = t2 * AA;
+        let BBCCDD = t2 * BB;
 
-        [x0, y0, z0, t0, X0, Y0, Z0, T0]
+        [bcd, acd, abd, abc, BBCCDD, AACCDD, AABBDD, AABBCC]
     }
 
     /// Given a point P, compute it's double [2]P in place.

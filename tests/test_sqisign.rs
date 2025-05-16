@@ -15,4 +15,11 @@ mod test_sqisign {
         let sig_bytes: &[u8] = &hex::decode(SIG).unwrap();
         assert!(SQISIGN_I.verify(msg, sig_bytes, pk_bytes))
     }
+
+    #[test]
+    fn test_verification_fail() {
+        let pk_bytes: &[u8] = &hex::decode(PK).unwrap();
+        let sig_bytes: &[u8] = &hex::decode(SIG).unwrap();
+        assert!(!SQISIGN_I.verify(b"", sig_bytes, pk_bytes))
+    }
 }
