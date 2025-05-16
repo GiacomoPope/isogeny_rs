@@ -189,10 +189,10 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// Return (2^e)*R for R in [P, Q, P - Q] (x-only variant).
     pub fn basis_xmul_2e(self, B: &BasisX<Fq>, e: usize) -> BasisX<Fq> {
-        let P = self.xmul_2e(&B.P(), e);
-        let Q = self.xmul_2e(&B.Q(), e);
-        let PQ = self.xmul_2e(&B.PQ(), e);
-        BasisX::from_array([P, Q, PQ])
+        let P = self.xmul_2e(&B.P, e);
+        let Q = self.xmul_2e(&B.Q, e);
+        let PQ = self.xmul_2e(&B.PQ, e);
+        BasisX::from_points(&P, &Q, &PQ)
     }
 
     /// x-only doubling and differential addition formula
@@ -235,13 +235,13 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// Bits beyond that length are ignored.
     pub fn three_point_ladder(self, B: &BasisX<Fq>, n: &[u8], nbitlen: usize) -> PointX<Fq> {
         if nbitlen == 0 {
-            return B.P();
+            return B.P;
         }
 
         // Extract out the coordinates from the basis
-        let (mut X0, mut Z0) = B.Q().coords();
-        let (mut X1, mut Z1) = B.P().coords();
-        let (mut X2, mut Z2) = B.PQ().coords();
+        let (mut X0, mut Z0) = B.Q.coords();
+        let (mut X1, mut Z1) = B.P.coords();
+        let (mut X2, mut Z2) = B.PQ.coords();
 
         let mut cc = 0u32;
         for i in 0..nbitlen {
@@ -324,8 +324,8 @@ impl<Fq: FqTrait> Curve<Fq> {
 
         let mut T: [PointX<Fq>; 3] = [PointX::INFINITY; 3];
         let mut R: [PointX<Fq>; 3] = [PointX::INFINITY; 3];
-        T[0] = B.P();
-        T[1] = B.Q();
+        T[0] = B.P;
+        T[1] = B.Q;
 
         R[1] = T[s0];
         R[2] = T[s1];
@@ -333,9 +333,9 @@ impl<Fq: FqTrait> Curve<Fq> {
         // Compute the difference points for T, R
         let mut D1 = R[1];
         let mut D2 = R[2];
-        R[2] = Self::xdiff_add(&R[1], &R[2], &B.PQ());
+        R[2] = Self::xdiff_add(&R[1], &R[2], &B.PQ);
         let mut F1 = R[2];
-        let mut F2 = B.PQ();
+        let mut F2 = B.PQ;
 
         // Main ladder loop, compute [a]P + [b]Q
         for i in (0..k).rev() {

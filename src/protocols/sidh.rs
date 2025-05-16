@@ -105,7 +105,7 @@ impl<Fq: FqTrait, const N: usize> SidhParameters<Fq, N> {
         let codomain = E.two_isogeny_chain(&kernel, self.ea, &mut three_torsion_img);
 
         // Package the data above into public and private keys
-        let public_key = SidhAlicePublicKey::new(&codomain, three_torsion_img);
+        let public_key = SidhAlicePublicKey::new(&codomain, &three_torsion_img);
         let secret_key = SidhAlicePrivateKey::new(self.ea, scalar);
         (public_key, secret_key)
     }
@@ -129,7 +129,7 @@ impl<Fq: FqTrait, const N: usize> SidhParameters<Fq, N> {
         let codomain = E.three_isogeny_chain(&kernel, self.eb, &mut two_torsion_img);
 
         // Package the data above into public and private keys
-        let public_key = SidhBobPublicKey::new(&codomain, two_torsion_img);
+        let public_key = SidhBobPublicKey::new(&codomain, &two_torsion_img);
         let secret_key = SidhBobPrivateKey::new(self.eb, scalar);
         (public_key, secret_key)
     }
@@ -180,19 +180,19 @@ impl<Fq: FqTrait, const N: usize> SidhBobPrivateKey<Fq, N> {
 }
 
 impl<Fq: FqTrait> SidhAlicePublicKey<Fq> {
-    pub fn new(E: &Curve<Fq>, basis_img: [PointX<Fq>; 3]) -> Self {
+    pub fn new(E: &Curve<Fq>, basis_img: &[PointX<Fq>]) -> Self {
         Self {
             E: *E,
-            basis_img: BasisX::from_array(basis_img),
+            basis_img: BasisX::from_slice(basis_img),
         }
     }
 }
 
 impl<Fq: FqTrait> SidhBobPublicKey<Fq> {
-    pub fn new(E: &Curve<Fq>, basis_img: [PointX<Fq>; 3]) -> Self {
+    pub fn new(E: &Curve<Fq>, basis_img: &[PointX<Fq>]) -> Self {
         Self {
             E: *E,
-            basis_img: BasisX::from_array(basis_img),
+            basis_img: BasisX::from_slice(basis_img),
         }
     }
 }

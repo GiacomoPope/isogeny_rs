@@ -54,7 +54,7 @@ mod test_ladders {
             let xP = P.to_point_x();
             let xQ = Q.to_point_x();
             let xPQ = PQ.to_point_x();
-            let basis = BasisX::from_array([xP, xQ, xPQ]);
+            let basis = BasisX::from_points(&xP, &xQ, &xPQ);
             let xPnQ = E.three_point_ladder(&basis, &scalar, (32 << 3) - i);
 
             // Ensure they're the same.
@@ -89,7 +89,7 @@ mod test_ladders {
             let xP = P.to_point_x();
             let xQ = Q.to_point_x();
             let xPQ = PQ.to_point_x();
-            let basis = BasisX::from_array([xP, xQ, xPQ]);
+            let basis = BasisX::from_points(&xP, &xQ, &xPQ);
             let xaPbQ = E.ladder_biscalar(&basis, &a, &b, (32 << 3) - i, (32 << 3) - 2 * i);
 
             // Ensure they're the same.

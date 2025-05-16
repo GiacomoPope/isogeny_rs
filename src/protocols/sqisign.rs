@@ -301,7 +301,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         // Compute R - S = [a00 - a01] P + [a10 - a11] Q
         let RS = E.ladder_biscalar(B, &diff_a, &diff_b, bitlen, bitlen);
 
-        BasisX::from_array([R, S, RS])
+        BasisX::from_points(&R, &S, &RS)
     }
 
     /// Compute the deterministic torsion bases for E_chl and E_aux and then
@@ -351,14 +351,14 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         // depending on aij values
         let mut basis_img = B.to_array();
         let kernel = if sig.aij[0][0] & 1 == 0 && sig.aij[2][0] & 1 == 0 {
-            E.xmul_2e(&B.Q(), e_rsp_prime + 2)
+            E.xmul_2e(&B.Q, e_rsp_prime + 2)
         } else {
-            E.xmul_2e(&B.P(), e_rsp_prime + 2)
+            E.xmul_2e(&B.P, e_rsp_prime + 2)
         };
 
         // Compute the two isogeny and push the challenge basis through
         *E = E.two_isogeny_chain_naive(&kernel, sig.two_resp_length, &mut basis_img);
-        *B = BasisX::from_array(basis_img);
+        *B = BasisX::from_slice(&basis_img);
     }
 
     /// Return `0` if any element of aij is larger than expected, otherwise return the maximum
@@ -414,10 +414,10 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         // TODO: this will need to change when the chain changes
         let E1E2 = EllipticProduct::new(&chl_curve, &sig.aux_curve);
         let (P_chl, Q_chl) =
-            chl_curve.lift_basis(&chl_basis.P().x(), &chl_basis.Q().x(), &chl_basis.PQ().x());
+            chl_curve.lift_basis(&chl_basis.P.x(), &chl_basis.Q.x(), &chl_basis.PQ.x());
         let (P_aux, Q_aux) =
             sig.aux_curve
-                .lift_basis(&aux_basis.P().x(), &aux_basis.Q().x(), &aux_basis.PQ().x());
+                .lift_basis(&aux_basis.P.x(), &aux_basis.Q.x(), &aux_basis.PQ.x());
         let P1P2 = CouplePoint::new(&P_chl, &P_aux);
         let Q1Q2 = CouplePoint::new(&Q_chl, &Q_aux);
         let (E3E4, _) = product_isogeny_no_strategy(&E1E2, &P1P2, &Q1Q2, &[], e_rsp_prime);

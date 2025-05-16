@@ -155,7 +155,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         let xQ = self.projective_difference(&xP, &xPQ);
 
         // Set the basis and the output hint of the form hint_P | hint_A
-        let basis = BasisX::from_array([xP, xQ, xPQ]);
+        let basis = BasisX::from_points(&xP, &xQ, &xPQ);
         let hint = (hint_P << 1) | A_is_square;
 
         (basis, hint)
@@ -217,6 +217,6 @@ impl<Fq: FqTrait> Curve<Fq> {
         // Compute the difference point to get the basis x(P), x(Q) and x(P-Q)
         let xQ = self.projective_difference(&xP, &xPQ);
 
-        BasisX::from_array([xP, xQ, xPQ])
+        BasisX::from_points(&xP, &xQ, &xPQ)
     }
 }

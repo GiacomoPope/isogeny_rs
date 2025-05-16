@@ -48,16 +48,16 @@ mod test_torsion_basis {
     }
 
     fn basis_has_order_n(E: &Curve<Fp2>, basis: &BasisX<Fp2>, n: usize) -> bool {
-        let ok1 = point_has_order_n(&E, &basis.P(), n);
-        let ok2 = point_has_order_n(&E, &basis.P(), n);
-        let ok3 = point_has_order_n(&E, &basis.P(), n);
+        let ok1 = point_has_order_n(&E, &basis.P, n);
+        let ok2 = point_has_order_n(&E, &basis.Q, n);
+        let ok3 = point_has_order_n(&E, &basis.PQ, n);
         return ok1 && ok2 && ok3;
     }
 
     fn basis_are_equal(b1: &BasisX<Fp2>, b2: &BasisX<Fp2>) -> bool {
-        let ok1 = b1.P().equals(&b2.P());
-        let ok2 = b1.Q().equals(&b2.Q());
-        let ok3 = b1.PQ().equals(&b2.PQ());
+        let ok1 = b1.P.equals(&b2.P);
+        let ok2 = b1.Q.equals(&b2.Q);
+        let ok3 = b1.PQ.equals(&b2.PQ);
 
         (ok1 & ok2 & ok3) == u32::MAX
     }

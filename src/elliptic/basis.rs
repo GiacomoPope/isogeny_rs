@@ -4,7 +4,9 @@ use fp2::fq::Fq as FqTrait;
 /// A x-only basis of x(P), x(Q) and x(P - Q)
 #[derive(Clone, Copy, Debug)]
 pub struct BasisX<Fq: FqTrait> {
-    basis: [PointX<Fq>; 3],
+    pub P: PointX<Fq>,
+    pub Q: PointX<Fq>,
+    pub PQ: PointX<Fq>,
 }
 
 impl<Fq: FqTrait> BasisX<Fq> {
@@ -13,34 +15,36 @@ impl<Fq: FqTrait> BasisX<Fq> {
         let P = PointX::from_x_coord(xP);
         let Q = PointX::from_x_coord(xQ);
         let PQ = PointX::from_x_coord(xPQ);
-        Self { basis: [P, Q, PQ] }
+        Self { P, Q, PQ }
     }
 
-    /// Set the basis given an array [P, Q, PQ]
-    pub fn from_array(basis: [PointX<Fq>; 3]) -> Self {
-        Self { basis }
+    /// Set the basis given the points P, Q and PQ
+    pub fn from_points(P: &PointX<Fq>, Q: &PointX<Fq>, PQ: &PointX<Fq>) -> Self {
+        Self {
+            P: *P,
+            Q: *Q,
+            PQ: *PQ,
+        }
+    }
+
+    pub fn from_slice(basis: &[PointX<Fq>]) -> Self {
+        // TODO: should we return errors instead?
+        if basis.len() != 3 {
+            return Self {
+                P: PointX::INFINITY,
+                Q: PointX::INFINITY,
+                PQ: PointX::INFINITY,
+            };
+        }
+        Self {
+            P: basis[0],
+            Q: basis[1],
+            PQ: basis[2],
+        }
     }
 
     /// Return the array of points [P, Q, PQ]
     pub fn to_array(&self) -> [PointX<Fq>; 3] {
-        self.basis
-    }
-
-    /// Return the point P from the basis.
-    #[inline(always)]
-    pub fn P(self) -> PointX<Fq> {
-        self.basis[0]
-    }
-
-    /// Return the point Q from the basis.
-    #[inline(always)]
-    pub fn Q(self) -> PointX<Fq> {
-        self.basis[1]
-    }
-
-    /// Return the point P - Q from the basis.
-    #[inline(always)]
-    pub fn PQ(self) -> PointX<Fq> {
-        self.basis[2]
+        [self.P, self.Q, self.PQ]
     }
 }
