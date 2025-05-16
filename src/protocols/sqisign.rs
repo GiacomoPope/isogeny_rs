@@ -139,11 +139,11 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         }
 
         // Decode all but the last bytes for the Montgomery coefficient A
-        let pk_curve_bytes = &buf[..Fq::ENCODED_LENGTH];
+        let (pk_curve_bytes, buf) = buf.split_at(Fq::ENCODED_LENGTH);
         let curve = Self::decode_curve(pk_curve_bytes)?;
 
         // The remaining byte is the hint for the torsion basis generation
-        let hint = *buf.last().unwrap();
+        let hint = buf[0];
 
         Ok(SqisignPublicKey { curve, hint })
     }
@@ -165,37 +165,30 @@ impl<Fq: FqTrait> Sqisign<Fq> {
             });
         }
 
-        // Extract out all the buffer bytes into slices.
-        let mut read = Fq::ENCODED_LENGTH;
-
         // Extract the bytes for the auxiliary curve
-        let aux_bytes = &buf[..read];
+        let (aux_bytes, buf) = buf.split_at(Fq::ENCODED_LENGTH);
         let aux_curve = Self::decode_curve(aux_bytes)?;
 
         // Extract the two u8 to track backtracking and r such that the
         // response length is 2^r.
-        let backtracking = buf[read] as usize;
-        read += 1;
-        let two_resp_length = buf[Fq::ENCODED_LENGTH + 1] as usize;
-        read += 1;
+        let backtracking = buf[0] as usize;
+        let two_resp_length = buf[1] as usize;
+        let (_, buf) = buf.split_at(2);
 
         // Extract out the four scalars used for the change of basis
         let mut aij: [&[u8]; 4] = Default::default();
+        let (mut aij_buf, buf) = buf.split_at(4 * aij_n_bytes);
         for i in 0..4 {
-            aij[i] = &buf[read..read + aij_n_bytes];
-            read += aij_n_bytes;
+            (aij[i], aij_buf) = aij_buf.split_at(aij_n_bytes);
         }
 
         // Extract out the challenge bytes used to create the chl kernel
-        let chl_scalar = &buf[read..read + chl_n_bytes];
-        read += chl_n_bytes;
+        let (chl_scalar, buf) = buf.split_at(chl_n_bytes);
 
         // Extract out the final two bytes, used for torsion basis on E_aux
         // and E_chl
-        let hint_aux = buf[read];
-        read += 1;
-        let hint_chl = buf[read];
-        assert!(read + 1 == buf.len());
+        let hint_aux = buf[0];
+        let hint_chl = buf[1];
 
         Ok(SqisignSignature {
             aux_curve,
