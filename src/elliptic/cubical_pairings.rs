@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use super::curve::Curve;
 use super::point::PointX;
 use fp2::fq::Fq as FqTrait;

@@ -1,76 +1,80 @@
-use super::sidh::SidhParameters;
+use super::sidh::{Sidh, SidhParameters};
 use crate::{elliptic::basis::BasisX, fields::sike::SikeOne as Fp2};
 
 // 2^216 * 3^137 - 1
-static EA: usize = 216;
-static EB: usize = 137;
+const EA: usize = 216;
+const EB: usize = 137;
 
-static P2_X_RE_BYTES: [u8; 55] = [
+const P2_X_RE_BYTES: [u8; 55] = [
     72, 203, 70, 150, 39, 237, 80, 74, 92, 210, 97, 134, 171, 158, 225, 80, 233, 97, 187, 178, 12,
     80, 132, 124, 95, 112, 149, 25, 98, 175, 117, 100, 14, 58, 230, 61, 230, 113, 108, 76, 122, 15,
     10, 146, 230, 99, 3, 3, 80, 240, 225, 197, 207, 60, 0,
 ];
-static P2_X_IM_BYTES: [u8; 55] = [
+const P2_X_IM_BYTES: [u8; 55] = [
     80, 234, 227, 105, 248, 70, 82, 112, 125, 201, 35, 216, 71, 128, 214, 128, 254, 16, 148, 36,
     196, 108, 129, 168, 132, 210, 38, 35, 178, 28, 148, 137, 209, 198, 250, 157, 59, 61, 87, 14,
     246, 32, 69, 146, 138, 109, 218, 237, 64, 120, 174, 28, 28, 173, 1,
 ];
-static Q2_X_RE_BYTES: [u8; 55] = [
+const Q2_X_RE_BYTES: [u8; 55] = [
     108, 12, 235, 13, 188, 42, 221, 125, 239, 55, 178, 100, 63, 225, 88, 192, 215, 244, 66, 189,
     113, 171, 180, 198, 237, 162, 26, 243, 97, 244, 217, 100, 182, 192, 45, 212, 175, 243, 247, 56,
     235, 102, 246, 136, 227, 156, 240, 252, 14, 52, 56, 23, 70, 199, 0,
 ];
-static Q2_X_IM_BYTES: [u8; 55] = [
+const Q2_X_IM_BYTES: [u8; 55] = [
     245, 133, 28, 214, 226, 50, 116, 25, 71, 120, 81, 174, 114, 66, 175, 234, 131, 114, 226, 161,
     64, 205, 196, 20, 38, 43, 250, 87, 105, 46, 163, 26, 211, 194, 251, 134, 21, 71, 126, 166, 180,
     42, 104, 208, 13, 50, 93, 215, 80, 127, 21, 55, 222, 37, 0,
 ];
-static R2_X_RE_BYTES: [u8; 55] = [
+const R2_X_RE_BYTES: [u8; 55] = [
     22, 37, 253, 197, 19, 149, 35, 109, 42, 23, 215, 58, 82, 235, 58, 190, 107, 105, 22, 37, 106,
     80, 54, 124, 77, 168, 13, 88, 146, 203, 41, 232, 70, 131, 146, 228, 124, 198, 25, 173, 6, 222,
     80, 220, 60, 244, 148, 173, 206, 160, 75, 179, 122, 243, 0,
 ];
-static R2_X_IM_BYTES: [u8; 55] = [
+const R2_X_IM_BYTES: [u8; 55] = [
     172, 197, 54, 96, 128, 249, 19, 112, 152, 142, 85, 179, 209, 137, 228, 223, 139, 219, 63, 95,
     176, 144, 223, 232, 231, 78, 110, 237, 233, 155, 216, 76, 248, 156, 180, 149, 8, 65, 143, 32,
     44, 144, 243, 67, 53, 167, 144, 126, 101, 106, 208, 46, 202, 150, 1,
 ];
-static P3_X_RE_BYTES: [u8; 55] = [
+const P3_X_RE_BYTES: [u8; 55] = [
     169, 183, 55, 6, 59, 87, 70, 95, 228, 233, 101, 159, 99, 126, 217, 179, 252, 250, 157, 0, 252,
     139, 54, 55, 236, 149, 88, 232, 170, 86, 96, 70, 103, 214, 195, 208, 108, 44, 106, 64, 109,
     194, 35, 226, 49, 59, 240, 22, 216, 167, 94, 134, 100, 134, 0,
 ];
-static P3_X_IM_BYTES: [u8; 55] = [0; 55];
-static Q3_X_RE_BYTES: [u8; 55] = [
+const P3_X_IM_BYTES: [u8; 55] = [0; 55];
+const Q3_X_RE_BYTES: [u8; 55] = [
     70, 56, 61, 218, 6, 20, 158, 219, 95, 102, 185, 25, 28, 36, 11, 140, 57, 231, 177, 232, 129,
     54, 6, 235, 99, 76, 249, 202, 123, 69, 16, 91, 198, 46, 195, 102, 66, 59, 184, 153, 175, 218,
     251, 193, 132, 191, 148, 230, 88, 37, 101, 215, 132, 46, 1,
 ];
-static Q3_X_IM_BYTES: [u8; 55] = [0; 55];
-static R3_X_RE_BYTES: [u8; 55] = [
+const Q3_X_IM_BYTES: [u8; 55] = [0; 55];
+const R3_X_RE_BYTES: [u8; 55] = [
     108, 183, 82, 138, 81, 206, 137, 26, 245, 167, 191, 172, 203, 12, 74, 143, 26, 217, 142, 196,
     137, 14, 233, 253, 180, 81, 63, 120, 116, 32, 18, 162, 181, 120, 204, 161, 100, 138, 143, 42,
     117, 112, 120, 232, 2, 224, 231, 255, 212, 86, 114, 89, 40, 205, 1,
 ];
-static R3_X_IM_BYTES: [u8; 55] = [
+const R3_X_IM_BYTES: [u8; 55] = [
     228, 106, 115, 4, 196, 203, 75, 209, 195, 118, 39, 189, 119, 251, 82, 190, 32, 43, 12, 203, 14,
     118, 58, 246, 182, 219, 71, 181, 155, 45, 107, 212, 170, 38, 79, 162, 191, 157, 164, 209, 135,
     129, 24, 177, 32, 132, 204, 208, 141, 215, 144, 50, 7, 71, 1,
 ];
 
-static P2_X: Fp2 = Fp2::const_decode_no_check(&P2_X_RE_BYTES, &P2_X_IM_BYTES);
-static Q2_X: Fp2 = Fp2::const_decode_no_check(&Q2_X_RE_BYTES, &Q2_X_IM_BYTES);
-static R2_X: Fp2 = Fp2::const_decode_no_check(&R2_X_RE_BYTES, &R2_X_IM_BYTES);
-static TWO_TORSION: BasisX<Fp2> = BasisX::from_x_coords(&P2_X, &Q2_X, &R2_X);
+const P2_X: Fp2 = Fp2::const_decode_no_check(&P2_X_RE_BYTES, &P2_X_IM_BYTES);
+const Q2_X: Fp2 = Fp2::const_decode_no_check(&Q2_X_RE_BYTES, &Q2_X_IM_BYTES);
+const R2_X: Fp2 = Fp2::const_decode_no_check(&R2_X_RE_BYTES, &R2_X_IM_BYTES);
+const TWO_TORSION: BasisX<Fp2> = BasisX::from_x_coords(&P2_X, &Q2_X, &R2_X);
 
-static P3_X: Fp2 = Fp2::const_decode_no_check(&P3_X_RE_BYTES, &P3_X_IM_BYTES);
-static Q3_X: Fp2 = Fp2::const_decode_no_check(&Q3_X_RE_BYTES, &Q3_X_IM_BYTES);
-static R3_X: Fp2 = Fp2::const_decode_no_check(&R3_X_RE_BYTES, &R3_X_IM_BYTES);
-static THREE_TORSION: BasisX<Fp2> = BasisX::from_x_coords(&P3_X, &Q3_X, &R3_X);
+const P3_X: Fp2 = Fp2::const_decode_no_check(&P3_X_RE_BYTES, &P3_X_IM_BYTES);
+const Q3_X: Fp2 = Fp2::const_decode_no_check(&Q3_X_RE_BYTES, &Q3_X_IM_BYTES);
+const R3_X: Fp2 = Fp2::const_decode_no_check(&R3_X_RE_BYTES, &R3_X_IM_BYTES);
+const THREE_TORSION: BasisX<Fp2> = BasisX::from_x_coords(&P3_X, &Q3_X, &R3_X);
+
+const SIDH_PARAMS_434: SidhParameters<Fp2> = SidhParameters {
+    ea: EA,
+    eb: EB,
+    two_torsion: TWO_TORSION,
+    three_torsion: THREE_TORSION,
+};
 
 // Scalars have 28 bytes (224 bits).
 // (max(log(2**216, 2), log(3**137 , 2)) + 7) // 8
-pub static SIDH_434: SidhParameters<Fp2, 28> =
-    SidhParameters::new(EA, EB, &TWO_TORSION, &THREE_TORSION);
-
-// TODO: other security levels
+pub const SIDH_434: Sidh<Fp2, 28> = Sidh::new(&SIDH_PARAMS_434);

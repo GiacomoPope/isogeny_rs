@@ -6,7 +6,7 @@ mod test_two_isogeny_chain {
     use isogeny::elliptic::curve::Curve;
     use isogeny::elliptic::isomorphism::Isomorphism;
     use isogeny::elliptic::point::PointX;
-    use isogeny::fields::sqisign::SqiSignI as Fp2;
+    use isogeny::fields::sqisign::SqiField248 as Fp2;
 
     // Domain of isogenies for testing
     static A0_STR: &str = "8be929811c642e0148f0b6fed8f00317116795d649b0656cafb510c8ab0b450283cf1721e68b40e818039ce4c5d8d7f6fd89f4a6e35acffab2568eba06827802";

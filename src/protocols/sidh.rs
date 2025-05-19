@@ -12,7 +12,17 @@ use rand_core::{CryptoRng, RngCore};
 /// `three_torsion` is the x-only basis for the \[3^eb\] torsion <P3, Q3>
 /// `N` is the number of bytes needed to represent the secret scalar.
 #[derive(Clone, Copy, Debug)]
-pub struct SidhParameters<Fq: FqTrait, const N: usize> {
+pub struct SidhParameters<Fq: FqTrait> {
+    pub ea: usize,
+    pub eb: usize,
+    pub two_torsion: BasisX<Fq>,
+    pub three_torsion: BasisX<Fq>,
+}
+
+/// Structure to hold variables from `SidhParameters` and implements keygen
+/// methods for both Alice and Bob.
+#[derive(Clone, Copy, Debug)]
+pub struct Sidh<Fq: FqTrait, const N: usize> {
     ea: usize,
     eb: usize,
     two_torsion: BasisX<Fq>,
@@ -73,22 +83,16 @@ impl Display for SidhError {
 
 impl Error for SidhError {}
 
-impl<Fq: FqTrait, const N: usize> SidhParameters<Fq, N> {
-    pub const fn new(
-        ea: usize,
-        eb: usize,
-        two_torsion: &BasisX<Fq>,
-        three_torsion: &BasisX<Fq>,
-    ) -> Self {
+impl<Fq: FqTrait, const N: usize> Sidh<Fq, N> {
+    pub const fn new(params: &SidhParameters<Fq>) -> Self {
         Self {
-            ea,
-            eb,
-            two_torsion: *two_torsion,
-            three_torsion: *three_torsion,
+            ea: params.ea,
+            eb: params.eb,
+            two_torsion: params.two_torsion,
+            three_torsion: params.three_torsion,
         }
     }
 
-    // TODO: find a better way to work with randomness.
     /// Sample a secret scalar represented as N bytes.
     fn sample_secret_key<R: CryptoRng + RngCore>(rng: &mut R) -> [u8; N] {
         let mut scalar: [u8; N] = [0; N];

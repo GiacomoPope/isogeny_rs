@@ -287,7 +287,7 @@ pub fn splitting_isomorphism<Fq: FqTrait>(
         apply_base_change(P, M);
     }
 
-    (ThetaStructure::new_from_point(&mut O0), ok)
+    (ThetaStructure::new_from_point(&O0), ok)
 }
 
 /// Given a Theta point in the correct representation, compute two

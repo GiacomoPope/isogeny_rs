@@ -12,6 +12,9 @@ sha3 = "0.10.8"
 [dev-dependencies]
 criterion = { version = "0.4", features = ["html_reports"] }
 hex = "0.4.3"
+sha2 = "0.10.2"
+num-bigint = "0.4.3"
+
 
 # [[bench]]
 # name = "bench_sidh"

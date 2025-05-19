@@ -10,7 +10,7 @@ use sha3::{
 use crate::{
     elliptic::{basis::BasisX, curve::Curve},
     theta::elliptic_product::{EllipticProduct, ProductPoint},
-    utilities::le_bytes::byte_slice_difference,
+    utilities::le_bytes::byte_slice_difference_into,
 };
 
 /// Various Errors for SQIsign, to be modified further.
@@ -46,6 +46,20 @@ impl Error for SqisignError {}
 
 /// Public parameters used for SQIsign (currently verification only)
 #[derive(Clone, Copy, Debug)]
+pub struct SqisignParameters {
+    pub security_bits: usize,
+    pub cofactor: u8,
+    pub cofactor_bitsize: usize,
+    pub f: usize,
+    pub response_length: usize,
+    pub hash_iterations: usize,
+    pub pk_len: usize,
+    pub sk_len: usize,
+    pub sig_len: usize,
+}
+
+/// SQIsign type which implements main methods (currently verification only).
+#[derive(Clone, Copy, Debug)]
 pub struct Sqisign<Fq: FqTrait> {
     security_bits: usize,
     cofactor: u8,
@@ -77,10 +91,6 @@ pub struct SqisignSignature<'a, Fq: FqTrait> {
     aux_curve: Curve<Fq>,
     backtracking: usize,
     two_resp_length: usize,
-    // TODO: should I make these array rather than slices by adding
-    // in some consts to the structure? I know that aij will have
-    // length (response_length + 9) // 8 and scalar will have length
-    // security_bits // 8.
     aij: [&'a [u8]; 4],
     chl_scalar: &'a [u8],
     aux_hint: u8,
@@ -90,27 +100,17 @@ pub struct SqisignSignature<'a, Fq: FqTrait> {
 /// SQIsign type which holds parameters for a given security level and implements the
 /// methods required. Currently verification only.
 impl<Fq: FqTrait> Sqisign<Fq> {
-    pub const fn new(
-        security_bits: usize,
-        cofactor: u8,
-        cofactor_bitsize: usize,
-        f: usize,
-        response_length: usize,
-        hash_iterations: usize,
-        pk_len: usize,
-        sk_len: usize,
-        sig_len: usize,
-    ) -> Self {
+    pub const fn new(params: &SqisignParameters) -> Self {
         Self {
-            security_bits,
-            cofactor,
-            cofactor_bitsize,
-            f,
-            response_length,
-            hash_iterations,
-            pk_len,
-            _sk_len: sk_len,
-            sig_len,
+            security_bits: params.security_bits,
+            cofactor: params.cofactor,
+            cofactor_bitsize: params.cofactor_bitsize,
+            f: params.f,
+            response_length: params.response_length,
+            hash_iterations: params.hash_iterations,
+            pk_len: params.pk_len,
+            _sk_len: params.sk_len,
+            sig_len: params.sig_len,
             _phantom: PhantomData,
         }
     }
@@ -178,8 +178,8 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         // Extract out the four scalars used for the change of basis
         let mut aij: [&[u8]; 4] = Default::default();
         let (mut aij_buf, buf) = buf.split_at(4 * aij_n_bytes);
-        for i in 0..4 {
-            (aij[i], aij_buf) = aij_buf.split_at(aij_n_bytes);
+        for scalar in &mut aij {
+            (*scalar, aij_buf) = aij_buf.split_at(aij_n_bytes);
         }
 
         // Extract out the challenge bytes used to create the chl kernel
@@ -264,13 +264,13 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         // Finally we need to reduce this value modulo 2^(f - response_length)
         let modulus_bit_length = self.f - self.response_length;
         let scalar_len = scalar.len();
-        let i = (modulus_bit_length >> 3) as usize;
+        let i = modulus_bit_length >> 3;
         if i < scalar_len {
             // Partial mask of top non-zero element.
             scalar[i] &= u8::MAX >> (8 - (modulus_bit_length & 7));
             // All other elements are set to zero after modulus.
-            for j in (i + 1)..scalar_len {
-                scalar[j] = 0;
+            for s in scalar.iter_mut().take(scalar_len).skip(i + 1) {
+                *s = 0;
             }
         }
 
@@ -290,8 +290,11 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         let S = E.ladder_biscalar(B, aij[1], aij[3], bitlen, bitlen);
 
         // Compute a00 - a01 and a10 - a11 modulo 2^bitlen
-        let diff_a = byte_slice_difference(aij[0], aij[1]);
-        let diff_b = byte_slice_difference(aij[2], aij[3]);
+        let mut diff_a = aij[0].to_vec();
+        byte_slice_difference_into(&mut diff_a, aij[1]);
+
+        let mut diff_b = aij[2].to_vec();
+        byte_slice_difference_into(&mut diff_b, aij[3]);
 
         // Compute R - S = [a00 - a01] P + [a10 - a11] Q
         let RS = E.ladder_biscalar(B, &diff_a, &diff_b, bitlen, bitlen);
@@ -331,7 +334,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
             E_chl.basis_double_iter(&chl_basis, self.f - e_rsp_prime - sig.two_resp_length - 2);
 
         // Apply the change of basis dictated by the matrix aij contained in the signature.
-        chl_basis = Self::apply_change_of_basis(&E_chl, &chl_basis, &sig.aij, chl_order);
+        chl_basis = Self::apply_change_of_basis(E_chl, &chl_basis, &sig.aij, chl_order);
 
         (chl_basis, aux_basis)
     }
@@ -387,8 +390,8 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         // TODO: lift_basis requires an inversion, we could write a function
         // which normallises B1 and B2 simultaneously to save one inversion
         // here.
-        let (P_chl, Q_chl) = E1.lift_basis(&B1);
-        let (P_aux, Q_aux) = E2.lift_basis(&B2);
+        let (P_chl, Q_chl) = E1.lift_basis(B1);
+        let (P_aux, Q_aux) = E2.lift_basis(B2);
         let P1P2 = ProductPoint::new(&P_chl, &P_aux);
         let Q1Q2 = ProductPoint::new(&Q_chl, &Q_aux);
 
@@ -428,10 +431,10 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         // Compute the small 2-isogeny conditionally and push through the challenge basis.
         // If the kernel is maleformed, `compute_small_isogeny` returns `false` and we must
         // reject the signature.
-        if sig.two_resp_length > 0 {
-            if !Self::compute_small_isogeny(&mut chl_curve, &mut chl_basis, &sig, e_rsp_prime) {
-                return false;
-            }
+        if sig.two_resp_length > 0
+            && !Self::compute_small_isogeny(&mut chl_curve, &mut chl_basis, &sig, e_rsp_prime)
+        {
+            return false;
         };
 
         // In very exceptional cases, no (2,2)-isogeny is needed and the signature

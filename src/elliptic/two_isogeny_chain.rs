@@ -278,7 +278,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
             // Push through the points to evaluate
             for P in images.iter_mut() {
-                Self::four_isogeny_eval(&&c0, &c1, &c2, P);
+                Self::four_isogeny_eval(&c0, &c1, &c2, P);
             }
             k = k.saturating_sub(1);
         }

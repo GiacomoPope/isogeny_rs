@@ -1,24 +1,26 @@
-use super::sqisign::Sqisign;
-use crate::fields::sqisign::SqiSignI as Fp2;
+use super::sqisign::{Sqisign, SqisignParameters};
+use crate::fields::sqisign::SqiField248 as Fp2;
 
-static SECURITY_BITS: usize = 128;
-static COFACTOR: u8 = 5;
-static COFACTOR_BITSIZE: usize = 3; // TODO: could do a mul small for u8 type?
-static F: usize = 248;
-static RESPONSE_LENGTH: usize = 126;
-static HASH_ITERATIONS: usize = 64;
-static PK_LENGTH: usize = 65;
-static SK_LENGTH: usize = 353;
-static SIG_LENGTH: usize = 148;
+const SECURITY_BITS: usize = 128;
+const COFACTOR: u8 = 5;
+const COFACTOR_BITSIZE: usize = 3; // TODO: could do a mul small for u8 type?
+const F: usize = 248;
+const RESPONSE_LENGTH: usize = 126;
+const HASH_ITERATIONS: usize = 64;
+const PK_LENGTH: usize = 65;
+const SK_LENGTH: usize = 353;
+const SIG_LENGTH: usize = 148;
 
-pub static SQISIGN_I: Sqisign<Fp2> = Sqisign::new(
-    SECURITY_BITS,
-    COFACTOR,
-    COFACTOR_BITSIZE,
-    F,
-    RESPONSE_LENGTH,
-    HASH_ITERATIONS,
-    PK_LENGTH,
-    SK_LENGTH,
-    SIG_LENGTH,
-);
+const SQISIGN_PARAMS_I: SqisignParameters = SqisignParameters {
+    security_bits: SECURITY_BITS,
+    cofactor: COFACTOR,
+    cofactor_bitsize: COFACTOR_BITSIZE,
+    f: F,
+    response_length: RESPONSE_LENGTH,
+    hash_iterations: HASH_ITERATIONS,
+    pk_len: PK_LENGTH,
+    sk_len: SK_LENGTH,
+    sig_len: SIG_LENGTH,
+};
+
+pub const SQISIGN_I: Sqisign<Fp2> = Sqisign::new(&SQISIGN_PARAMS_I);

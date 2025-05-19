@@ -208,7 +208,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
 
         // Codomain coefficients
         let mut ABCD = [Fq::ZERO; 4];
-        ABCD[0 ^ z_idx] = Fq::ZERO;
+        ABCD[z_idx] = Fq::ZERO;
         ABCD[1 ^ z_idx] = t1 * inverse[2];
         ABCD[2 ^ z_idx] = t2 * inverse[3];
         ABCD[3 ^ z_idx] = Fq::ONE;
@@ -279,7 +279,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         // the xor trick as above, so we pack them into an array with the
         // right ordering and then extract them back out
         let mut xyzt = [Fq::ZERO; 4];
-        xyzt[0 ^ z_idx] = x;
+        xyzt[z_idx] = x;
         xyzt[1 ^ z_idx] = y;
         xyzt[2 ^ z_idx] = z;
         xyzt[3 ^ z_idx] = t;
@@ -298,8 +298,8 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         image_points: &[ProductPoint<Fq>],
     ) -> (ThetaStructure<Fq>, Vec<ThetaPoint<Fq>>) {
         // First recover the four torsion below the 8 torsion
-        let P1P2_4 = self.double(&P1P2_8);
-        let Q1Q2_4 = self.double(&Q1Q2_8);
+        let P1P2_4 = self.double(P1P2_8);
+        let Q1Q2_4 = self.double(Q1Q2_8);
 
         // Use the four torsion to deterministically find basis change
         let M = self.get_base_matrix(&P1P2_4, &Q1Q2_4);
@@ -307,8 +307,8 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         // Take the points P1, P2 in E1 x E2 and represent them
         // as a theta point on a level 2 structure and map them
         // through the above basis change
-        let T1_8 = Self::base_change_couple_point(&P1P2_8, M);
-        let T2_8 = Self::base_change_couple_point(&Q1Q2_8, M);
+        let T1_8 = Self::base_change_couple_point(P1P2_8, M);
+        let T2_8 = Self::base_change_couple_point(Q1Q2_8, M);
 
         // Now it's time to compute the codomain and image of the isogeny
         // with kernel below T1, and T2.
@@ -339,7 +339,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
             // After we have added the points, we can use the gluing formula
             // to recover theta points on the level 2 theta structure. First we
             // must compute the basis change as we did for the kernel:
-            let T = Self::base_change_couple_point(&P, M);
+            let T = Self::base_change_couple_point(P, M);
             let T_shift = Self::base_change_couple_point(&P_sum_T, M);
 
             // With a point and the shift value from the kernel, we can find

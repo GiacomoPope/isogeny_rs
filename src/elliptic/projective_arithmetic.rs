@@ -254,7 +254,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
         let n_odd = ((n[0] as u32) & 1).wrapping_neg();
         P3.Z.set_cond(&Fq::ZERO, order1 | (order2 & !n_odd) | z0inf);
-        P3.set_cond(&P, z1inf | (order2 & n_odd));
+        P3.set_cond(P, z1inf | (order2 & n_odd));
         P3.set_cond(&dP, p1mp);
         P3.set_condneg(z1inf | p1mp);
     }

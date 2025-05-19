@@ -6,7 +6,7 @@ mod test_ladders {
     use isogeny::elliptic::basis::BasisX;
     use isogeny::elliptic::curve::Curve;
     use isogeny::fields::sike::SikeOne as Fp2;
-    use isogeny::utilities::drng::DRNG;
+    use isogeny::utilities::test_utils::drng::DRNG;
     use rand_core::RngCore;
 
     #[test]
