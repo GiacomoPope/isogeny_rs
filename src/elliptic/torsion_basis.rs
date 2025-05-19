@@ -6,7 +6,7 @@ use fp2::fq::Fq as FqTrait;
 
 impl<Fq: FqTrait> Curve<Fq> {
     /// Given xP and xQ as (X : Z) points, compute the point x(P ± Q) (sign is unknown).
-    fn projective_difference(self, P: &PointX<Fq>, Q: &PointX<Fq>) -> PointX<Fq> {
+    fn projective_difference(&self, P: &PointX<Fq>, Q: &PointX<Fq>) -> PointX<Fq> {
         let mut t0 = P.X * Q.X;
         let mut t1 = P.Z * Q.Z;
         let mut bxx = t0 - t1;
@@ -45,7 +45,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// Given the Montgomery coefficient A which is not a square, we can
     /// compute xP as ([n]*A : 1) for some [n]
-    fn full_even_torsion_point_from_A(self) -> (PointX<Fq>, u8) {
+    fn full_even_torsion_point_from_A(&self) -> (PointX<Fq>, u8) {
         let mut x = self.A;
         let mut h: usize = 1;
         while self.is_on_curve(&x) == 0 {
@@ -66,7 +66,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// of Fp2 of the form 1 + i*b for which -A / (1 + i*b) is a valid
     /// x-coordinate on the curve and (1 + b^2) is a non-quadratic residue
     /// in the base field GF(p).
-    fn full_even_torsion_point_from_nqr(self) -> (PointX<Fq>, u8) {
+    fn full_even_torsion_point_from_nqr(&self) -> (PointX<Fq>, u8) {
         // We need to find a b such that (1 + b^2) is a not a square and
         // x = - A / (1 + i* b) is a valid x-coordinate on the curve.
         let mut is_nqr: u32 = 0;
@@ -120,7 +120,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     ///
     /// Warning: requires that self.A != 0
     pub fn torsion_basis_2e_with_hint(
-        self,
+        &self,
         e_diff: usize,
         cofactor: &[u8],
         cofactor_bitsize: usize,
@@ -167,7 +167,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     ///
     /// Warning: requires that self.A != 0
     pub fn torsion_basis_2e_from_hint(
-        self,
+        &self,
         e_diff: usize,
         cofactor: &[u8],
         cofactor_bitsize: usize,

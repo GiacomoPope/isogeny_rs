@@ -108,7 +108,7 @@ impl<Fq: FqTrait, const N: usize> Sidh<Fq, N> {
     }
 
     pub fn keygen_alice<R: CryptoRng + RngCore>(
-        self,
+        &self,
         rng: &mut R,
     ) -> (SidhAlicePublicKey<Fq>, SidhAlicePrivateKey<Fq, N>) {
         // Sample a secret key, which is an array of bytes used as a scalar to
@@ -133,7 +133,7 @@ impl<Fq: FqTrait, const N: usize> Sidh<Fq, N> {
     }
 
     pub fn keygen_bob<R: CryptoRng + RngCore>(
-        self,
+        &self,
         rng: &mut R,
     ) -> (SidhBobPublicKey<Fq>, SidhBobPrivateKey<Fq, N>) {
         // Sample a secret key, which is an array of bytes used as a scalar to
@@ -167,7 +167,7 @@ impl<Fq: FqTrait, const N: usize> SidhAlicePrivateKey<Fq, N> {
         }
     }
 
-    pub fn shared_secret(self, public_key: &SidhBobPublicKey<Fq>) -> Result<Fq, SidhError> {
+    pub fn shared_secret(&self, public_key: &SidhBobPublicKey<Fq>) -> Result<Fq, SidhError> {
         // Extract out the codomain of phi_3 : E -> E/<K3>
         let E = public_key.E;
 
@@ -192,7 +192,7 @@ impl<Fq: FqTrait, const N: usize> SidhBobPrivateKey<Fq, N> {
         }
     }
 
-    pub fn shared_secret(self, public_key: &SidhAlicePublicKey<Fq>) -> Result<Fq, SidhError> {
+    pub fn shared_secret(&self, public_key: &SidhAlicePublicKey<Fq>) -> Result<Fq, SidhError> {
         // Extract out the codomain of phi_2 : E -> E/<K2>
         let E = public_key.E;
 

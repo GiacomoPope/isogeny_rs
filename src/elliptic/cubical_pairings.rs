@@ -7,7 +7,7 @@ use fp2::fq::Fq as FqTrait;
 impl<Fq: FqTrait> PointX<Fq> {
     /// Affine translation by a two torsion point needed for even degree
     /// Tate pairings
-    fn translate(self, T: Self) -> Self {
+    fn translate(&self, T: Self) -> Self {
         let (A, B) = T.coords();
         // When we translates three things can happen.
         // - If T = (X : 0) then the translation of P is P
@@ -38,7 +38,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// Given the x-coordinates of two bases, compute pairs of differences
     /// x(R - P), x(R - Q), x(S - P), x(S - Q)
     fn compute_difference_points(
-        self,
+        &self,
         xP: &Fq,
         xQ: &Fq,
         xPQ: &Fq,
@@ -81,7 +81,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// (XP : ZP), (XQ : ZQ), (1: ixPQ) For PQ = P - Q
     /// Sets P = [2]P and Q = P + Q in place.
     #[inline(always)]
-    fn cubical_xdbladd(self, XP: &mut Fq, ZP: &mut Fq, XQ: &mut Fq, ZQ: &mut Fq, iXQP: &Fq) {
+    fn cubical_xdbladd(&self, XP: &mut Fq, ZP: &mut Fq, XQ: &mut Fq, ZQ: &mut Fq, iXQP: &Fq) {
         let mut t0 = *XP + *ZP;
         let mut t1 = *XP - *ZP;
         let mut X2P = t0.square();
@@ -115,7 +115,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// Integer n is encoded as unsigned little-endian, with length
     /// nbitlen bits. Bits beyond that length are ignored.
     fn cubical_ladder_into(
-        self,
+        &self,
         nP: &mut PointX<Fq>,
         nPQ: &mut PointX<Fq>,
         xP: &Fq,
@@ -182,7 +182,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// Integer n is encoded as unsigned little-endian, with length
     /// nbitlen bits. Bits beyond that length are ignored.
     pub fn cubical_ladder(
-        self,
+        &self,
         xP: &Fq,
         xQ: &Fq,
         xPQ: &Fq,
@@ -201,7 +201,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// nP <- [2^e]P
     /// nPQ <- [2^e]P + Q
     fn cubical_ladder_2exp_into(
-        self,
+        &self,
         nP: &mut PointX<Fq>,
         nPQ: &mut PointX<Fq>,
         xP: &Fq,
@@ -236,7 +236,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// Given x(P), x(Q) and x(P - Q) computes the points
     /// [2^e]P and [2^e]P + Q for the Tate pairing.
     pub fn cubical_ladder_2exp(
-        self,
+        &self,
         xP: &Fq,
         xQ: &Fq,
         xPQ: &Fq,
@@ -250,7 +250,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// Given x(P), x(Q) and x(P - Q) computes the non-reduced tate pairing
     fn tate_pairing_not_reduced(
-        self,
+        &self,
         xP: &Fq,
         xQ: &Fq,
         xPQ: &Fq,
@@ -268,7 +268,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// Given x(P), x(Q) and x(P - Q) computes the non-reduced tate
     /// pairing using points of order 2^e
-    fn tate_pairing_not_reduced_2exp(self, xP: &Fq, xQ: &Fq, xPQ: &Fq, e: usize) -> (Fq, Fq) {
+    fn tate_pairing_not_reduced_2exp(&self, xP: &Fq, xQ: &Fq, xPQ: &Fq, e: usize) -> (Fq, Fq) {
         let (mut nP, mut nPQ) = self.cubical_ladder_2exp(xP, xQ, xPQ, e - 1);
         nPQ = nPQ.translate(nP);
         nP = nP.translate(nP);
@@ -277,7 +277,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// Compute x^(p^2 - 1) = x^(p + 1)(p - 1) to reduce the tate pairing for E / Fp^2
     /// where Fp^2 has modulus x^2 + 1
-    fn reduce_tate_pairing(self, num: &Fq, den: &Fq, d: &[u8], dbitlen: usize) -> Fq {
+    fn reduce_tate_pairing(&self, num: &Fq, den: &Fq, d: &[u8], dbitlen: usize) -> Fq {
         // We can compute the pth power with a conjugate \pi(x) = x^p
         let num_p = num.conjugate();
         let den_p = den.conjugate();
@@ -293,7 +293,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// pairing
     /// d encodes in little endian the value (p + 1) // 2^e
     pub fn tate_pairing(
-        self,
+        &self,
         xP: &Fq,
         xQ: &Fq,
         xPQ: &Fq,
@@ -313,7 +313,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// pairing using points of order 2^e
     /// d encodes in little endian the value (p + 1) // 2^e
     pub fn tate_pairing_2exp(
-        self,
+        &self,
         xP: &Fq,
         xQ: &Fq,
         xPQ: &Fq,
@@ -329,7 +329,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     }
 
     /// Given x(P), x(Q) and x(P - Q) computes the Weil pairing
-    pub fn weil_pairing(self, xP: &Fq, xQ: &Fq, xPQ: &Fq, n: &[u8], nbitlen: usize) -> Fq {
+    pub fn weil_pairing(&self, xP: &Fq, xQ: &Fq, xPQ: &Fq, n: &[u8], nbitlen: usize) -> Fq {
         let (e1_num, e1_den) = self.tate_pairing_not_reduced(xP, xQ, xPQ, n, nbitlen);
         let (e2_num, e2_den) = self.tate_pairing_not_reduced(xQ, xP, xPQ, n, nbitlen);
         (e1_num * e2_den) / (e2_num * e1_den)
@@ -337,7 +337,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// Given x(P), x(Q) and x(P - Q) computes the weil pairing
     /// using points of order = 2^e
-    pub fn weil_pairing_2exp(self, xP: &Fq, xQ: &Fq, xPQ: &Fq, e: usize) -> Fq {
+    pub fn weil_pairing_2exp(&self, xP: &Fq, xQ: &Fq, xPQ: &Fq, e: usize) -> Fq {
         let (e1_num, e1_den) = self.tate_pairing_not_reduced_2exp(xP, xQ, xPQ, e);
         let (e2_num, e2_den) = self.tate_pairing_not_reduced_2exp(xQ, xP, xPQ, e);
         (e1_num * e2_den) / (e2_num * e1_den)
@@ -350,7 +350,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// S = 2^(e - f) ([c]P + [d]Q)
     /// represented as little endian values.
     pub fn point_compression(
-        self,
+        &self,
         xP: &Fq,
         xQ: &Fq,
         xPQ: &Fq,

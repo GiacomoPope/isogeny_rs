@@ -38,7 +38,7 @@ impl<Fq: FqTrait> Isomorphism<Fq> {
         Self { x, z, d }
     }
 
-    pub fn isomorphism_eval(self, P: &mut PointX<Fq>) {
+    pub fn isomorphism_eval(&self, P: &mut PointX<Fq>) {
         P.X *= self.x;
         let tmp = self.z * P.Z;
         P.X += tmp;

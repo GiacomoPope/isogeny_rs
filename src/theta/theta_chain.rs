@@ -15,7 +15,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
     /// Naive implementation which doubles all the way to obtain the points of
     /// order 8 above the kernel. Much slower than the balanced strategy.
     pub fn elliptic_product_isogeny(
-        self,
+        &self,
         P1P2: &ProductPoint<Fq>,
         Q1Q2: &ProductPoint<Fq>,
         n: usize,

@@ -34,7 +34,7 @@ impl<Fq: FqTrait> ThetaStructure<Fq> {
     }
 
     /// Return the null point of the ThetaStructure
-    pub fn null_point(self) -> ThetaPoint<Fq> {
+    pub fn null_point(&self) -> ThetaPoint<Fq> {
         self.null_point
     }
 
@@ -69,7 +69,7 @@ impl<Fq: FqTrait> ThetaStructure<Fq> {
     /// Given a point P, compute it's double [2]P in place.
     /// Cost 8S + 8M
     #[inline(always)]
-    pub fn set_double_self(self, P: &mut ThetaPoint<Fq>) {
+    pub fn set_double_self(&self, P: &mut ThetaPoint<Fq>) {
         let (mut xp, mut yp, mut zp, mut tp) = P.squared_theta();
 
         // Compute temp. coordinates, 8S and 3M
@@ -90,7 +90,7 @@ impl<Fq: FqTrait> ThetaStructure<Fq> {
 
     /// Compute [2] * self
     #[inline]
-    pub fn double_point(self, P: &ThetaPoint<Fq>) -> ThetaPoint<Fq> {
+    pub fn double_point(&self, P: &ThetaPoint<Fq>) -> ThetaPoint<Fq> {
         let mut P2 = *P;
         self.set_double_self(&mut P2);
         P2
@@ -98,7 +98,7 @@ impl<Fq: FqTrait> ThetaStructure<Fq> {
 
     /// Compute [2^n] * self
     #[inline]
-    pub fn double_iter(self, P: &ThetaPoint<Fq>, n: usize) -> ThetaPoint<Fq> {
+    pub fn double_iter(&self, P: &ThetaPoint<Fq>, n: usize) -> ThetaPoint<Fq> {
         let mut R = *P;
         for _ in 0..n {
             self.set_double_self(&mut R)

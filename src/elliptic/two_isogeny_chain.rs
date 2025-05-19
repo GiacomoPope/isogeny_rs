@@ -139,7 +139,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// or `0x00..00` on failure, which happens when either the kernel is of the wrong
     /// order, or the kernel contained the point (0 : 1) and `allow_singular` is `false`.
     pub fn two_isogeny_chain_small_vartime(
-        self,
+        &self,
         kernel: &PointX<Fq>,
         n: usize,
         images: &mut [PointX<Fq>],
@@ -164,7 +164,7 @@ impl<Fq: FqTrait> Curve<Fq> {
                 let mut inf = ker_step;
                 Self::xdbl_proj(&A24, &C24, &mut inf);
                 if (!ker_step.Z.is_zero() & inf.Z.is_zero()) != u32::MAX {
-                    return (self, 0);
+                    return (*self, 0);
                 }
 
                 // When the kernel is of the form (0 : 1) we need specialised isogenies.
@@ -172,7 +172,7 @@ impl<Fq: FqTrait> Curve<Fq> {
                 // cases.
                 if ker_step.X.is_zero() == u32::MAX {
                     if !allow_singular {
-                        return (self, 0);
+                        return (*self, 0);
                     }
                     // Compute the codomain from ker_step for kernel (0 : 1)
                     let (c0, c1) = Self::two_isogeny_codomain_singular(&mut A24, &mut C24);
@@ -208,7 +208,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// or `0x00..00` on failure, which happens when the kernel found to have the wrong
     /// order or the kernel is above the "singular" point (0 : 1).
     pub fn two_isogeny_chain(
-        self,
+        &self,
         kernel: &PointX<Fq>,
         n: usize,
         images: &mut [PointX<Fq>],

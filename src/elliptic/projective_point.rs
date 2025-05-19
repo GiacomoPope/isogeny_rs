@@ -40,18 +40,18 @@ impl<Fq: FqTrait> Point<Fq> {
 
     /// Get the (x,y) affine coordinates. For the point-at-infinity,
     /// this returns (0,0).
-    pub fn to_xy(self) -> (Fq, Fq) {
+    pub fn to_xy(&self) -> (Fq, Fq) {
         let t = self.Z.invert();
         (self.X * t, self.Y * t)
     }
 
     /// Returns the X and Z coordinates of the projective point
-    pub fn to_xz(self) -> (Fq, Fq) {
+    pub fn to_xz(&self) -> (Fq, Fq) {
         (self.X, self.Z)
     }
 
     /// Returns the X and Z coordinates of the projective point
-    pub fn to_pointx(self) -> PointX<Fq> {
+    pub fn to_pointx(&self) -> PointX<Fq> {
         PointX::new(&self.X, &self.Z)
     }
 
@@ -77,13 +77,13 @@ impl<Fq: FqTrait> Point<Fq> {
     }
 
     /// Return `0xFFFFFFFF` if self is the point-at-infinity, `0x00000000` otherwise.
-    pub fn is_zero(self) -> u32 {
+    pub fn is_zero(&self) -> u32 {
         self.Z.is_zero()
     }
 
     // Return `0xFFFFFFFF` if self and rhs represent the same point.
     /// Otherwise, return `0x00000000`.
-    pub fn equals(self, rhs: &Self) -> u32 {
+    pub fn equals(&self, rhs: &Self) -> u32 {
         // P1 == P2 if and only if:
         //    P1 == inf AND P2 == inf
         //  OR:

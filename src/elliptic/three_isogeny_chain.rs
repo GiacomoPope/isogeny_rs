@@ -99,7 +99,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// Returns the codomain as well as a `u32` which is equal to `0xFF..FF` when
     /// kernel has order 3^n and `0x00..00` otherwise.
     pub fn three_isogeny_chain(
-        self,
+        &self,
         kernel: &PointX<Fq>,
         n: usize,
         images: &mut [PointX<Fq>],

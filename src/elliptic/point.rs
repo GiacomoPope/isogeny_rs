@@ -25,25 +25,25 @@ impl<Fq: FqTrait> PointX<Fq> {
     }
 
     /// Recover the (X : Z) coordinates of a PointX
-    pub fn coords(self) -> (Fq, Fq) {
+    pub fn coords(&self) -> (Fq, Fq) {
         (self.X, self.Z)
     }
 
     /// Point at infinity is of the form (X : 0)
     /// Returns 0xFFFFFFFF if Z == 0 and 0 otherwise
-    pub fn is_zero(self) -> u32 {
+    pub fn is_zero(&self) -> u32 {
         self.Z.is_zero()
     }
 
     /// Returns the affine `x` coordinate of a point
     /// x = X / Z
-    pub fn x(self) -> Fq {
+    pub fn x(&self) -> Fq {
         self.X / self.Z
     }
 
     /// Return 0xFFFFFFFF if self and rhs represent the same point.
     /// Otherwise, return 0x00000000.
-    pub fn equals(self, rhs: &PointX<Fq>) -> u32 {
+    pub fn equals(&self, rhs: &PointX<Fq>) -> u32 {
         let inf1 = self.is_zero();
         let inf2 = rhs.is_zero();
         let e = (self.X * rhs.Z).equals(&(rhs.X * self.Z));

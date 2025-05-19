@@ -1,6 +1,6 @@
 mod benchmark_sidh {
     use isogeny::protocols::sidh_parameters::SIDH_434;
-    use isogeny::utilities::drng::DRNG;
+    use isogeny::utilities::test_utils::drng::DRNG;
 
     use criterion::{Criterion, black_box, criterion_group};
     use std::time::Duration;

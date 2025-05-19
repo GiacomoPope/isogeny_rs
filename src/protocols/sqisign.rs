@@ -49,7 +49,6 @@ impl Error for SqisignError {}
 pub struct SqisignParameters {
     pub security_bits: usize,
     pub cofactor: u8,
-    pub cofactor_bitsize: usize,
     pub f: usize,
     pub response_length: usize,
     pub hash_iterations: usize,
@@ -63,7 +62,6 @@ pub struct SqisignParameters {
 pub struct Sqisign<Fq: FqTrait> {
     security_bits: usize,
     cofactor: u8,
-    cofactor_bitsize: usize,
     f: usize,
     response_length: usize,
     hash_iterations: usize,
@@ -104,7 +102,6 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         Self {
             security_bits: params.security_bits,
             cofactor: params.cofactor,
-            cofactor_bitsize: params.cofactor_bitsize,
             f: params.f,
             response_length: params.response_length,
             hash_iterations: params.hash_iterations,
@@ -127,7 +124,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
     }
 
     /// Decode a buffer of bytes into a `SqisignPublicKey<Fq>`.
-    fn decode_public_key(self, buf: &[u8]) -> Result<SqisignPublicKey<Fq>, SqisignError> {
+    fn decode_public_key(&self, buf: &[u8]) -> Result<SqisignPublicKey<Fq>, SqisignError> {
         assert!(self.pk_len == Fq::ENCODED_LENGTH + 1);
 
         // Ensure that the byte length matches what is expected for the parameter sets.
@@ -149,7 +146,10 @@ impl<Fq: FqTrait> Sqisign<Fq> {
     }
 
     /// Decode a buffer of bytes into a `SqisignPublicKey<Fq>`.
-    fn decode_signature<'a>(self, buf: &'a [u8]) -> Result<SqisignSignature<'a, Fq>, SqisignError> {
+    fn decode_signature<'a>(
+        &self,
+        buf: &'a [u8],
+    ) -> Result<SqisignSignature<'a, Fq>, SqisignError> {
         let aij_n_bytes = self.security_bits >> 3;
         let chl_n_bytes = (self.response_length + 9) >> 3;
 
@@ -204,7 +204,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
     /// Compute the challenge curve E_chl from the scalar in the signature and
     /// a deterministic basis of E_pk.
     fn compute_challenge_curve<'a>(
-        self,
+        &self,
         pk: &SqisignPublicKey<Fq>,
         sig: &SqisignSignature<'a, Fq>,
     ) -> (Curve<Fq>, u32) {
@@ -212,7 +212,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         let pk_basis = pk.curve.torsion_basis_2e_from_hint(
             0,
             &[self.cofactor],
-            self.cofactor_bitsize,
+            (8 - self.cofactor.leading_zeros()) as usize,
             pk.hint,
         );
 
@@ -230,7 +230,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
 
     /// Given the public key curve and challenge curve, compute a challenge scalar
     /// from the message. Used for generating and verifiying signatures.
-    fn hash_challenge(self, E_pk: &Curve<Fq>, E_chl: &Curve<Fq>, msg: &[u8]) -> Vec<u8>
+    fn hash_challenge(&self, E_pk: &Curve<Fq>, E_chl: &Curve<Fq>, msg: &[u8]) -> Vec<u8>
     where
         [(); Fq::ENCODED_LENGTH]: Sized,
     {
@@ -306,7 +306,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
     /// reduce their order and apply a change of basis computation to prepare
     /// the kernel for the (2^n, 2^n)-isogeny.
     fn compute_torsion_bases<'a>(
-        self,
+        &self,
         E_chl: &Curve<Fq>,
         sig: &SqisignSignature<'a, Fq>,
         e_rsp_prime: usize,
@@ -316,13 +316,13 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         let mut aux_basis = sig.aux_curve.torsion_basis_2e_from_hint(
             0,
             &[self.cofactor],
-            self.cofactor_bitsize,
+            (8 - self.cofactor.leading_zeros()) as usize,
             sig.aux_hint,
         );
         let mut chl_basis = E_chl.torsion_basis_2e_from_hint(
             0,
             &[self.cofactor],
-            self.cofactor_bitsize,
+            (8 - self.cofactor.leading_zeros()) as usize,
             sig.chl_hint,
         );
 
@@ -399,7 +399,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
     }
 
     /// SQIsign verification.
-    pub fn verify(self, msg: &[u8], sig_bytes: &[u8], pk_bytes: &[u8]) -> bool
+    pub fn verify(&self, msg: &[u8], sig_bytes: &[u8], pk_bytes: &[u8]) -> bool
     where
         [(); Fq::ENCODED_LENGTH]: Sized,
     {

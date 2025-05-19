@@ -21,7 +21,7 @@ impl<Fq: FqTrait> ProductPoint<Fq> {
     }
 
     /// Return the points P1, P2
-    pub fn points(self) -> (Point<Fq>, Point<Fq>) {
+    pub fn points(&self) -> (Point<Fq>, Point<Fq>) {
         (self.P1, self.P2)
     }
 }
@@ -46,14 +46,14 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
     }
 
     /// Return the pair of curves as a tuple
-    pub fn curves(self) -> (Curve<Fq>, Curve<Fq>) {
+    pub fn curves(&self) -> (Curve<Fq>, Curve<Fq>) {
         (self.E1, self.E2)
     }
 
     /// Addition of elements (P1, P2) and (Q1, Q2) on E1 x E2 is defined
     /// as (P1 + Q1, P2 + Q2). This function calls the add function for
     /// the pair of curves on the EllipticProduct
-    pub fn add(self, C1: &ProductPoint<Fq>, C2: &ProductPoint<Fq>) -> ProductPoint<Fq> {
+    pub fn add(&self, C1: &ProductPoint<Fq>, C2: &ProductPoint<Fq>) -> ProductPoint<Fq> {
         let mut C3 = ProductPoint::INFINITY;
         C3.P1 = self.E1.add(&C1.P1, &C2.P1);
         C3.P2 = self.E2.add(&C1.P2, &C2.P2);
@@ -61,7 +61,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
     }
 
     /// Doubles the pair of points (P1, P2) on E1 x E2 as ([2]P1, [2]P2)
-    pub fn double(self, C: &ProductPoint<Fq>) -> ProductPoint<Fq> {
+    pub fn double(&self, C: &ProductPoint<Fq>) -> ProductPoint<Fq> {
         let mut C3 = *C;
         C3.P1 = self.E1.double(&C3.P1);
         C3.P2 = self.E2.double(&C3.P2);
@@ -70,7 +70,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
 
     /// Repeatedly doubles the pair of points (P1, P2) on E1 x E2 to get
     /// ([2^n]P1, [2^n]P2)
-    pub fn double_iter(self, C: &ProductPoint<Fq>, n: usize) -> ProductPoint<Fq> {
+    pub fn double_iter(&self, C: &ProductPoint<Fq>, n: usize) -> ProductPoint<Fq> {
         let mut C3 = *C;
         C3.P1 = self.E1.double_iter(&C3.P1, n);
         C3.P2 = self.E2.double_iter(&C3.P2, n);

@@ -4,7 +4,7 @@ use super::{curve::Curve, projective_point::Point};
 
 impl<Fq: FqTrait> Curve<Fq> {
     /// P3 <- P1 + P2
-    pub fn add_into(self, P3: &mut Point<Fq>, P1: &Point<Fq>, P2: &Point<Fq>) {
+    pub fn add_into(&self, P3: &mut Point<Fq>, P1: &Point<Fq>, P2: &Point<Fq>) {
         // Complete routine, to handle all edge cases:
         //   if Z1 == 0:            # P1 == inf
         //       return P2
@@ -82,42 +82,42 @@ impl<Fq: FqTrait> Curve<Fq> {
     }
 
     /// P1 <- P1 + P2
-    pub fn addto(self, P1: &mut Point<Fq>, P2: &Point<Fq>) {
+    pub fn addto(&self, P1: &mut Point<Fq>, P2: &Point<Fq>) {
         let mut P3 = Point::INFINITY;
         self.add_into(&mut P3, P1, P2);
         *P1 = P3;
     }
 
     /// Return P1 + P2 as a new point
-    pub fn add(self, P1: &Point<Fq>, P2: &Point<Fq>) -> Point<Fq> {
+    pub fn add(&self, P1: &Point<Fq>, P2: &Point<Fq>) -> Point<Fq> {
         let mut P3 = Point::INFINITY;
         self.add_into(&mut P3, P1, P2);
         P3
     }
 
     /// P3 <- P1 - P2
-    pub fn sub_into(self, P3: &mut Point<Fq>, P1: &Point<Fq>, P2: &Point<Fq>) {
+    pub fn sub_into(&self, P3: &mut Point<Fq>, P1: &Point<Fq>, P2: &Point<Fq>) {
         let mut nP2 = *P2;
         nP2.set_neg();
         self.add_into(P3, P1, &nP2);
     }
 
     /// P1 <- P1 - P2
-    pub fn subfrom(self, P1: &mut Point<Fq>, P2: &Point<Fq>) {
+    pub fn subfrom(&self, P1: &mut Point<Fq>, P2: &Point<Fq>) {
         let mut nP2 = *P2;
         nP2.set_neg();
         self.addto(P1, &nP2);
     }
 
     /// Return P1 - P2 as a new point
-    pub fn sub(self, P1: &Point<Fq>, P2: &Point<Fq>) -> Point<Fq> {
+    pub fn sub(&self, P1: &Point<Fq>, P2: &Point<Fq>) -> Point<Fq> {
         let mut nP2 = *P2;
         nP2.set_neg();
         self.add(P1, &nP2)
     }
 
     #[inline(always)]
-    pub fn double_from_coords(self, X: &Fq, Y: &Fq, Z: &Fq) -> (Fq, Fq, Fq) {
+    pub fn double_from_coords(&self, X: &Fq, Y: &Fq, Z: &Fq) -> (Fq, Fq, Fq) {
         // Doubling formulas in cost 6M+6S
         // These formulas are complete.
         // Formulas from https://eprint.iacr.org/2015/1060 would be
@@ -143,7 +143,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     }
 
     /// P3 <- 2*P1
-    pub fn double_into(self, P3: &mut Point<Fq>, P1: &Point<Fq>) {
+    pub fn double_into(&self, P3: &mut Point<Fq>, P1: &Point<Fq>) {
         let (X2, Y2, Z2) = self.double_from_coords(&P1.X, &P1.Y, &P1.Z);
         P3.X = X2;
         P3.Y = Y2;
@@ -153,7 +153,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     // This is essentially reuse of the above, but allowing the point
     // itself to be mutated... Maybe it would be better to redesign the
     // below functions to stop the code duplication...
-    pub fn double_self(self, P1: &mut Point<Fq>) {
+    pub fn double_self(&self, P1: &mut Point<Fq>) {
         let (X2, Y2, Z2) = self.double_from_coords(&P1.X, &P1.Y, &P1.Z);
         P1.X = X2;
         P1.Y = Y2;
@@ -161,14 +161,14 @@ impl<Fq: FqTrait> Curve<Fq> {
     }
 
     /// Return 2*P as a new point
-    pub fn double(self, P: &Point<Fq>) -> Point<Fq> {
+    pub fn double(&self, P: &Point<Fq>) -> Point<Fq> {
         let mut P3 = Point::INFINITY;
         self.double_into(&mut P3, P);
         P3
     }
 
     /// Return [2^n]*P as a new point
-    pub fn double_iter(self, P: &Point<Fq>, n: usize) -> Point<Fq> {
+    pub fn double_iter(&self, P: &Point<Fq>, n: usize) -> Point<Fq> {
         let mut P3 = *P;
         for _ in 0..n {
             self.double_self(&mut P3);
@@ -179,7 +179,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// P3 <- n*P
     /// Integer n is encoded as unsigned little-endian, with length
     /// nbitlen bits. Bits beyond that length are ignored.
-    pub fn mul_into(self, P3: &mut Point<Fq>, P: &Point<Fq>, n: &[u8], nbitlen: usize) {
+    pub fn mul_into(&self, P3: &mut Point<Fq>, P: &Point<Fq>, n: &[u8], nbitlen: usize) {
         // Montgomery ladder: see https://eprint.iacr.org/2017/212
 
         // We will need the complete 2*P at the end, to handle some
@@ -262,7 +262,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// Return n*P as a new point.
     /// Integer n is encoded as unsigned little-endian, with length
     /// nbitlen bits. Bits beyond that length are ignored.
-    pub fn mul(self, P: &Point<Fq>, n: &[u8], nbitlen: usize) -> Point<Fq> {
+    pub fn mul(&self, P: &Point<Fq>, n: &[u8], nbitlen: usize) -> Point<Fq> {
         let mut P3 = Point::INFINITY;
         self.mul_into(&mut P3, P, n, nbitlen);
         P3

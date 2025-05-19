@@ -45,28 +45,28 @@ impl<Fq: FqTrait> ThetaPoint<Fq> {
     }
 
     /// Recover the coordinates of the element
-    pub fn coords(self) -> (Fq, Fq, Fq, Fq) {
+    pub fn coords(&self) -> (Fq, Fq, Fq, Fq) {
         (self.X, self.Y, self.Z, self.T)
     }
 
     /// Recover the coordinates of the element
-    pub fn to_list(self) -> [Fq; 4] {
+    pub fn to_list(&self) -> [Fq; 4] {
         [self.X, self.Y, self.Z, self.T]
     }
 
     /// Compute the Hadamard transform of the point's coordinates
-    pub fn hadamard(self) -> (Fq, Fq, Fq, Fq) {
+    pub fn hadamard(&self) -> (Fq, Fq, Fq, Fq) {
         to_hadamard(&self.X, &self.Y, &self.Z, &self.T)
     }
 
     /// Square each of the point's coordinates and then
     /// compute the hadamard transform
-    pub fn squared_theta(self) -> (Fq, Fq, Fq, Fq) {
+    pub fn squared_theta(&self) -> (Fq, Fq, Fq, Fq) {
         to_squared_theta(&self.X, &self.Y, &self.Z, &self.T)
     }
 
     /// Returns if any of the coordinates of `self` are zero
-    pub fn has_zero_coordinate(self) -> u32 {
+    pub fn has_zero_coordinate(&self) -> u32 {
         self.X.is_zero() | self.Y.is_zero() | self.Z.is_zero() | self.T.is_zero()
     }
 }

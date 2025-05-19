@@ -25,7 +25,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     }
 
     /// Compute the j-invariant of the curve.
-    pub fn j_invariant(self) -> Fq {
+    pub fn j_invariant(&self) -> Fq {
         let mut j = self.A.square();
         let mut t1 = Fq::ONE; // This should be C^2, but C = 1
         let mut t0 = Fq::TWO; // This should be 2C^2
@@ -46,7 +46,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// Given a potential x-coordinate, determine if it's a valid point
     /// on the curve
-    pub fn is_on_curve(self, x: &Fq) -> u32 {
+    pub fn is_on_curve(&self, x: &Fq) -> u32 {
         let x = *x;
         let mut y = x + self.A; // y = x + A
         y *= x; // y = x^2 + A*x
@@ -57,7 +57,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// Given the x-coordinate of a point, lift it to a projective point
     // TODO: should this return an error for the sqrt?
-    pub fn lift_point(self, x: &Fq) -> Point<Fq> {
+    pub fn lift_point(&self, x: &Fq) -> Point<Fq> {
         let x = *x;
         let mut y = x + self.A; // y = x + A
         y *= x; // y = x^2 + A*x
@@ -69,7 +69,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// Given the x-coordinates of x(P), x(Q) and x(P - Q) lift the points
     /// onto the curve <P, Q>.
-    pub fn lift_basis_normalised(self, xP: &Fq, xQ: &Fq, xPQ: &Fq) -> (Point<Fq>, Point<Fq>) {
+    pub fn lift_basis_normalised(&self, xP: &Fq, xQ: &Fq, xPQ: &Fq) -> (Point<Fq>, Point<Fq>) {
         let P = self.lift_point(xP);
 
         // Okeya-Sakurai algorithm to recover Q.Y without a sqrt
@@ -91,7 +91,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         (P, Q)
     }
 
-    pub fn lift_basis(self, basis: &BasisX<Fq>) -> (Point<Fq>, Point<Fq>) {
+    pub fn lift_basis(&self, basis: &BasisX<Fq>) -> (Point<Fq>, Point<Fq>) {
         let mut zs = [basis.P.Z, basis.Q.Z, basis.PQ.Z];
         Fq::batch_invert(&mut zs);
 
@@ -104,7 +104,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// Complete an X-only point into a full point;
     /// On error, P3 is set to the point-at-infinity.
-    fn lift_pointx_into(self, P3: &mut Point<Fq>, P: &PointX<Fq>) -> u32 {
+    fn lift_pointx_into(&self, P3: &mut Point<Fq>, P: &PointX<Fq>) -> u32 {
         let XZ = P.X * P.Z;
         let V = (P.X + P.Z).square() + ((self.A - Fq::TWO) * XZ);
         P3.X = XZ;
@@ -120,14 +120,14 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// Complete an X-only point into a full point;
     /// On error, the output point is set to the point-at-infinity.
-    pub fn lift_pointx(self, P: &PointX<Fq>) -> (Point<Fq>, u32) {
+    pub fn lift_pointx(&self, P: &PointX<Fq>) -> (Point<Fq>, u32) {
         let mut P3 = Point::INFINITY;
         let ok = self.lift_pointx_into(&mut P3, P);
         (P3, ok)
     }
 
     /// Set P to a random curve point.
-    pub fn set_rand_point<R: CryptoRng + RngCore>(self, rng: &mut R, P: &mut Point<Fq>) {
+    pub fn set_rand_point<R: CryptoRng + RngCore>(&self, rng: &mut R, P: &mut Point<Fq>) {
         // This function cannot actually return the point-at-infinity;
         // this is not a problem as long as the curve order is larger
         // than 2^128.
@@ -149,7 +149,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     }
 
     /// Return a new random curve point.
-    pub fn rand_point<R: CryptoRng + RngCore>(self, rng: &mut R) -> Point<Fq> {
+    pub fn rand_point<R: CryptoRng + RngCore>(&self, rng: &mut R) -> Point<Fq> {
         let mut P = Point::INFINITY;
         self.set_rand_point(rng, &mut P);
         P

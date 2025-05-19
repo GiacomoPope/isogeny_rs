@@ -53,7 +53,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
     /// Input is expected to be K1 = (P1, P2), K2 = (Q1, Q2) in E1 x E2
     /// Inside (E1 x E2)[4].
     /// Cost 100M + 8S + 4I
-    fn get_base_matrix(self, P1P2: &ProductPoint<Fq>, Q1Q2: &ProductPoint<Fq>) -> [Fq; 16] {
+    fn get_base_matrix(&self, P1P2: &ProductPoint<Fq>, Q1Q2: &ProductPoint<Fq>) -> [Fq; 16] {
         // First compute the submatrices from each point
         let (E1, E2) = self.curves();
         let (P1, P2) = P1P2.points();
@@ -292,7 +292,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
     /// Compute the gluing (2,2)-isogeny from a ThetaStructure computed
     /// from an elliptic product.
     pub fn gluing_isogeny(
-        self,
+        &self,
         P1P2_8: &ProductPoint<Fq>,
         Q1Q2_8: &ProductPoint<Fq>,
         image_points: &[ProductPoint<Fq>],
