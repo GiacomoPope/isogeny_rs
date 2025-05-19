@@ -1,5 +1,5 @@
 use super::sqisign::Sqisign;
-use crate::fields::sqisign::{SqiField248, SqiField376, SqiField500};
+use crate::fields::sqisign::{Fp248Ext, SqiField376, SqiField500};
 
 mod level_one {
     use crate::protocols::sqisign::SqisignParameters;
@@ -73,6 +73,6 @@ mod level_five {
     };
 }
 
-pub const SQISIGN_I: Sqisign<SqiField248> = Sqisign::new(&level_one::SQISIGN_PARAMS_I);
+pub const SQISIGN_I: Sqisign<Fp248Ext> = Sqisign::new(&level_one::SQISIGN_PARAMS_I);
 pub const SQISIGN_III: Sqisign<SqiField376> = Sqisign::new(&level_three::SQISIGN_PARAMS_III);
 pub const SQISIGN_V: Sqisign<SqiField500> = Sqisign::new(&level_five::SQISIGN_PARAMS_V);

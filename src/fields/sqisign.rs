@@ -46,6 +46,9 @@ fp2::define_fp2_from_modulus!(
     modulus = SQISIGN_V_MODULUS,
 );
 
+use crate::fields::gf_248::Fp248;
+fp2::define_fp2_from_type!(typename = Fp248Ext, base_field = Fp248,);
+
 #[cfg(test)]
 mod test_sqisign_i_arithmetic {
     use super::{SQISIGN_I_MODULUS, SqiField248, SqiField248Base};
@@ -68,4 +71,12 @@ mod test_sqisign_v_arithmetic {
 
     fp2::define_fp_tests!(SqiField500Base);
     fp2::define_fp2_tests!(SqiField500, SQISIGN_V_MODULUS, 4);
+}
+
+#[cfg(test)]
+mod test_sqisign_i_alt_arithmetic {
+    use super::super::gf_248::Fp248;
+    use super::Fp248Ext;
+    fp2::define_fp_tests!(Fp248);
+    fp2::define_fp2_tests!(Fp248Ext, Fp248::MODULUS, 5);
 }
