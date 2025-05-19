@@ -1,6 +1,3 @@
-// TODO: something in the macro has too many arguements... Catch this in fp2 and fix it.
-#![allow(clippy::too_many_arguments)]
-
 // NIST lvl 1 SIKE prime: p = 2^216 * 3^137 - 1
 // Fp434Ext: a finite field element GF(p^2) with modulus x^2 + 1.
 const SIKE_I_MODULUS: [u64; 7] = [

@@ -1,6 +1,3 @@
-// TODO: something in the macro has too many arguements... Catch this in fp2 and fix it.
-#![allow(clippy::too_many_arguments)]
-
 // SQISign level 1
 static SQISIGN_I_MODULUS: [u64; 4] = [
     0xFFFFFFFFFFFFFFFF,
