@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod test_sqisign {
+mod test_sqisign_one {
     use isogeny::protocols::sqisign_parameters::SQISIGN_I;
 
     static MSG: &str = "D81C4D8D734FCBFBEADE3D3F8A039FAA2A2C9957E835AD55B22E75BF57BB556AC8";

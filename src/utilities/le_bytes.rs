@@ -1,10 +1,18 @@
+/// Compute a - (b + c) where a, b < 256 and c = 0 or 1
+#[inline]
+fn carrying_sub(x: u8, y: u8, carry: bool) -> (u8, bool) {
+    let (a, b) = x.overflowing_sub(y);
+    let (c, d) = a.overflowing_sub(carry as u8);
+    (c, b | d)
+}
+
 /// Given two integers `a` and `b` represented as little endian bytes, compute
 /// the value of a = (a - b) modulo 2^n in place.
 // TODO: make this work when n is not a perfect multiple of the slice len?
 pub fn byte_slice_difference_into(a: &mut [u8], b: &[u8]) {
     let mut borrow = false;
     for (i, val) in b.iter().enumerate() {
-        (a[i], borrow) = a[i].overflowing_sub(val + (borrow as u8))
+        (a[i], borrow) = carrying_sub(a[i], *val, borrow)
     }
 }
 
