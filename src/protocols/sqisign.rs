@@ -10,7 +10,7 @@ use sha3::{
 use crate::{
     elliptic::{basis::BasisX, curve::Curve},
     theta::elliptic_product::{EllipticProduct, ProductPoint},
-    utilities::le_bytes::byte_slice_difference_into,
+    utilities::le_bytes::{byte_slice_difference_into, le_bytes_bit_length},
 };
 
 /// Various Errors for SQIsign, to be modified further.
@@ -150,8 +150,8 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         &self,
         buf: &'a [u8],
     ) -> Result<SqisignSignature<'a, Fq>, SqisignError> {
-        let aij_n_bytes = self.security_bits >> 3;
-        let chl_n_bytes = (self.response_length + 9) >> 3;
+        let chl_n_bytes = self.security_bits >> 3;
+        let aij_n_bytes = (self.response_length + 9) >> 3;
 
         // Signature is of the form:
         // Fq ele || byte || byte || a00 || a01 || a10 || a11 || chl || hint_aux || hint_chl
@@ -267,7 +267,12 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         let i = modulus_bit_length >> 3;
         if i < scalar_len {
             // Partial mask of top non-zero element.
-            scalar[i] &= u8::MAX >> (8 - (modulus_bit_length & 7));
+            // Note in rust 255 >> 8 != 0, instead it returns an error
+            // so we have a bit of a song and dance to do when
+            // modulus_bit_length & 7 is 0.
+            scalar[i] &= u8::MAX
+                .checked_shr(8 - (modulus_bit_length & 7) as u32)
+                .unwrap_or(0);
             // All other elements are set to zero after modulus.
             for s in scalar.iter_mut().take(scalar_len).skip(i + 1) {
                 *s = 0;
@@ -371,8 +376,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
     fn check_aij_bitlen<'a>(sig: &SqisignSignature<'a, Fq>, e_rsp_prime: usize) -> usize {
         let chl_order = e_rsp_prime + sig.two_resp_length + 2;
         for scalar in sig.aij.iter() {
-            let scalar_bitlen =
-                (scalar.len() << 3) - (scalar.last().unwrap().leading_zeros() as usize);
+            let scalar_bitlen = le_bytes_bit_length(scalar);
             if scalar_bitlen > chl_order {
                 return 0;
             }

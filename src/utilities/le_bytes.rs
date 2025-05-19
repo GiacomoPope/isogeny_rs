@@ -1,3 +1,23 @@
+use super::ct::ct_u32_neq_zero;
+
+/// Given an integer `a` represented as little endian bytes, return the number
+/// of leading zeros of the binary representation.
+fn le_bytes_leading_zeros(a: &[u8]) -> u32 {
+    let mut leading_zeros: u32 = 0;
+    let mut mask = u32::MAX;
+
+    for byte in a.iter().rev() {
+        leading_zeros += byte.leading_zeros() & mask;
+        mask ^= mask & ct_u32_neq_zero(*byte as u32);
+    }
+    leading_zeros
+}
+
+/// Return the bit length of an integer `a` represented as little endian bytes.
+pub fn le_bytes_bit_length(a: &[u8]) -> usize {
+    (a.len() << 3) - (le_bytes_leading_zeros(a) as usize)
+}
+
 /// Compute a - (b + c) where a, b < 256 and c = 0 or 1
 #[inline]
 fn carrying_sub(x: u8, y: u8, carry: bool) -> (u8, bool) {

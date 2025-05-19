@@ -8,6 +8,7 @@ use fp2::fq::Fq as FqTrait;
 
 use crate::elliptic::curve::Curve;
 use crate::elliptic::point::PointX;
+use crate::utilities::ct::ct_u32_eq;
 
 use super::elliptic_product::{EllipticProduct, ProductPoint};
 use super::theta_point::ThetaPoint;
@@ -260,9 +261,7 @@ fn compute_splitting_matrix<Fq: FqTrait>(null_point: &ThetaPoint<Fq>) -> ([Fq; 1
         count += ctl & 1;
         set_cond_matrix(&mut M, &maps[i], ctl);
     }
-
-    // TODO: fix this dumb hack
-    let ok = if count == 1 { u32::MAX } else { 0 };
+    let ok = ct_u32_eq(count, 1);
     (M, ok)
 }
 
