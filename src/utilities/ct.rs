@@ -9,7 +9,7 @@ pub fn ct_u32_neq_zero(x: u32) -> u32 {
 }
 
 /// Returns `0x00..00` when `x = 0` and `0xFF..FF` otherwise in constant time.
-fn ct_u32_eq_zero(x: u32) -> u32 {
+pub fn ct_u32_eq_zero(x: u32) -> u32 {
     !ct_u32_neq_zero(x)
 }
 

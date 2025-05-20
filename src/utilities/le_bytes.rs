@@ -1,4 +1,4 @@
-use super::ct::ct_u32_neq_zero;
+use super::ct::ct_u32_eq_zero;
 
 /// Given an integer `a` represented as little endian bytes, return the number
 /// of leading zeros of the binary representation.
@@ -6,10 +6,16 @@ fn le_bytes_leading_zeros(a: &[u8]) -> u32 {
     let mut leading_zeros: u32 = 0;
     let mut mask = u32::MAX;
 
+    // The bytes are stored in little endian, so leading zeros are computed from
+    // the end of the list.
     for byte in a.iter().rev() {
-        leading_zeros += byte.leading_zeros() & mask;
-        mask ^= mask & ct_u32_neq_zero(*byte as u32);
+        // Compute the number of leading zeros of a u32 representation of the byte
+        leading_zeros += (((*byte as u32) << 24) | 0x00800000u32).leading_zeros() & mask;
+        // We want mask = 0 after we find the first byte which is non-zero, to stop
+        // accumulating bits in the above sum.
+        mask &= ct_u32_eq_zero(*byte as u32);
     }
+
     leading_zeros
 }
 
