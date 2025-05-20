@@ -328,7 +328,18 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
     }
 
     /// Compute the gluing (2,2)-isogeny from a ThetaStructure computed
-    /// from an elliptic product.
+    /// from an elliptic product. It's expensive!
+    /// Cost for codomain:
+    ///   - Compute the four-torsion: 4 * (6M + 6S)
+    ///   - Computing the base matrix: 104M + 8S
+    ///   - Computing the base change: 2 * 20M
+    ///   - Computing the codomain: 8S + 4M
+    /// Total: 172*M + 40*S
+    /// Cost for image:
+    ///   - CouplePoint addition: 2 * (16M + 5S)
+    ///   - Computing the base change: 2 * 20M
+    ///   - Computing gluing image: 9M + 8S
+    // Total: 81M + 18S per point
     pub fn gluing_isogeny(
         &self,
         P1P2_8: &ProductPoint<Fq>,
@@ -365,9 +376,9 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         // Per image cost =
         // 2 * (16M + 5S) for the CouplePoint addition
         // 2 * 20M for the base change
-        // 8S + 9 M for the gluing image
+        // 9M + 8S for the gluing image
         // Total:
-        // 61M + 18S per point
+        // 81M + 18S per point
         for P in image_points.iter() {
             // Need affine coordinates here to do an add, if we didn't we
             // could use faster x-only... Something to think about but no
