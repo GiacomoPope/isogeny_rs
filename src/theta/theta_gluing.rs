@@ -20,30 +20,28 @@ use fp2::fq::Fq as FqTrait;
 impl<Fq: FqTrait> EllipticProduct<Fq> {
     /// Given a point in the four torsion, compute the 2x2 matrix needed
     /// for the basis change
-    /// M = [[a, b], [c, d]] represented as an array [a, b, c, d]
-    /// Cost: 14M + 2S + 1I
-    fn get_base_submatrix(E: &Curve<Fq>, T: &Point<Fq>) -> (Fq, Fq, Fq, Fq) {
+    /// M = (1/lambda) * [[a, b], [c, d]] represented as an array [a, b, c, d] and
+    /// a scalar lambda.
+    /// Cost: 9M + 3S
+    fn action_by_translation(E: &Curve<Fq>, T: &Point<Fq>) -> ((Fq, Fq, Fq, Fq), Fq) {
         let (x, z) = T.to_xz();
         let (u, w) = E.xdbl_coords(&x, &z); // Cost 3M 2S
 
         // Precompute some pieces
         let wx = w * x;
-        let wz = w * z;
-        let ux = u * x;
         let uz = u * z;
         let det = wx - uz;
 
-        // Batch inversion
-        let mut inverse = [det, z];
-        Fq::batch_invert(&mut inverse);
+        let lambda = z * det;
 
         // Compute the matrix coefficients
-        let d = uz * inverse[0]; // Computing d then a saves one negation
+        // 1/(D * Z) [[-UZ^2, WZ^2, UXZ - XD, UZ^2]]
+        let d = uz * z;
         let a = -d;
-        let b = -(wz * inverse[0]);
-        let c = ux * inverse[0] - x * inverse[1];
+        let b = -w * z.square();
+        let c = x * (uz - det);
 
-        (a, b, c, d)
+        ((a, b, c, d), lambda)
     }
 
     /// Given the four torsion below the isogeny kernel, compute the
@@ -52,22 +50,59 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
     ///
     /// Input is expected to be K1 = (P1, P2), K2 = (Q1, Q2) in E1 x E2
     /// Inside (E1 x E2)[4].
-    /// Cost 100M + 8S + 4I
+    /// Cost 104M + 8S
     fn get_base_matrix(&self, P1P2: &ProductPoint<Fq>, Q1Q2: &ProductPoint<Fq>) -> [Fq; 16] {
         // First compute the submatrices from each point
         let (E1, E2) = self.curves();
         let (P1, P2) = P1P2.points();
         let (Q1, Q2) = Q1Q2.points();
 
-        // TODO: if these were submatrix computations were done together, we
-        // could save 3 inversions... It would make the code harder to read
-        // but would be an optimisation for the gluing.
-        // Something to think about for when cost REALLY matters.
-        // Cost: 4 x 14M + 2S + 1I = 56M + 8S + 4I
-        let (g00_1, g01_1, g10_1, g11_1) = Self::get_base_submatrix(&E1, &P1);
-        let (g00_2, g01_2, g10_2, g11_2) = Self::get_base_submatrix(&E2, &P2);
-        let (h00_1, _, h10_1, _) = Self::get_base_submatrix(&E1, &Q1);
-        let (h00_2, h01_2, h10_2, h11_2) = Self::get_base_submatrix(&E2, &Q2);
+        // NOTES: action_by_translation computes a matrix G together with a scaling factor
+        // such that the coefficients we want are given by G / d.
+        //
+        // The idea is we want to avoid division, so we compute the matrix M with a projective
+        // factor (which is fine, as we act my matrix multiplication on ThetaPoints which have
+        // a projective representation).
+        // Naturally, we find that the denominator of each coefficent is:
+        //   - a0, b0, c0, d0 is dg_1 * dg_2 * dh_1 * dh_2
+        //   - a1, b1, c1, dg is dg_1 * dg_2 * dh_1 * dh_2^2
+        //   - a2, b2, c2, dh is dg_1^2 * dg_2 * dh_1 * dh_2
+        //   - a3, b3, c3, d3 is dg_1^2 * dg_2 * dh_1 * dh_2^2
+        // We require a common denominator for all components so we need to further
+        // scale the 12 coefficients by
+        //   - `a0, b0, c0, d0` by dg_1 * dh_2
+        //   - `a1, b1, c1, dg` by dg_1
+        //   - `a2, b2, c2, dh` by dh_2
+        //
+        // We can do a single inversion during action by translation for a cost of
+        // 21M + 4*(2S + 11M) + 1I to compute the coefficients, then the coefficients below
+        // cost 44M to compute. If we model 1I to be log(p) multiplications then this
+        // is ~100M for level 1 bringing the total to about 209 M.
+        //
+        // If we don't do any inversions then four action_by_translation costs 4*(9M + 3S)
+        // but then the computation of the coefficients grows. For example, the coefficient
+        // a0 is given by:
+        //    a0 = 1 + g00_1 * g00_2 + h00_1 * h00_2 + gh00_1 * gh00_2
+        // with the denominator explicit this is:
+        //    a0 = 1 + g00_1/dg_1 * g00_2/dg_2 + h00_1/dh_1 * h00_2/dh_2 + gh00_1 * gh00_2 / (dg_1 * dg_2 * dh_1 * dh_2)
+        // and clearing the denominator we then have to compute the numerator as
+        //    a0 = (dg_1 * dg_2 * dh_1 * dh_2
+        //      += g00_1 * g00_2 * dh_1 * dh_2
+        //      += h00_1 * h00_2 * dg_1 * dg_2
+        //      += gh00_1 * gh00_2) * dg_1 * dh_2
+        // Most of the work has to happen in a0, b0, c0 and d0 and the best I have so far
+        // is a cost of 24M to compute all the coefficients projectively, bringing the total
+        // cost to 44 + 24 = 68. Adding it all together the new cost is 104M + 12S, which
+        // should be about half what it used to be for level 1 and even better for higher
+        // levels where inversions cost more.
+
+        // First we compute action by translation for each of the four points of order
+        // four. This is done projectively with the denominators in dg_i and dh_i.
+        // Cost: 4 x (9M + 3S) = 36M + 12S
+        let ((g00_1, g01_1, g10_1, g11_1), dg_1) = Self::action_by_translation(&E1, &P1);
+        let ((g00_2, g01_2, g10_2, g11_2), dg_2) = Self::action_by_translation(&E2, &P2);
+        let ((h00_1, _, h10_1, _), dh_1) = Self::action_by_translation(&E1, &Q1);
+        let ((h00_2, h01_2, h10_2, h11_2), dh_2) = Self::action_by_translation(&E2, &Q2);
 
         // Compute the product of g1 * h1 and g2 * h2 as 2x2 matricies
         // and extract out the first column
@@ -80,23 +115,26 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         let gh00_2 = g00_2 * h00_2 + g01_2 * h10_2;
         let gh10_2 = g10_2 * h00_2 + g11_2 * h10_2;
 
-        // start the trace with the identity
-        let mut a = Fq::ONE;
+        // start the trace with the (projective) identity
+        let dg_12 = dg_1 * dg_2;
+        let dh_12 = dh_1 * dh_2;
+
+        let mut a = dg_12 * dh_12;
         let mut b = Fq::ZERO;
         let mut c = Fq::ZERO;
         let mut d = Fq::ZERO;
 
         // T1
-        a += g00_1 * g00_2;
-        b += g00_1 * g10_2;
-        c += g10_1 * g00_2;
-        d += g10_1 * g10_2;
+        a += g00_1 * g00_2 * dh_12;
+        b += g00_1 * g10_2 * dh_12;
+        c += g10_1 * g00_2 * dh_12;
+        d += g10_1 * g10_2 * dh_12;
 
         // T2
-        a += h00_1 * h00_2;
-        b += h00_1 * h10_2;
-        c += h10_1 * h00_2;
-        d += h10_1 * h10_2;
+        a += h00_1 * h00_2 * dg_12;
+        b += h00_1 * h10_2 * dg_12;
+        c += h10_1 * h00_2 * dg_12;
+        d += h10_1 * h10_2 * dg_12;
 
         // T1+T2
         a += gh00_1 * gh00_2;
@@ -105,24 +143,41 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         d += gh10_1 * gh10_2;
 
         // Now we act by (0, Q2)
-        let a1 = h00_2 * a + h01_2 * b;
-        let b1 = h10_2 * a + h11_2 * b;
-        let c1 = h00_2 * c + h01_2 * d;
-        let d1 = h10_2 * c + h11_2 * d;
+        let mut a1 = h00_2 * a + h01_2 * b;
+        let mut b1 = h10_2 * a + h11_2 * b;
+        let mut c1 = h00_2 * c + h01_2 * d;
+        let mut d1 = h10_2 * c + h11_2 * d;
 
         // Now we act by (P1, 0)
-        let a2 = g00_1 * a + g01_1 * c;
-        let b2 = g00_1 * b + g01_1 * d;
-        let c2 = g10_1 * a + g11_1 * c;
-        let d2 = g10_1 * b + g11_1 * d;
+        let mut a2 = g00_1 * a + g01_1 * c;
+        let mut b2 = g00_1 * b + g01_1 * d;
+        let mut c2 = g10_1 * a + g11_1 * c;
+        let mut d2 = g10_1 * b + g11_1 * d;
 
         // Now we act by (P1, Q2)
         let a3 = g00_1 * a1 + g01_1 * c1;
         let b3 = g00_1 * b1 + g01_1 * d1;
         let c3 = g10_1 * a1 + g11_1 * c1;
         let d3 = g10_1 * b1 + g11_1 * d1;
-        // 44M
 
+        // Ensure that the denominator for all coefficients is dg_1^2 * dg_2 * dh_1 * dh_2^2
+        let tmp = dg_1 * dh_2;
+        a *= tmp;
+        b *= tmp;
+        c *= tmp;
+        d *= tmp;
+
+        a1 *= dg_1;
+        b1 *= dg_1;
+        c1 *= dg_1;
+        d1 *= dg_1;
+
+        a2 *= dh_2;
+        b2 *= dh_2;
+        c2 *= dh_2;
+        d2 *= dh_2;
+
+        // 68M for coefficient computation
         [a, b, c, d, a1, b1, c1, d1, a2, b2, c2, d2, a3, b3, c3, d3]
     }
 
@@ -180,47 +235,38 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
     /// zero-dual coordinate. There's a chance refactoring this could make
     /// it appear more friendly
     ///
-    /// Cost: 8S 13M 1I
+    /// Cost: 8S 4M
     fn gluing_codomain(
         T1_8: &ThetaPoint<Fq>,
         T2_8: &ThetaPoint<Fq>,
-    ) -> (ThetaStructure<Fq>, (Fq, Fq), usize) {
+    ) -> (ThetaStructure<Fq>, Fq, Fq, Fq) {
         // First construct the dual coordinates of the kernel and look
         // for the element which is zero
         // For convenience we pack this as an array instead of a tuple:
-        let xAxByCyD: [Fq; 4] = T1_8.squared_theta().into();
-        let zAtBzYtD: [Fq; 4] = T2_8.squared_theta().into();
+        let (xA, xB, yC, yD) = T1_8.squared_theta();
+        let (zA, _, zC, _) = T2_8.squared_theta();
 
-        // One element for each array above will be zero. Identify this
-        // element to get the right permutation below for filling arrays
-        let z_idx = Self::zero_index(&xAxByCyD);
-        assert!(z_idx == 3); // TODO: I think this is always three, so we can clean code up.
+        // One element for each array above will be zero. Due to the method we
+        // use for gluing, this index is always 3, allowing a simplification of
+        // the below code.
+        assert!(Self::zero_index(&[xA, xB, yC, yD]) == 3);
 
-        // Compute intermediate values for codomain
-        let t1 = zAtBzYtD[1 ^ z_idx];
-        let t2 = xAxByCyD[2 ^ z_idx];
-        let t3 = zAtBzYtD[3 ^ z_idx];
-        let t4 = xAxByCyD[3 ^ z_idx];
+        // Codomain coefficients are (x * z * A) \star (A : B : C : 0)
+        let mut A = xA * zA;
+        let mut B = xB * zA;
+        let mut C = zC * xA;
+        let mut D = Fq::ZERO;
 
-        // Invert all four values for codomain and images
-        let mut inverse = [t1, t2, t3, t4];
-        Fq::batch_invert(&mut inverse);
+        // We also want to have (A^-1 : B^-1 : C^-1 : -) projectively for inverses.
+        // as (x * z * A * B * C) \star (A^-1 : B^-1 : C^-1 : -)
+        let A_inv = xB * zC;
+        let B_inv = C;
+        let C_inv = B;
 
-        // Codomain coefficients
-        let mut ABCD = [Fq::ZERO; 4];
-        ABCD[z_idx] = Fq::ZERO;
-        ABCD[1 ^ z_idx] = t1 * inverse[2];
-        ABCD[2 ^ z_idx] = t2 * inverse[3];
-        ABCD[3 ^ z_idx] = Fq::ONE;
-
-        // Used for the image computation
-        let a_inverse = t3 * inverse[0];
-        let b_inverse = t4 * inverse[1];
-
-        let (A, B, C, D) = to_hadamard(&ABCD[0], &ABCD[1], &ABCD[2], &ABCD[3]);
+        (A, B, C, D) = to_hadamard(&A, &B, &C, &D);
         let codomain = ThetaStructure::new_from_coords(&A, &B, &C, &D);
 
-        (codomain, (a_inverse, b_inverse), z_idx)
+        (codomain, A_inv, B_inv, C_inv)
     }
 
     /// Given a point and it's shifted value, compute the image of this
@@ -230,61 +276,53 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
     /// is zero, so we take values from both and use linear algebra to recover
     /// the correct image.
     ///
-    /// Cost: 8S + 10M + 1I
+    /// Cost: 8S + 9M
     fn gluing_image(
         T: &ThetaPoint<Fq>,
         T_shift: &ThetaPoint<Fq>,
-        a_inv: &Fq,
-        b_inv: &Fq,
-        z_idx: usize,
+        A_inv: &Fq,
+        B_inv: &Fq,
+        C_inv: &Fq,
     ) -> ThetaPoint<Fq> {
         // Find dual coordinates of point to push through
-        let AxByCzDt: [Fq; 4] = T.squared_theta().into();
+        let (Ax, By, Cz, Dt) = T.squared_theta();
 
         // We are in the case where at most one of A, B, C, D is
         // zero, so we need to account for this
         // To recover values, we use the translated point to get
-        let AyBxCtDz: [Fq; 4] = T_shift.squared_theta().into();
+        let (Ay, _, Ct, Dz) = T_shift.squared_theta();
 
-        // We can always directly compute three elements
-        let y = AxByCzDt[1 ^ z_idx] * (*a_inv);
-        let z = AxByCzDt[2 ^ z_idx] * (*b_inv);
-        let t = AxByCzDt[3 ^ z_idx];
+        // In the general case, we can always directly compute three elements
+        // but the fourth requires scalaing by something non-zero and in
+        // the original (2,2) paper this was kep general.
+        //
+        // However, because of the way we perform gluing, the zero index is
+        // always three, and so we know where the zero is for (A : B : C : 0).
+        assert!(Dt.is_zero() == u32::MAX);
+        assert!(Dz.is_zero() == u32::MAX);
 
-        // To compute the `x` value, we need to compute a scalar, lambda,
-        // which we use to normalise the given `xb`. We can always do this,
-        // but we are required to compute an inverse which means checking
-        // whether z is zero. If z is zero, we can compute lambda by simply
-        // extracting the scaled zb and dividing by b from above. However,
-        // when z is zero, we instead have to use t. To ensure that this is
-        // constant time, we compute both using that inverting zero just
-        // gives zero and conditionally swapping lanbda with lambda_t
-        let zb = AyBxCtDz[3 ^ z_idx];
-        let tb = AyBxCtDz[2 ^ z_idx] * (*b_inv);
+        // Despite this, we still need to handle the case where `t` itself
+        // could be zero. We  first compute x, y, z from the precomputations
+        // during codomain directly.
+        let mut x = Ax * (*A_inv);
+        let mut y = By * (*B_inv);
+        let mut z = Cz * (*C_inv);
 
-        let mut inverse = [zb, tb];
-        Fq::batch_invert(&mut inverse);
+        // Now to compute `t` we need to compute a projective factor using that
+        // Ay will not be zero for our implementation:
+        assert!(Ay.is_zero() != u32::MAX);
 
-        // Potentially one of these inverses are zero, but we do both
-        // to avoid branching.
-        let mut lam = z * inverse[0];
-        let lam_t = t * inverse[1];
-        lam.set_cond(&lam_t, z.is_zero());
+        // Compute t with y as a projective factor
+        let mut t = y * Ct * (*C_inv);
 
-        // Finally we recover x
-        let xb = AyBxCtDz[1 ^ z_idx] * (*a_inv);
-        let x = xb * lam;
+        // Scale x, y and z to ensure projective factors for t match.
+        let lam = Ay * (*A_inv);
+        x *= lam;
+        y *= lam;
+        z *= lam;
 
-        // We now have values for `x,y,z,t` but to order them we need to use
-        // the xor trick as above, so we pack them into an array with the
-        // right ordering and then extract them back out
-        let mut xyzt = [Fq::ZERO; 4];
-        xyzt[z_idx] = x;
-        xyzt[1 ^ z_idx] = y;
-        xyzt[2 ^ z_idx] = z;
-        xyzt[3 ^ z_idx] = t;
-
-        let (x, y, z, t) = to_hadamard(&xyzt[0], &xyzt[1], &xyzt[2], &xyzt[3]);
+        // Perform the final Hadamard
+        (x, y, z, t) = to_hadamard(&x, &y, &z, &t);
 
         ThetaPoint::from_coords(&x, &y, &z, &t)
     }
@@ -314,7 +352,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         // with kernel below T1, and T2.
         // We save the zero index, as we use it for the images, and we also
         // can precompute a few inverses to save time for evaluation.
-        let (codomain, (a_inv, b_inv), z_idx) = Self::gluing_codomain(&T1_8, &T2_8);
+        let (codomain, A_inv, B_inv, C_inv) = Self::gluing_codomain(&T1_8, &T2_8);
 
         // We now want to push through a set of points by evaluating each of them
         // under the action of this isogeny. As the domain is an elliptic product,
@@ -327,9 +365,9 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         // Per image cost =
         // 2 * (16M + 5S) for the CouplePoint addition
         // 2 * 20M for the base change
-        // 8S + 4M + 1I for the gluing image
+        // 8S + 9 M for the gluing image
         // Total:
-        // 76M + 18S + 1I per point
+        // 61M + 18S per point
         for P in image_points.iter() {
             // Need affine coordinates here to do an add, if we didn't we
             // could use faster x-only... Something to think about but no
@@ -344,7 +382,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
 
             // With a point and the shift value from the kernel, we can find
             // the image
-            let T_image = Self::gluing_image(&T, &T_shift, &a_inv, &b_inv, z_idx);
+            let T_image = Self::gluing_image(&T, &T_shift, &A_inv, &B_inv, &C_inv);
             theta_images.push(T_image);
         }
 
