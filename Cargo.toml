@@ -8,10 +8,10 @@ fp2 = "=0.1.9"
 rand = "0.9"
 rand_core = "0.6"
 sha3 = "0.10.8"
+hex = "0.4.3"
 
 [dev-dependencies]
 criterion = { version = "0.4", features = ["html_reports"] }
-hex = "0.4.3"
 sha2 = "0.10.2"
 num-bigint = "0.4.3"
 rayon = "1.10.0"

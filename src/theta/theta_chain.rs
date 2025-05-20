@@ -1,5 +1,7 @@
 use fp2::fq::Fq as FqTrait;
 
+use ::std::time::Instant;
+
 use super::elliptic_product::{EllipticProduct, ProductPoint};
 use super::theta_isogeny::{two_isogeny, two_isogeny_to_product};
 use super::theta_splitting::{split_to_product, splitting_isomorphism};
@@ -21,6 +23,8 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         n: usize,
         image_points: &[ProductPoint<Fq>],
     ) -> (EllipticProduct<Fq>, Vec<ProductPoint<Fq>>, u32) {
+        let start = Instant::now();
+
         // Store the number of image points we wish to evaluate to
         // ensure we return them all from the points we push through
         let num_image_points = image_points.len();
@@ -44,6 +48,9 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         let mut ok = u32::MAX;
         let mut check: u32;
 
+        let set_up_time = start.elapsed();
+        println!("\n\nset_up_time time: {:?}", set_up_time);
+
         // Step One: Perform doubling on the ProductPoints and compute the
         // codomain from gluing. Keep intermediate doubles to push through
         // the isogeny to save on doublings later.
@@ -65,9 +72,15 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
             orders[k] = orders[k - 1].saturating_sub(m);
         }
 
+        let gluing_doubling = start.elapsed();
+        println!("gluing_doubling time: {:?}", gluing_doubling - set_up_time);
+
         // We append the points we want the image for to the end of strategy points.
         // We'll extract them from the end later.
         product_strategy_pts.extend_from_slice(image_points);
+
+        let extension = start.elapsed();
+        println!("extension time: {:?}", extension - gluing_doubling);
 
         // Compute the Gluing isogeny and push through stategy_points to get a new
         // vector of ThetaPoints of the same length.
@@ -82,6 +95,9 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
             *ord -= 1;
         }
         k -= 1;
+
+        let gluing = start.elapsed();
+        println!("gluing time: {:?}", gluing - extension);
 
         // Step One: Perform doubling on the ProductPoints and compute the
         // codomain from gluing. Keep intermediate doubles to push through
@@ -120,6 +136,9 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
             k = k.saturating_sub(1);
         }
 
+        let everything_else = start.elapsed();
+        println!("everything_else time: {:?}", everything_else - gluing);
+
         // Use a symplectic transform to first get the domain into a compatible form
         // for splitting
         (domain, check) = splitting_isomorphism(domain, &mut strategy_pts);
@@ -129,6 +148,9 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         // onto this product
         let img_points = &strategy_pts[strategy_pts.len() - num_image_points..];
         let (product, couple_points) = split_to_product(&domain, img_points);
+
+        let splitting = start.elapsed();
+        println!("splitting time: {:?}\n\n", splitting - everything_else);
 
         (product, couple_points, ok)
     }

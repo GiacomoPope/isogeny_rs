@@ -1,6 +1,8 @@
 use core::{error::Error, fmt::Display};
 use std::marker::PhantomData;
 
+use ::std::time::Instant;
+
 use fp2::fq::Fq as FqTrait;
 use sha3::{
     Shake256,
@@ -407,9 +409,14 @@ impl<Fq: FqTrait> Sqisign<Fq> {
     where
         [(); Fq::ENCODED_LENGTH]: Sized,
     {
+        let start = Instant::now();
+
         // Decode the byte encoded public key and signature.
         let pk = self.decode_public_key(pk_bytes).unwrap();
         let sig = self.decode_signature(sig_bytes).unwrap();
+
+        let decode = start.elapsed();
+        println!("Decode time: {:?}", decode);
 
         // Set the modified response length from the signature data;
         let e_rsp_prime = self.response_length - sig.backtracking - sig.two_resp_length;
@@ -428,9 +435,15 @@ impl<Fq: FqTrait> Sqisign<Fq> {
             return false;
         }
 
+        let curve = start.elapsed();
+        println!("challenge curve time: {:?}", curve - decode);
+
         // Compute canonical bases on E_chl and E_aux which will be used in the (2^n, 2^n)-isogeny
         let (mut chl_basis, aux_basis) =
             self.compute_torsion_bases(&chl_curve, &sig, e_rsp_prime, chl_order);
+
+        let basis = start.elapsed();
+        println!("basis time: {:?}", basis - curve);
 
         // Compute the small 2-isogeny conditionally and push through the challenge basis.
         // If the kernel is maleformed, `compute_small_isogeny` returns `false` and we must
@@ -440,6 +453,9 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         {
             return false;
         };
+
+        let small_isogeny = start.elapsed();
+        println!("small_isogeny time: {:?}", small_isogeny - basis);
 
         // In very exceptional cases, no (2,2)-isogeny is needed and the signature
         // can be verified from E_chl directly.
@@ -464,6 +480,9 @@ impl<Fq: FqTrait> Sqisign<Fq> {
             return false;
         }
         let (_, E4) = E3E4.curves();
+
+        let two_isogeny = start.elapsed();
+        println!("two_isogeny time: {:?}", two_isogeny - small_isogeny);
 
         // The signature is valid if the derived bytes from the hash match the signature scalar.
         sig.chl_scalar == self.hash_challenge(&pk.curve, &E4, msg)
