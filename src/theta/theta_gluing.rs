@@ -328,7 +328,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
     }
 
     /// Compute the gluing (2,2)-isogeny from a ThetaStructure computed
-    /// from an elliptic product. It's expensive!
+    /// from an elliptic product.
     /// Cost for codomain:
     ///   - Compute the four-torsion: 4 * (6M + 6S)
     ///   - Computing the base matrix: 104M + 8S
@@ -344,8 +344,9 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         &self,
         P1P2_8: &ProductPoint<Fq>,
         Q1Q2_8: &ProductPoint<Fq>,
-        image_points: &[ProductPoint<Fq>],
-    ) -> (ThetaStructure<Fq>, Vec<ThetaPoint<Fq>>) {
+        eval_points: &[ProductPoint<Fq>],
+        image_points: &mut [ThetaPoint<Fq>],
+    ) -> ThetaStructure<Fq> {
         // First recover the four torsion below the 8 torsion
         let P1P2_4 = self.double(P1P2_8);
         let Q1Q2_4 = self.double(Q1Q2_8);
@@ -365,21 +366,13 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         // can precompute a few inverses to save time for evaluation.
         let (codomain, A_inv, B_inv, C_inv) = Self::gluing_codomain(&T1_8, &T2_8);
 
-        // We now want to push through a set of points by evaluating each of them
-        // under the action of this isogeny. As the domain is an elliptic product,
-        // with elements of type CouplePoint, and the codomain is a ThetaStructure
-        // with elements of type ThetaPoint, we need a new vector here and as we
-        // iteratate through each CouplePoint, we can compute its image and push it
-        // to the new vector.
-        let mut theta_images: Vec<ThetaPoint<Fq>> = Vec::new();
-
         // Per image cost =
         // 2 * (16M + 5S) for the CouplePoint addition
         // 2 * 20M for the base change
         // 9M + 8S for the gluing image
         // Total:
         // 81M + 18S per point
-        for P in image_points.iter() {
+        for (i, P) in eval_points.iter().enumerate() {
             // Need affine coordinates here to do an add, if we didn't we
             // could use faster x-only... Something to think about but no
             // obvious solution.
@@ -394,9 +387,9 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
             // With a point and the shift value from the kernel, we can find
             // the image
             let T_image = Self::gluing_image(&T, &T_shift, &A_inv, &B_inv, &C_inv);
-            theta_images.push(T_image);
+            image_points[i] = T_image;
         }
 
-        (codomain, theta_images)
+        codomain
     }
 }

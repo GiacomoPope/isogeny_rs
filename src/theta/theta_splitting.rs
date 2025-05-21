@@ -346,8 +346,9 @@ fn theta_point_to_montgomery_point<Fq: FqTrait>(O0: &(Fq, Fq), P: &(Fq, Fq)) -> 
 /// curves.
 pub fn split_to_product<Fq: FqTrait>(
     Th: &ThetaStructure<Fq>,
-    image_points: &[ThetaPoint<Fq>],
-) -> (EllipticProduct<Fq>, Vec<ProductPoint<Fq>>) {
+    eval_points: &[ThetaPoint<Fq>],
+    img_points: &mut [ProductPoint<Fq>],
+) -> EllipticProduct<Fq> {
     // First we take the domain theta null point and
     // split this to two level-1 theta null points
     let null_point = Th.null_point();
@@ -360,10 +361,7 @@ pub fn split_to_product<Fq: FqTrait>(
     let E3E4 = EllipticProduct::new(&E3, &E4);
 
     // Now compute points on E3 x E4
-    let mut C: ProductPoint<Fq>;
-    let mut couple_points: Vec<ProductPoint<Fq>> = vec![];
-
-    for P in image_points.iter() {
+    for (i, P) in eval_points.iter().enumerate() {
         // Split to level 1
         let (P1, P2) = split_theta_point(P);
         // Compute the XPoint (X : Z) from each theta point
@@ -374,13 +372,9 @@ pub fn split_to_product<Fq: FqTrait>(
         let (Q1, _) = E3.lift_pointx(&Q1X);
         let (Q2, _) = E4.lift_pointx(&Q2X);
 
-        // Package these points into a CouplePoint on
-        // E3 x E4
-        C = ProductPoint::new(&Q1, &Q2);
-
-        // Push this into the output
-        couple_points.push(C);
+        // Package these points into a CouplePoint on E3 x E4
+        img_points[i] = ProductPoint::new(&Q1, &Q2);
     }
 
-    (E3E4, couple_points)
+    E3E4
 }
