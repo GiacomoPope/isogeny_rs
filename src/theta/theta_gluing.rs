@@ -184,7 +184,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
     /// Given a couple point as input, compute the corresponding ThetaPoint on
     /// the level two structure and then apply the basis change on this point
     /// Cost: 20M
-    fn base_change_couple_point(P1P2: &ProductPoint<Fq>, M: [Fq; 16]) -> ThetaPoint<Fq> {
+    fn base_change_couple_point(P1P2: &ProductPoint<Fq>, M: &[Fq; 16]) -> ThetaPoint<Fq> {
         let (P1, P2) = P1P2.points();
         let (mut X1, mut Z1) = P1.to_xz();
         let (mut X2, mut Z2) = P2.to_xz();
@@ -277,7 +277,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
     /// the correct image.
     ///
     /// Cost: 8S + 9M
-    fn gluing_image(
+    fn gluing_theta_image(
         T: &ThetaPoint<Fq>,
         T_shift: &ThetaPoint<Fq>,
         A_inv: &Fq,
@@ -327,19 +327,50 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         ThetaPoint::from_coords(&x, &y, &z, &t)
     }
 
+    /// Compute the image of a ProductPoint through a gluing isogeny given
+    /// the point `P`, a point of 4-torsion `K4`, the change of basis matrix
+    /// `M` and three precomputed elements of Fq from the codomain computation.
+    ///
+    /// Cost:
+    ///   - 2 * (16M + 5S) for the ProductPoint addition
+    ///   - 2 * 20M for the base change
+    ///   - 9M + 8S for the gluing theta image
+    ///
+    /// Total: 81M + 18S per point
+    fn gluing_eval(
+        self,
+        P: &ProductPoint<Fq>,
+        K4: &ProductPoint<Fq>,
+        M: &[Fq; 16],
+        A_inv: &Fq,
+        B_inv: &Fq,
+        C_inv: &Fq,
+    ) -> ThetaPoint<Fq> {
+        // Need affine coordinates here to do an add, if we didn't we
+        // could use faster x-only... Something to think about but no
+        // obvious solution.
+        let P_sum_T = self.add(P, K4);
+
+        // After we have added the points, we can use the gluing formula
+        // to recover theta points on the level 2 theta structure. First we
+        // must compute the basis change as we did for the kernel:
+        let T = Self::base_change_couple_point(P, M);
+        let T_shift = Self::base_change_couple_point(&P_sum_T, M);
+
+        // With a point and the shift value from the kernel, we can find
+        // the image
+        Self::gluing_theta_image(&T, &T_shift, A_inv, B_inv, C_inv)
+    }
+
     /// Compute the gluing (2,2)-isogeny from a ThetaStructure computed
     /// from an elliptic product.
-    /// Cost for codomain:
+    /// Cost for codomain: 172*M + 40*S
     ///   - Compute the four-torsion: 4 * (6M + 6S)
     ///   - Computing the base matrix: 104M + 8S
     ///   - Computing the base change: 2 * 20M
     ///   - Computing the codomain: 8S + 4M
-    /// Total: 172*M + 40*S
-    /// Cost for image:
-    ///   - CouplePoint addition: 2 * (16M + 5S)
-    ///   - Computing the base change: 2 * 20M
-    ///   - Computing gluing image: 9M + 8S
-    // Total: 81M + 18S per point
+    ///
+    /// Cost for images: 81M + 18S.
     pub fn gluing_isogeny(
         &self,
         P1P2_8: &ProductPoint<Fq>,
@@ -348,46 +379,32 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         image_points: &mut [ThetaPoint<Fq>],
     ) -> ThetaStructure<Fq> {
         // First recover the four torsion below the 8 torsion
+        // Cost: 4 * (6M + 6S)
         let P1P2_4 = self.double(P1P2_8);
         let Q1Q2_4 = self.double(Q1Q2_8);
 
         // Use the four torsion to deterministically find basis change
+        // Cost: 104M + 8S
         let M = self.get_base_matrix(&P1P2_4, &Q1Q2_4);
 
         // Take the points P1, P2 in E1 x E2 and represent them
         // as a theta point on a level 2 structure and map them
-        // through the above basis change
-        let T1_8 = Self::base_change_couple_point(P1P2_8, M);
-        let T2_8 = Self::base_change_couple_point(Q1Q2_8, M);
+        // through the above basis change.
+        // Cost: 2 * 20M
+        let T1_8 = Self::base_change_couple_point(P1P2_8, &M);
+        let T2_8 = Self::base_change_couple_point(Q1Q2_8, &M);
 
         // Now it's time to compute the codomain and image of the isogeny
         // with kernel below T1, and T2.
         // We save the zero index, as we use it for the images, and we also
         // can precompute a few inverses to save time for evaluation.
+        // Cost: 8S + 4M
         let (codomain, A_inv, B_inv, C_inv) = Self::gluing_codomain(&T1_8, &T2_8);
 
-        // Per image cost =
-        // 2 * (16M + 5S) for the CouplePoint addition
-        // 2 * 20M for the base change
-        // 9M + 8S for the gluing image
-        // Total:
-        // 81M + 18S per point
+        // Push points through the gluing isogeny.
+        // Cost: 81M + 18S per ProductPoint evaluated.
         for (i, P) in eval_points.iter().enumerate() {
-            // Need affine coordinates here to do an add, if we didn't we
-            // could use faster x-only... Something to think about but no
-            // obvious solution.
-            let P_sum_T = self.add(P, &P1P2_4);
-
-            // After we have added the points, we can use the gluing formula
-            // to recover theta points on the level 2 theta structure. First we
-            // must compute the basis change as we did for the kernel:
-            let T = Self::base_change_couple_point(P, M);
-            let T_shift = Self::base_change_couple_point(&P_sum_T, M);
-
-            // With a point and the shift value from the kernel, we can find
-            // the image
-            let T_image = Self::gluing_image(&T, &T_shift, &A_inv, &B_inv, &C_inv);
-            image_points[i] = T_image;
+            image_points[i] = self.gluing_eval(P, &P1P2_4, &M, &A_inv, &B_inv, &C_inv);
         }
 
         codomain

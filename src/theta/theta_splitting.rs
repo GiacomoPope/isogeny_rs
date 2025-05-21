@@ -279,11 +279,11 @@ pub fn splitting_isomorphism<Fq: FqTrait>(
     let (M, ok) = compute_splitting_matrix(&O0);
 
     // Map the Theta Structure through the symplectic transform
-    apply_base_change(&mut O0, M);
+    apply_base_change(&mut O0, &M);
 
     // Map the points through the symplectic transform
     for P in image_points.iter_mut() {
-        apply_base_change(P, M);
+        apply_base_change(P, &M);
     }
 
     (ThetaStructure::new_from_point(&O0), ok)

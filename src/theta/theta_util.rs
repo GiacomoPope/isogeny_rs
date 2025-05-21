@@ -43,7 +43,7 @@ pub fn to_squared_theta<Fq: FqTrait>(X: &Fq, Y: &Fq, Z: &Fq, T: &Fq) -> (Fq, Fq,
 /// Apply the base change described by M on a ThetaPoint in-place
 /// Cost: 16M
 #[inline]
-pub fn apply_base_change<Fq: FqTrait>(P: &mut ThetaPoint<Fq>, M: [Fq; 16]) {
+pub fn apply_base_change<Fq: FqTrait>(P: &mut ThetaPoint<Fq>, M: &[Fq; 16]) {
     let (x, y, z, t) = P.coords();
     P.X = M[0] * x + M[1] * y + M[2] * z + M[3] * t;
     P.Y = M[4] * x + M[5] * y + M[6] * z + M[7] * t;
