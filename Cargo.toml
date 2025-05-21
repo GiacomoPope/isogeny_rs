@@ -33,3 +33,8 @@ harness = false
 # name = "bench_product_isogeny"
 # path = "benches/bench_product_isogeny.rs"
 # harness = false
+
+# [[bench]]
+# name = "bench_biscalar_ladder"
+# path = "benches/bench_biscalar_ladder.rs"
+# harness = false

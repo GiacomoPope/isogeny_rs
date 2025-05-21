@@ -73,6 +73,23 @@ impl<Fq: FqTrait> Curve<Fq> {
         *ZQ = *XPQ * (V1 - V2).square();
     }
 
+    /// x-only differential addition with PointX type, sets `R` to x(P + Q) given x(P)
+    /// x(Q) and x(P - Q) as `PointX<Fq>`.
+    #[inline]
+    fn xadd_aff_add_into(R: &mut PointX<Fq>, xP: &PointX<Fq>, xQ: &PointX<Fq>, xPmQ: &Fq) {
+        R.X = xQ.X;
+        R.Z = xQ.Z;
+        Self::xadd_aff(&xPmQ, &xP.X, &xP.Z, &mut R.X, &mut R.Z);
+    }
+
+    /// Return x(P + Q) given x(P), x(Q) and x(P - Q) as `PointX<Fq>`.
+    #[inline]
+    fn xdiff_add_add(xP: &PointX<Fq>, xQ: &PointX<Fq>, xPmQ: &Fq) -> PointX<Fq> {
+        let mut R = PointX::INFINITY;
+        Self::xadd_aff_add_into(&mut R, xP, xQ, xPmQ);
+        R
+    }
+
     /// P3 <- n*P, x-only variant.
     /// Integer n is encoded as unsigned little-endian, with length
     /// nbitlen bits. Bits beyond that length are ignored.
@@ -326,11 +343,23 @@ impl<Fq: FqTrait> Curve<Fq> {
         R[2] = T[s1];
 
         // Compute the difference points for T, R
-        let mut D1 = R[1];
-        let mut D2 = R[2];
+        let D1 = R[1];
+        let D2 = R[2];
         R[2] = Self::xdiff_add(&R[1], &R[2], &B.PQ);
-        let mut F1 = R[2];
-        let mut F2 = B.PQ;
+        let F1 = R[2];
+        let F2 = B.PQ;
+
+        // The cost for the main loop is k doubles and 2*k differential adds.
+        // If we normalise D1, D2, F1, F2 then we can save one mul per diff.
+        // add, saving 2*k multiplications in total. As this function is usually
+        // called with scalars of size log(p)/2 > 30, then it's worth normalising
+        // the points.
+        let mut inverses: [Fq; 4] = [D1.Z, D2.Z, F1.Z, F2.Z];
+        Fq::batch_invert(&mut inverses);
+        let mut xD1 = D1.X * inverses[0];
+        let mut xD2 = D2.X * inverses[1];
+        let mut xF1 = F1.X * inverses[2];
+        let mut xF2 = F2.X * inverses[3];
 
         // Main ladder loop, compute [a]P + [b]Q
         for i in (0..k).rev() {
@@ -345,10 +374,10 @@ impl<Fq: FqTrait> Curve<Fq> {
             T[0] = self.xdouble(&T[h >> 1]);
             T[1] = R[r2];
             T[2] = R[r2 + 1];
-            PointX::condswap(&mut D1, &mut D2, (r2 as u32).wrapping_neg());
-            T[1] = Self::xdiff_add(&T[1], &T[2], &D1);
-            T[2] = Self::xdiff_add(&R[0], &R[2], &F1);
-            PointX::condswap(&mut F1, &mut F2, ((h & 1) as u32).wrapping_neg());
+            Fq::condswap(&mut xD1, &mut xD2, (r2 as u32).wrapping_neg());
+            T[1] = Self::xdiff_add_add(&T[1], &T[2], &xD1);
+            T[2] = Self::xdiff_add_add(&R[0], &R[2], &xF1);
+            Fq::condswap(&mut xF1, &mut xF2, ((h & 1) as u32).wrapping_neg());
 
             // Update R values from T values.
             R = T;

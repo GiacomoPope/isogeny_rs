@@ -77,7 +77,8 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         // We can do a single inversion during action by translation for a cost of
         // 21M + 4*(2S + 11M) + 1I to compute the coefficients, then the coefficients below
         // cost 44M to compute. If we model 1I to be log(p) multiplications then this
-        // is ~100M for level 1 bringing the total to about 209 M.
+        // is 30M for level 1 bringing the total to about 140 M. For other impl, inversion
+        // could well be more expensive (without the use of binary gcd for inversion in Fp).
         //
         // If we don't do any inversions then four action_by_translation costs 4*(9M + 3S)
         // but then the computation of the coefficients grows. For example, the coefficient
