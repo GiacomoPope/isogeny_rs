@@ -69,7 +69,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
     }
 
     /// Repeatedly doubles the pair of points (P1, P2) on E1 x E2 to get
-    /// ([2^n]P1, [2^n]P2)
+    /// (\[2^n\]P1, \[2^n\]P2). Cost: n * (12M + 12S)
     pub fn double_iter(&self, C: &ProductPoint<Fq>, n: usize) -> ProductPoint<Fq> {
         let mut C3 = *C;
         C3.P1 = self.E1.double_iter(&C3.P1, n);

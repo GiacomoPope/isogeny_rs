@@ -24,7 +24,12 @@ kat-tests = []
 # path = "benches/bench_sidh.rs"
 # harness = false
 
+# [[bench]]
+# name = "bench_sqisign_verification"
+# path = "benches/bench_sqisign_verification.rs"
+# harness = false
+
 [[bench]]
-name = "bench_sqisign_verification"
-path = "benches/bench_sqisign_verification.rs"
+name = "bench_product_isogeny"
+path = "benches/bench_product_isogeny.rs"
 harness = false

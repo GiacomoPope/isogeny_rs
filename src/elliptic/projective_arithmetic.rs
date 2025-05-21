@@ -160,14 +160,14 @@ impl<Fq: FqTrait> Curve<Fq> {
         P1.Z = Z2;
     }
 
-    /// Return 2*P as a new point
+    /// Return 2*P as a new point. Cost: 6M + 6S
     pub fn double(&self, P: &Point<Fq>) -> Point<Fq> {
         let mut P3 = Point::INFINITY;
         self.double_into(&mut P3, P);
         P3
     }
 
-    /// Return [2^n]*P as a new point
+    /// Return [2^n]*P as a new point. Cost n*(6M + 6S)
     pub fn double_iter(&self, P: &Point<Fq>, n: usize) -> Point<Fq> {
         let mut P3 = *P;
         for _ in 0..n {
