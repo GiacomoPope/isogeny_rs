@@ -1,5 +1,7 @@
 # A Rust Isogeny Library
 
+[![Build Status][build-image]][build-link]
+
 A Rust library for isogeny-based cryptography
 
 ## :construction: Everything will Change Always :construction:
