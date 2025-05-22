@@ -96,12 +96,12 @@ Tests can be run:
 cargo test
 ```
 
+## Collaboration
+
+I am very interested in collaboration to improve both the performance and scope of this project. Additionally, I am a mathematican first and Rust person second, so if any Rust experts have opinions / advice of making this project more idomatic to a Rust developer, please let me know.
+
+
 [//]: # (badges)
 
 [build-image]: https://github.com/GiacomoPope/isogeny_rs/workflows/Rust/badge.svg
 [build-link]: https://github.com/GiacomoPope/isogeny_rs/actions?query=workflow%3ARust
-
-
-## Collaboration
-
-I am very interested in collaboration to improve both the performance and scope of this project. Additionally, I am a mathematican first and Rust person second, so if any Rust experts have opinions / advice of making this project more idomatic to a Rust developer, please let me know.
