@@ -4,7 +4,7 @@ mod benchmark_biscalar {
     use std::time::Duration;
 
     use criterion::{Criterion, black_box, criterion_group};
-    use fp2::fq::Fq as FqTrait;
+    use fp2::traits::Fp as _;
     use rand_core::RngCore;
 
     use isogeny::elliptic::basis::BasisX;

@@ -2,7 +2,7 @@ use super::basis::BasisX;
 use super::curve::Curve;
 use super::point::PointX;
 
-use fp2::fq::Fq as FqTrait;
+use fp2::traits::Fp2 as FqTrait;
 
 impl<Fq: FqTrait> Curve<Fq> {
     /// Given xP and xQ as (X : Z) points, compute the point x(P ± Q) (sign is unknown).

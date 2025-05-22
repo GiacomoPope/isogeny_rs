@@ -1,7 +1,7 @@
 use core::{error::Error, fmt::Display};
 use std::marker::PhantomData;
 
-use fp2::fq::Fq as FqTrait;
+use fp2::traits::Fp2 as FqTrait;
 
 use crate::elliptic::{basis::BasisX, curve::Curve, point::PointX};
 

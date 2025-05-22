@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod test_pairings {
-    use fp2::fq::Fq;
+    use fp2::traits::Fp as _;
     use isogeny::elliptic::curve::Curve;
     use isogeny::elliptic::point::PointX;
     use isogeny::fields::sike::SikeOne as Fp2;

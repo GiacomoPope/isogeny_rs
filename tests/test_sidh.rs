@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod test_sidh {
-    use fp2::fq::Fq;
+    use fp2::traits::Fp as _;
     use isogeny::protocols::sidh_parameters::SIDH_434;
     use isogeny::utilities::test_utils::drng::DRNG;
 

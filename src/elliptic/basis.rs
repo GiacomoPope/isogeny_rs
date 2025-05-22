@@ -1,15 +1,15 @@
 use super::point::PointX;
-use fp2::fq::Fq as FqTrait;
+use fp2::traits::Fp as FpTrait;
 
 /// A x-only basis of x(P), x(Q) and x(P - Q)
 #[derive(Clone, Copy, Debug)]
-pub struct BasisX<Fq: FqTrait> {
+pub struct BasisX<Fq: FpTrait> {
     pub P: PointX<Fq>,
     pub Q: PointX<Fq>,
     pub PQ: PointX<Fq>,
 }
 
-impl<Fq: FqTrait> BasisX<Fq> {
+impl<Fq: FpTrait> BasisX<Fq> {
     /// Create a basis given the x-coordinates of x(P), x(Q) and x(P - Q)
     pub const fn from_x_coords(xP: &Fq, xQ: &Fq, xPQ: &Fq) -> Self {
         let P = PointX::from_x_coord(xP);

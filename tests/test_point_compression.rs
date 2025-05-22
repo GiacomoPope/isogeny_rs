@@ -3,7 +3,7 @@
 // TODO: further randomize this test
 #[cfg(test)]
 mod test_point_compression {
-    use fp2::fq::Fq;
+    use fp2::traits::Fp as _;
     use isogeny::elliptic::curve::Curve;
     use isogeny::fields::sqisign::SqiField248 as Fp2;
 

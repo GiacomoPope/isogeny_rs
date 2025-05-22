@@ -4,7 +4,7 @@
 // splitting to Montgomery curves.
 // ========================================================
 
-use fp2::fq::Fq as FqTrait;
+use fp2::traits::Fp2 as FqTrait;
 
 use crate::elliptic::curve::Curve;
 use crate::elliptic::point::PointX;

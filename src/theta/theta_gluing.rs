@@ -15,7 +15,7 @@ use super::theta_util::{apply_base_change, to_hadamard};
 use crate::elliptic::curve::Curve;
 use crate::elliptic::projective_point::Point;
 
-use fp2::fq::Fq as FqTrait;
+use fp2::traits::Fp2 as FqTrait;
 
 impl<Fq: FqTrait> EllipticProduct<Fq> {
     /// Given a point in the four torsion, compute the 2x2 matrix needed

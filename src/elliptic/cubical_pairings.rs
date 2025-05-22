@@ -2,7 +2,7 @@
 
 use super::curve::Curve;
 use super::point::PointX;
-use fp2::fq::Fq as FqTrait;
+use fp2::traits::Fp2 as FqTrait;
 
 impl<Fq: FqTrait> PointX<Fq> {
     /// Affine translation by a two torsion point needed for even degree

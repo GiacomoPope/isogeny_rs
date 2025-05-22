@@ -1,16 +1,16 @@
-use fp2::fq::Fq as FqTrait;
+use fp2::traits::Fp as FpTrait;
 
 use super::point::PointX;
 
 /// Projective representation of a point (X : Y : Z)
 #[derive(Clone, Copy, Debug)]
-pub struct Point<Fq: FqTrait> {
+pub struct Point<Fq: FpTrait> {
     pub X: Fq,
     pub Y: Fq,
     pub Z: Fq,
 }
 
-impl<Fq: FqTrait> Point<Fq> {
+impl<Fq: FpTrait> Point<Fq> {
     /// The point-at-infinity (neutral element of the group law).
     pub const INFINITY: Self = Self {
         X: Fq::ZERO,
@@ -96,7 +96,7 @@ impl<Fq: FqTrait> Point<Fq> {
     }
 }
 
-impl<Fq: FqTrait> core::ops::Neg for Point<Fq> {
+impl<Fq: FpTrait> core::ops::Neg for Point<Fq> {
     type Output = Point<Fq>;
 
     #[inline(always)]
@@ -107,7 +107,7 @@ impl<Fq: FqTrait> core::ops::Neg for Point<Fq> {
     }
 }
 
-impl<Fq: FqTrait> core::ops::Neg for &Point<Fq> {
+impl<Fq: FpTrait> core::ops::Neg for &Point<Fq> {
     type Output = Point<Fq>;
 
     #[inline(always)]
@@ -118,7 +118,7 @@ impl<Fq: FqTrait> core::ops::Neg for &Point<Fq> {
     }
 }
 
-impl<Fq: FqTrait> ::std::fmt::Display for Point<Fq> {
+impl<Fq: FpTrait> ::std::fmt::Display for Point<Fq> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         if self.is_zero() == u32::MAX {
             write!(f, "Point: (0 : 1 : 0)")

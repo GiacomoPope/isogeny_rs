@@ -1,10 +1,10 @@
-use fp2::fq::Fq as FqTrait;
+use fp2::traits::Fp as FpTrait;
 
 use crate::utilities::le_bytes::encode_to_odd_binary;
 
 use super::{basis::BasisX, curve::Curve, point::PointX};
 
-impl<Fq: FqTrait> Curve<Fq> {
+impl<Fq: FpTrait> Curve<Fq> {
     /// Compute the x-only double of a given point and return
     /// the X-coords
     #[inline(always)]
@@ -79,7 +79,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     fn xadd_aff_add_into(R: &mut PointX<Fq>, xP: &PointX<Fq>, xQ: &PointX<Fq>, xPmQ: &Fq) {
         R.X = xQ.X;
         R.Z = xQ.Z;
-        Self::xadd_aff(&xPmQ, &xP.X, &xP.Z, &mut R.X, &mut R.Z);
+        Self::xadd_aff(xPmQ, &xP.X, &xP.Z, &mut R.X, &mut R.Z);
     }
 
     /// Return x(P + Q) given x(P), x(Q) and x(P - Q) as `PointX<Fq>`.

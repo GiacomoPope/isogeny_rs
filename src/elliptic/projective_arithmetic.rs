@@ -1,8 +1,8 @@
-use fp2::fq::Fq as FqTrait;
+use fp2::traits::Fp as FpTrait;
 
 use super::{curve::Curve, projective_point::Point};
 
-impl<Fq: FqTrait> Curve<Fq> {
+impl<Fq: FpTrait> Curve<Fq> {
     /// P3 <- P1 + P2
     pub fn add_into(&self, P3: &mut Point<Fq>, P1: &Point<Fq>, P2: &Point<Fq>) {
         // Complete routine, to handle all edge cases:

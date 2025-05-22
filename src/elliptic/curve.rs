@@ -1,16 +1,16 @@
 use super::{basis::BasisX, point::PointX, projective_point::Point};
-use fp2::fq::Fq as FqTrait;
+use fp2::traits::Fp as FpTrait;
 use rand_core::{CryptoRng, RngCore};
 
 /// Curve y^2 = x^3 + A*x^2 + x, for a given constant A
 /// (special case of a Montgomery curve).
 #[derive(Clone, Copy, Debug)]
-pub struct Curve<Fq: FqTrait> {
+pub struct Curve<Fq: FpTrait> {
     pub A: Fq,   // A
     pub A24: Fq, // (A+2)/4
 }
 
-impl<Fq: FqTrait> Curve<Fq> {
+impl<Fq: FpTrait> Curve<Fq> {
     /// Create a new curve instance, with the provided constant.
     pub fn new(A: &Fq) -> Self {
         // We check that the curve is not singular, i.e. A^2 != 4.
@@ -156,7 +156,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     }
 }
 
-impl<Fq: FqTrait> ::std::fmt::Display for Curve<Fq> {
+impl<Fq: FpTrait> ::std::fmt::Display for Curve<Fq> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         write!(f, "Elliptic Curve: y^2 = x^3 + ({})*x^2 + x", self.A)
     }

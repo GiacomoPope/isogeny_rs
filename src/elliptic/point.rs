@@ -1,14 +1,14 @@
-use fp2::fq::Fq as FqTrait;
+use fp2::traits::Fp as FpTrait;
 
 /// Special x-only representation of a point (or a pair of points,
 /// since two Y coordinates may match a given X).
 #[derive(Clone, Copy, Debug)]
-pub struct PointX<Fq: FqTrait> {
+pub struct PointX<Fq: FpTrait> {
     pub X: Fq,
     pub Z: Fq,
 }
 
-impl<Fq: FqTrait> PointX<Fq> {
+impl<Fq: FpTrait> PointX<Fq> {
     /// The neutral point of the group.
     pub const INFINITY: Self = Self {
         X: <Fq>::ONE,
@@ -57,7 +57,7 @@ impl<Fq: FqTrait> PointX<Fq> {
     }
 }
 
-impl<Fq: FqTrait> ::std::fmt::Display for PointX<Fq> {
+impl<Fq: FpTrait> ::std::fmt::Display for PointX<Fq> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         write!(f, "PointX: ({} : {})", self.X, self.Z)
     }

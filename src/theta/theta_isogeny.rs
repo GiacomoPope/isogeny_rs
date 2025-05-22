@@ -8,7 +8,7 @@
 // incompatible with the doubling formula.
 // ===================================================================
 
-use fp2::fq::Fq as FqTrait;
+use fp2::traits::Fp2 as FqTrait;
 
 use super::theta_point::ThetaPoint;
 use super::theta_structure::ThetaStructure;

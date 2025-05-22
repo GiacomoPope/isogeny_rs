@@ -1,17 +1,17 @@
-use fp2::fq::Fq as FqTrait;
+use fp2::traits::Fp as FpTrait;
 
 use super::{curve::Curve, point::PointX};
 
 /// Structure used to evaluate an isomorphism between two
 /// Montgomery curves such that theta(P) = (x*X + z*Z : d*Z)
 #[derive(Clone, Copy, Debug)]
-pub struct Isomorphism<Fq: FqTrait> {
+pub struct Isomorphism<Fq: FpTrait> {
     x: Fq,
     z: Fq,
     d: Fq,
 }
 
-impl<Fq: FqTrait> Isomorphism<Fq> {
+impl<Fq: FpTrait> Isomorphism<Fq> {
     // TODO: explain edge cases
     pub fn new(E1: &Curve<Fq>, E2: &Curve<Fq>) -> Self {
         // lambda_x = (2*A2^3 - 9*A2) * (3 - A1^2)

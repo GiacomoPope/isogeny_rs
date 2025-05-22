@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod test_three_isogeny_chain {
-    use fp2::fq::Fq;
+    use fp2::traits::Fp as _;
     use isogeny::elliptic::curve::Curve;
     use isogeny::elliptic::isomorphism::Isomorphism;
     use isogeny::elliptic::point::PointX;
