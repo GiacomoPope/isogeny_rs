@@ -20,11 +20,15 @@ struct PointXMultiples<Fq: FqTrait> {
 }
 
 impl<Fq: FqTrait> PointXMultiples<Fq> {
-    pub fn new(E: &Curve<Fq>, P: &PointX<Fq>) -> Self {
+    pub fn new(A24: &Fq, C24: &Fq, P: &PointX<Fq>) -> Self {
+        // precompute [2]P for the second output of multiplies
+        let mut P2 = *P;
+        Curve::xdbl_proj(A24, C24, &mut P2.X, &mut P2.Z);
+
         Self {
             P: *P,
             Q: *P,
-            R: E.xdouble(P),
+            R: P2,
             i: 0,
         }
     }
@@ -62,19 +66,95 @@ impl<Fq: FqTrait> Iterator for PointXMultiples<Fq> {
 }
 
 impl<Fq: FqTrait> Curve<Fq> {
-    fn edwards_multiples(&self, constants: &mut [(Fq, Fq)], P: &PointX<Fq>) {
-        let mut iP = PointXMultiples::new(self, P);
+    /// P3 <- n*P, x-only variant using (A24 : C24).
+    /// Integer n is represented as a u64 and is assumed to be public.
+    fn set_xmul_proj_u64_vartime(A24: &Fq, C24: &Fq, P3: &mut PointX<Fq>, P: &PointX<Fq>, n: u64) {
+        // Handle small cases.
+        match n {
+            0 => {
+                *P3 = PointX::INFINITY;
+            }
+            1 => {
+                *P3 = *P;
+            }
+            2 => {
+                *P3 = *P;
+                Self::xdbl_proj(A24, C24, &mut P3.X, &mut P3.Z);
+            }
+            4 => {
+                *P3 = *P;
+                Self::xdbl_proj(A24, C24, &mut P3.X, &mut P3.Z);
+                Self::xdbl_proj(A24, C24, &mut P3.X, &mut P3.Z);
+            }
+
+            _ => {
+                let nbitlen = 63 - n.leading_ones();
+
+                let mut X0 = Fq::ONE;
+                let mut Z0 = Fq::ZERO;
+                let mut X1 = P.X;
+                let mut Z1 = P.Z;
+                let mut cc = 0u32;
+                if nbitlen > 21 {
+                    // If n is large enough then it is worthwhile to
+                    // normalize the source point to affine.
+                    // If P = inf, then this sets Xp to 0; thus, the
+                    // output of both xdbl() and xadd_aff() has Z = 0,
+                    // so we correctly get the point-at-infinity at the end.
+                    let Xp = P.X / P.Z;
+                    for i in (0..nbitlen).rev() {
+                        let ctl = (((n >> i) as u32) & 1).wrapping_neg();
+                        Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
+                        Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
+                        Self::xadd_aff(&Xp, &X0, &Z0, &mut X1, &mut Z1);
+                        Self::xdbl_proj(A24, C24, &mut X0, &mut Z0);
+                        cc = ctl;
+                    }
+                } else {
+                    for i in (0..nbitlen).rev() {
+                        let ctl = (((n >> i) as u32) & 1).wrapping_neg();
+                        Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
+                        Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
+                        Self::xadd(&P.X, &P.Z, &X0, &Z0, &mut X1, &mut Z1);
+                        Self::xdbl_proj(A24, C24, &mut X0, &mut Z0);
+                        cc = ctl;
+                    }
+                }
+                Fq::condswap(&mut X0, &mut X1, cc);
+                Fq::condswap(&mut Z0, &mut Z1, cc);
+
+                // The ladder may fail if P = (0,0) (which is a point of
+                // order 2) because in that case xadd() (and xadd_aff())
+                // return Z = 0 systematically, so the result is considered
+                // to be the point-at-infinity, which is wrong is n is odd.
+                // We adjust the result in that case.
+                let spec = P.X.is_zero() & !P.Z.is_zero() & (((n & 1) as u32) & 1).wrapping_neg();
+                P3.X = X0;
+                P3.Z = Z0;
+                P3.X.set_cond(&Fq::ZERO, spec);
+                P3.Z.set_cond(&Fq::ONE, spec);
+            }
+        }
+    }
+
+    /// Return n*P as a new point (x-only variant) using (A24 : C24).
+    /// Integer n is encoded as a u64 which is assumed to be a public value.
+    fn xmul_proj_u64_vartime(A24: &Fq, C24: &Fq, P: &PointX<Fq>, n: u64) -> PointX<Fq> {
+        let mut P3 = PointX::INFINITY;
+        Self::set_xmul_proj_u64_vartime(A24, C24, &mut P3, P, n);
+        P3
+    }
+
+    /// Compute (X + Z) and (X - Z) for [i]P for 0 < i <= (ell - 1) / 2
+    fn edwards_multiples(A24: &Fq, C24: &Fq, constants: &mut [(Fq, Fq)], P: &PointX<Fq>) {
+        let mut iP = PointXMultiples::new(A24, C24, P);
         for c in constants.iter_mut() {
             let (X, Z) = iP.next().unwrap().coords();
             *c = (X - Z, X + Z)
         }
     }
 
-    pub fn velu_two_isogeny(
-        &self,
-        kernel: &PointX<Fq>,
-        img_points: &mut [PointX<Fq>],
-    ) -> Curve<Fq> {
+    fn velu_two_isogeny_proj(kernel: &PointX<Fq>, img_points: &mut [PointX<Fq>]) -> (Fq, Fq) {
         assert!(kernel.X.is_zero() != u32::MAX); // TODO: Handle this edge case
 
         let mut A_codomain = kernel.X.square();
@@ -95,23 +175,24 @@ impl<Fq: FqTrait> Curve<Fq> {
             P.Z *= t3 + t2;
         }
 
-        Curve::new(&(A_codomain / C_codomain))
+        (A_codomain, C_codomain)
     }
 
-    pub fn velu_odd_prime_isogeny(
-        &self,
+    fn velu_odd_isogeny_proj(
+        A24: &Fq,
+        C24: &Fq,
         kernel: &PointX<Fq>,
         degree: usize,
         img_points: &mut [PointX<Fq>],
-    ) -> Curve<Fq> {
+    ) -> (Fq, Fq) {
         // Convert from Montgomery to projective twisted Edwards (A_ed : D_ed)
-        let mut A_ed = self.A + Fq::TWO;
-        let mut D_ed = self.A - Fq::TWO;
+        let mut A_ed = *A24; // A_ed = (A + 2*C)
+        let mut D_ed = *A24 - *C24; // D_ed = (A - 2*C)
 
         // We precompute (X - Z) and (X + Z) for (X : Z) = [i]P for i in 0..((ell - 1)/2)
         let d = (degree - 1) >> 1;
         let mut constants = vec![(Fq::ZERO, Fq::ZERO); d];
-        self.edwards_multiples(&mut constants, kernel);
+        Self::edwards_multiples(A24, C24, &mut constants, kernel);
 
         // Evaluate each point through the isogeny
         for P in img_points.iter_mut() {
@@ -159,56 +240,100 @@ impl<Fq: FqTrait> Curve<Fq> {
         let A_codomain = (A_ed + D_ed).mul2();
         let C_codomain = A_ed - D_ed;
 
-        // TODO: if I wrote a new mulx and doublex which uses (A : C)
-        // instead of A or A24 then we could keep the curve Montgomery
-        // coefficient projective throughout the chain and return
-        // (A : C) instead.
-        Curve::new(&(A_codomain / C_codomain))
+        (A_codomain, C_codomain)
     }
 
-    pub fn velu_prime_power_isogeny(
-        self,
+    fn velu_two_power_isogeny_proj(
+        A: &Fq,
+        C: &Fq,
         kernel: &PointX<Fq>,
-        degree: usize,
         len: usize,
         img_points: &mut [PointX<Fq>],
-    ) -> Curve<Fq> {
-        let mut codomain = self;
+    ) -> (Fq, Fq) {
+        let mut A_cod = *A;
+        let mut C_cod = *C;
+
+        // TODO: clean this up.
         let mut eval_points = img_points.to_vec();
         eval_points.push(*kernel);
 
         // TODO: use a balanced strategy?
         for i in 0..len {
-            // Compute [ell^(len - i - 1)] K which is a point of order ell
+            // TODO, this is computed too many times.
+            let mut C24 = C_cod.mul2();
+            let A24 = A_cod + C24;
+            C24.set_mul2();
+
+            // Compute [2^(len - i - 1)]
             let mut ker_step = *eval_points.last().unwrap();
-            for _ in 0..(len - i - 1) {
-                ker_step = codomain.xmul_u64_vartime(&ker_step, degree as u64);
-            }
-            // 2-isogenies are handled with a special function
-            if degree == 2 {
-                codomain = codomain.velu_two_isogeny(&ker_step, &mut eval_points);
-            } else {
-                codomain = codomain.velu_odd_prime_isogeny(&ker_step, degree, &mut eval_points);
-            }
+            Self::xdbl_proj_iter(&A24, &C24, &mut ker_step, len - i - 1);
+
+            // Compute the 2-isogeny
+            (A_cod, C_cod) = Self::velu_two_isogeny_proj(&ker_step, &mut eval_points);
         }
 
         // TODO: I don't like this copy...
         img_points.copy_from_slice(&eval_points[..eval_points.len() - 1]);
 
-        codomain
+        (A_cod, C_cod)
     }
 
-    pub fn velu_composite_isogeny(
-        self,
+    fn velu_odd_power_isogeny_proj(
+        A: &Fq,
+        C: &Fq,
+        kernel: &PointX<Fq>,
+        degree: usize,
+        len: usize,
+        img_points: &mut [PointX<Fq>],
+    ) -> (Fq, Fq) {
+        let mut A_cod = *A;
+        let mut C_cod = *C;
+
+        // TODO: clean this up.
+        let mut eval_points = img_points.to_vec();
+        eval_points.push(*kernel);
+
+        // TODO: use a balanced strategy?
+        for i in 0..len {
+            // TODO, this is computed too many times.
+            let mut C24 = C_cod.mul2();
+            let A24 = A_cod + C24;
+            C24.set_mul2();
+
+            // Compute [ell^(len - i - 1)] K which is a point of order ell
+            let mut ker_step = *eval_points.last().unwrap();
+            for _ in 0..(len - i - 1) {
+                ker_step = Self::xmul_proj_u64_vartime(&A24, &C24, &ker_step, degree as u64);
+            }
+            (A_cod, C_cod) =
+                Self::velu_odd_isogeny_proj(&A24, &C24, &ker_step, degree, &mut eval_points);
+        }
+
+        // TODO: I don't like this copy...
+        img_points.copy_from_slice(&eval_points[..eval_points.len() - 1]);
+
+        (A_cod, C_cod)
+    }
+
+    pub fn velu_composite_isogeny_proj(
+        A: &Fq,
+        C: &Fq,
         kernel: &PointX<Fq>,
         degrees: &[(usize, usize)],
         img_points: &mut [PointX<Fq>],
-    ) -> Curve<Fq> {
-        let mut codomain = self;
+    ) -> (Fq, Fq) {
+        let mut A_cod = *A;
+        let mut C_cod = *C;
+
         let mut eval_points = img_points.to_vec();
         eval_points.push(*kernel);
 
         for i in 0..degrees.len() {
+            // TODO, this is computed too many times.
+            let mut C24 = C_cod.mul2();
+            let A24 = A_cod + C24;
+            C24.set_mul2();
+
             // At each step we will compute a degree^len isogeny
             let (ell, n) = degrees[i];
 
@@ -218,17 +343,76 @@ impl<Fq: FqTrait> Curve<Fq> {
             let mut ker_step = *eval_points.last().unwrap();
             for (p, e) in degrees.iter().skip(i + 1) {
                 for _ in 0..*e {
-                    ker_step = codomain.xmul_u64_vartime(&ker_step, *p as u64);
+                    ker_step = Self::xmul_proj_u64_vartime(&A24, &C24, &ker_step, *p as u64);
                 }
             }
 
-            // Now ker_step should be a point of order degree^len, we compute a prime-power isogeny
-            codomain = codomain.velu_prime_power_isogeny(&ker_step, ell, n, &mut eval_points);
+            // Handle 2^n isogenies separately.
+            (A_cod, C_cod) = if ell == 2 {
+                Self::velu_two_power_isogeny_proj(&A_cod, &C_cod, &ker_step, n, &mut eval_points)
+            } else {
+                Self::velu_odd_power_isogeny_proj(
+                    &A_cod,
+                    &C_cod,
+                    &ker_step,
+                    ell,
+                    n,
+                    &mut eval_points,
+                )
+            };
         }
 
         // TODO: I don't like this copy...
         img_points.copy_from_slice(&eval_points[..eval_points.len() - 1]);
 
-        codomain
+        (A_cod, C_cod)
+    }
+
+    // ============================================================
+
+    pub fn velu_prime_isogeny(
+        self,
+        kernel: &PointX<Fq>,
+        degree: usize,
+        img_points: &mut [PointX<Fq>],
+    ) -> Self {
+        // 2-isogenies are handled with a special function
+        let (A, C) = if degree == 2 {
+            Self::velu_two_isogeny_proj(kernel, img_points)
+        } else {
+            let A24 = self.A + Fq::TWO;
+            let C24 = Fq::FOUR;
+
+            Self::velu_odd_isogeny_proj(&A24, &C24, kernel, degree, img_points)
+        };
+
+        Self::new(&(A / C))
+    }
+
+    pub fn velu_prime_power_isogeny(
+        self,
+        kernel: &PointX<Fq>,
+        degree: usize,
+        len: usize,
+        img_points: &mut [PointX<Fq>],
+    ) -> Self {
+        // TODO: I could make a 2-chain and an odd-chain here to call separately to stop the branch
+        // for degree = 2 in velu_prime_power_isogeny_proj
+        let (A, C) =
+            Self::velu_odd_power_isogeny_proj(&self.A, &Fq::ONE, kernel, degree, len, img_points);
+
+        Self::new(&(A / C))
+    }
+
+    pub fn velu_composite_isogeny(
+        self,
+        kernel: &PointX<Fq>,
+        degrees: &[(usize, usize)],
+        img_points: &mut [PointX<Fq>],
+    ) -> Self {
+        let (A, C) =
+            Self::velu_composite_isogeny_proj(&self.A, &Fq::ONE, kernel, degrees, img_points);
+
+        Self::new(&(A / C))
     }
 }

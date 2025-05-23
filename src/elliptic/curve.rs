@@ -24,6 +24,18 @@ impl<Fq: FpTrait> Curve<Fq> {
         }
     }
 
+    /// Compute a curve from the projective coordinates of (A + 2) / 4 = (A24 : C24)
+    #[inline]
+    pub fn curve_from_A24_proj(A24: &Fq, C24: &Fq) -> Self {
+        // Compute A from (A24 : C24)
+        let mut A = (*A24) + (*A24);
+        A -= *C24;
+        A += A;
+        A /= *C24;
+
+        Self::new(&A)
+    }
+
     /// Compute the j-invariant of the curve.
     pub fn j_invariant(&self) -> Fq {
         let mut j = self.A.square();

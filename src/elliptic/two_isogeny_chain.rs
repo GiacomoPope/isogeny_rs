@@ -3,42 +3,6 @@ use fp2::traits::Fp2 as FqTrait;
 use super::{curve::Curve, point::PointX};
 
 impl<Fq: FqTrait> Curve<Fq> {
-    /// Compute a curve from the projective coordinates of (A + 2) / 4 = (A24 : C24)
-    #[inline]
-    fn curve_from_A24_proj(A24: &Fq, C24: &Fq) -> Curve<Fq> {
-        // Compute A from (A24 : C24)
-        let mut A = (*A24) + (*A24);
-        A -= *C24;
-        A += A;
-        A /= *C24;
-
-        Curve::new(&A)
-    }
-
-    /// Compute [2]P in place using projective (A + 2) / 4 = (A24 : C24)
-    /// Cost: 2S + 4M
-    #[inline(always)]
-    fn xdbl_proj(A24: &Fq, C24: &Fq, P: &mut PointX<Fq>) {
-        let mut t0 = P.X + P.Z;
-        t0.set_square();
-        let mut t1 = P.X - P.Z;
-        t1.set_square();
-        let t2 = t0 - t1;
-        t1 *= *C24;
-        P.X = t0 * t1;
-        t0 = t2 * (*A24);
-        t0 += t1;
-        P.Z = t0 * t2;
-    }
-
-    /// Compute \[2^n\]P in place using projective (A + 2) / 4 = (A24 : C24).
-    /// Cost: n * (2S + 4M)
-    fn xdbl_proj_iter(A24: &Fq, C24: &Fq, P: &mut PointX<Fq>, n: usize) {
-        for _ in 0..n {
-            Self::xdbl_proj(A24, C24, P);
-        }
-    }
-
     /// Compute the codomain of the 2-isogeny E -> E/<ker> for ker != (0 : 1)
     fn two_isogeny_codomain(ker: &PointX<Fq>) -> (Fq, Fq) {
         let mut A24 = ker.X.square();
@@ -144,7 +108,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         n: usize,
         images: &mut [PointX<Fq>],
         allow_singular: bool,
-    ) -> (Curve<Fq>, u32) {
+    ) -> (Self, u32) {
         let mut A24 = self.A24;
         let mut C24 = Fq::ONE;
 
@@ -162,7 +126,7 @@ impl<Fq: FqTrait> Curve<Fq> {
             if i == 0 {
                 // First check if the kernel has the correct order.
                 let mut inf = ker_step;
-                Self::xdbl_proj(&A24, &C24, &mut inf);
+                Self::xdbl_proj(&A24, &C24, &mut inf.X, &mut inf.Z);
                 if (!ker_step.Z.is_zero() & inf.Z.is_zero()) != u32::MAX {
                     return (*self, 0);
                 }
@@ -212,7 +176,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         kernel: &PointX<Fq>,
         n: usize,
         images: &mut [PointX<Fq>],
-    ) -> (Curve<Fq>, u32) {
+    ) -> (Self, u32) {
         // For 2-isogenies we represent (A + 2) / 4 projectively as (A24 : C24)
         let mut A24 = self.A24;
         let mut C24 = Fq::ONE;
@@ -257,13 +221,13 @@ impl<Fq: FqTrait> Curve<Fq> {
                 let mut tmp = ker_step;
 
                 // Ensure that the [2]ker is not (0 : 1)
-                Self::xdbl_proj(&A24, &C24, &mut tmp);
+                Self::xdbl_proj(&A24, &C24, &mut tmp.X, &mut tmp.Z);
                 ok &= !tmp.X.is_zero();
 
                 // Ensure that the kernel has exact order
                 // [2]ker != 0 and [4]ker = 0
                 ok &= !tmp.Z.is_zero();
-                Self::xdbl_proj(&A24, &C24, &mut tmp);
+                Self::xdbl_proj(&A24, &C24, &mut tmp.X, &mut tmp.Z);
                 ok &= tmp.Z.is_zero();
             }
 
@@ -294,7 +258,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
             // Ensure the point has order exactly 2
             let mut tmp = ker_step;
-            Self::xdbl_proj(&A24, &C24, &mut tmp);
+            Self::xdbl_proj(&A24, &C24, &mut tmp.X, &mut tmp.Z);
             ok &= tmp.Z.is_zero();
 
             // Compute the codomain from ker_step

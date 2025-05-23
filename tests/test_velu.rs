@@ -135,7 +135,7 @@ mod velu_test {
 
         let codomain_test = Curve::new(&CODOMAIN_AP);
         let mut images = [ker];
-        let codomain = E.velu_odd_prime_isogeny(&ker, 163, &mut images);
+        let codomain = E.velu_prime_isogeny(&ker, 163, &mut images);
 
         // Ensure the codomain matches the expected result.
         assert!(codomain.A.equals(&codomain_test.A) == u32::MAX);

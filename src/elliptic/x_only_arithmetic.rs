@@ -34,6 +34,31 @@ impl<Fq: FpTrait> Curve<Fq> {
         *Z *= V1;
     }
 
+    /// Compute [2]P in place using projective (A + 2) / 4 = (A24 : C24)
+    /// Cost: 2S + 4M
+    #[inline(always)]
+    pub fn xdbl_proj(A24: &Fq, C24: &Fq, X: &mut Fq, Z: &mut Fq) {
+        let mut t0 = *X + *Z;
+        t0.set_square();
+        let mut t1 = *X - *Z;
+        t1.set_square();
+        let t2 = t0 - t1;
+        t1 *= *C24;
+        *X = t0 * t1;
+        t0 = t2 * (*A24);
+        t0 += t1;
+        *Z = t0 * t2;
+    }
+
+    /// Compute \[2^n\]P in place using projective (A + 2) / 4 = (A24 : C24).
+    /// Cost: n * (2S + 4M)
+    #[inline]
+    pub fn xdbl_proj_iter(A24: &Fq, C24: &Fq, P: &mut PointX<Fq>, n: usize) {
+        for _ in 0..n {
+            Self::xdbl_proj(A24, C24, &mut P.X, &mut P.Z);
+        }
+    }
+
     /// x-only differential formula Note: order of arguments:
     /// (XPQ : ZPQ), (XP : ZP), (XQ : ZQ) For PQ = P - Q
     /// Sets Q  = P + Q in place

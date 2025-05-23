@@ -5,7 +5,7 @@ use super::{curve::Curve, point::PointX};
 impl<Fq: FqTrait> Curve<Fq> {
     /// Compute a curve from the projective coordinates of A^±_{24} = (A + 2C : A - 2C)
     #[inline]
-    fn curve_from_A_plus_minus(A24_plus: &Fq, A24_minus: &Fq) -> Curve<Fq> {
+    fn curve_from_A_plus_minus(A24_plus: &Fq, A24_minus: &Fq) -> Self {
         // Compute A from (A + 2C : A - 2C)
         let num = (*A24_plus + *A24_minus).mul2();
         let den = *A24_plus - *A24_minus;
@@ -103,7 +103,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         kernel: &PointX<Fq>,
         n: usize,
         images: &mut [PointX<Fq>],
-    ) -> (Curve<Fq>, u32) {
+    ) -> (Self, u32) {
         // For codomain computation we track the constants (A + 2C : A - 2C)
         let mut A24_plus = self.A + Fq::TWO;
         let mut A24_minus = self.A - Fq::TWO;
