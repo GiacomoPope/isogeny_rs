@@ -8,4 +8,5 @@ pub mod projective_point;
 pub mod three_isogeny_chain;
 pub mod torsion_basis;
 pub mod two_isogeny_chain;
+pub mod velu;
 pub mod x_only_arithmetic;

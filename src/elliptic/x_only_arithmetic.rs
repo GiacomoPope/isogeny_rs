@@ -56,7 +56,7 @@ impl<Fq: FpTrait> Curve<Fq> {
 
     /// Return x(P + Q) given x(P), x(Q) and x(P - Q) as `PointX<Fq>`.
     #[inline]
-    fn xdiff_add(xP: &PointX<Fq>, xQ: &PointX<Fq>, xPmQ: &PointX<Fq>) -> PointX<Fq> {
+    pub fn xdiff_add(xP: &PointX<Fq>, xQ: &PointX<Fq>, xPmQ: &PointX<Fq>) -> PointX<Fq> {
         let mut R = PointX::INFINITY;
         Self::xdiff_add_into(&mut R, xP, xQ, xPmQ);
         R
@@ -152,6 +152,77 @@ impl<Fq: FpTrait> Curve<Fq> {
     pub fn xmul(&self, P: &PointX<Fq>, n: &[u8], nbitlen: usize) -> PointX<Fq> {
         let mut P3 = PointX::INFINITY;
         self.xmul_into(&mut P3, P, n, nbitlen);
+        P3
+    }
+
+    /// P3 <- n*P, x-only variant.
+    /// Integer n is represented as a u64 and the scalar n is assumed to be public
+    /// nbitlen bits. Bits beyond that length are ignored.
+    pub fn set_xmul_u64_vartime(&self, P3: &mut PointX<Fq>, P: &PointX<Fq>, n: u64) {
+        // Handle small cases.
+        match n {
+            0 => {
+                *P3 = PointX::INFINITY;
+            }
+            1 => {
+                *P3 = *P;
+            }
+            2 => *P3 = self.xdouble(P),
+            _ => {
+                let nbitlen = 63 - n.leading_ones();
+
+                let mut X0 = Fq::ONE;
+                let mut Z0 = Fq::ZERO;
+                let mut X1 = P.X;
+                let mut Z1 = P.Z;
+                let mut cc = 0u32;
+                if nbitlen > 21 {
+                    // If n is large enough then it is worthwhile to
+                    // normalize the source point to affine.
+                    // If P = inf, then this sets Xp to 0; thus, the
+                    // output of both xdbl() and xadd_aff() has Z = 0,
+                    // so we correctly get the point-at-infinity at the end.
+                    let Xp = P.X / P.Z;
+                    for i in (0..nbitlen).rev() {
+                        let ctl = (((n >> i) as u32) & 1).wrapping_neg();
+                        Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
+                        Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
+                        Self::xadd_aff(&Xp, &X0, &Z0, &mut X1, &mut Z1);
+                        self.xdbl(&mut X0, &mut Z0);
+                        cc = ctl;
+                    }
+                } else {
+                    for i in (0..nbitlen).rev() {
+                        let ctl = (((n >> i) as u32) & 1).wrapping_neg();
+                        Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
+                        Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
+                        Self::xadd(&P.X, &P.Z, &X0, &Z0, &mut X1, &mut Z1);
+                        self.xdbl(&mut X0, &mut Z0);
+                        cc = ctl;
+                    }
+                }
+                Fq::condswap(&mut X0, &mut X1, cc);
+                Fq::condswap(&mut Z0, &mut Z1, cc);
+
+                // The ladder may fail if P = (0,0) (which is a point of
+                // order 2) because in that case xadd() (and xadd_aff())
+                // return Z = 0 systematically, so the result is considered
+                // to be the point-at-infinity, which is wrong is n is odd.
+                // We adjust the result in that case.
+                let spec = P.X.is_zero() & !P.Z.is_zero() & (((n & 1) as u32) & 1).wrapping_neg();
+                P3.X = X0;
+                P3.Z = Z0;
+                P3.X.set_cond(&Fq::ZERO, spec);
+                P3.Z.set_cond(&Fq::ONE, spec);
+            }
+        }
+    }
+
+    /// Return n*P as a new point (x-only variant).
+    /// Integer n is encoded as a u64 which is assumed to be a public value.
+    pub fn xmul_u64_vartime(&self, P: &PointX<Fq>, n: u64) -> PointX<Fq> {
+        let mut P3 = PointX::INFINITY;
+        self.set_xmul_u64_vartime(&mut P3, P, n);
         P3
     }
 
