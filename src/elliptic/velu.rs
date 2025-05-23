@@ -240,8 +240,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         // Convert back to Montgomery (A24 : C24)
         // let A_codomain = (A_ed + D_ed).mul2();
         // let C_codomain = A_ed - D_ed;
-        *A24 = A_ed.mul4();
-        *C24 = (A_ed - D_ed).mul4();
+        *A24 = A_ed;
+        *C24 = A_ed - D_ed;
     }
 
     fn velu_two_power_isogeny_proj(
@@ -339,8 +339,8 @@ impl<Fq: FqTrait> Curve<Fq> {
     ) -> Self {
         // 2-isogenies are handled with a special function
         if degree == 2 {
-            let (A, C) = Self::velu_two_isogeny_proj(kernel, img_points);
-            Self::new(&(A / C))
+            let (a24, c24) = Self::velu_two_isogeny_proj(kernel, img_points);
+            Self::curve_from_A24_proj(&a24, &c24)
         } else {
             let mut A24 = self.A + Fq::TWO;
             let mut C24 = Fq::FOUR;
