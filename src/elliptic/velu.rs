@@ -1,9 +1,6 @@
 // TODO:
-// Currently after every isogeny the curve is returned, which means computing A / C, we need a new mulx which we can
-// use with (A, C) as input instead of A24. This will require a bit of refactoring too for the API etc, but this is
-// "roughly" working now.
 //
-// Another TODO is the cofactor clearing. At the moment clearing the cofactor means multiplying by each ell_i e_i times,
+// Cofactor clearing. At the moment clearing the cofactor means multiplying by each ell_i e_i times,
 // which seems silly. I think we should probably have some function which converts the prime factorisation into &[u64; ...]
 // and then we use these limbs to do var time point multiplication.
 
@@ -175,16 +172,20 @@ impl<Fq: FqTrait> Curve<Fq> {
             P.Z *= t3 + t2;
         }
 
-        (A_codomain, C_codomain)
+        let mut C24_cod = C_codomain.mul2();
+        let A24_cod = A_codomain + C24_cod;
+        C24_cod.set_mul2();
+
+        (A24_cod, C24_cod)
     }
 
     fn velu_odd_isogeny_proj(
-        A24: &Fq,
-        C24: &Fq,
+        A24: &mut Fq,
+        C24: &mut Fq,
         kernel: &PointX<Fq>,
         degree: usize,
         img_points: &mut [PointX<Fq>],
-    ) -> (Fq, Fq) {
+    ) {
         // Convert from Montgomery to projective twisted Edwards (A_ed : D_ed)
         let mut A_ed = *A24; // A_ed = (A + 2*C)
         let mut D_ed = *A24 - *C24; // D_ed = (A - 2*C)
@@ -236,104 +237,73 @@ impl<Fq: FqTrait> Curve<Fq> {
         A_ed *= prod_Z;
         D_ed *= prod_Y;
 
-        // Convert back to Montgomery and return the domain curve.
-        let A_codomain = (A_ed + D_ed).mul2();
-        let C_codomain = A_ed - D_ed;
-
-        (A_codomain, C_codomain)
+        // Convert back to Montgomery (A24 : C24)
+        // let A_codomain = (A_ed + D_ed).mul2();
+        // let C_codomain = A_ed - D_ed;
+        *A24 = A_ed.mul4();
+        *C24 = (A_ed - D_ed).mul4();
     }
 
     fn velu_two_power_isogeny_proj(
-        A: &Fq,
-        C: &Fq,
+        A24: &mut Fq,
+        C24: &mut Fq,
         kernel: &PointX<Fq>,
         len: usize,
         img_points: &mut [PointX<Fq>],
-    ) -> (Fq, Fq) {
-        let mut A_cod = *A;
-        let mut C_cod = *C;
-
-        // TODO: clean this up.
+    ) {
         let mut eval_points = img_points.to_vec();
         eval_points.push(*kernel);
 
         // TODO: use a balanced strategy?
         for i in 0..len {
-            // TODO, this is computed too many times.
-            let mut C24 = C_cod.mul2();
-            let A24 = A_cod + C24;
-            C24.set_mul2();
-
             // Compute [2^(len - i - 1)]
             let mut ker_step = *eval_points.last().unwrap();
-            Self::xdbl_proj_iter(&A24, &C24, &mut ker_step, len - i - 1);
+            Self::xdbl_proj_iter(A24, C24, &mut ker_step, len - i - 1);
 
             // Compute the 2-isogeny
-            (A_cod, C_cod) = Self::velu_two_isogeny_proj(&ker_step, &mut eval_points);
+            (*A24, *C24) = Self::velu_two_isogeny_proj(&ker_step, &mut eval_points);
         }
 
         // TODO: I don't like this copy...
         img_points.copy_from_slice(&eval_points[..eval_points.len() - 1]);
-
-        (A_cod, C_cod)
     }
 
     fn velu_odd_power_isogeny_proj(
-        A: &Fq,
-        C: &Fq,
+        A24: &mut Fq,
+        C24: &mut Fq,
         kernel: &PointX<Fq>,
         degree: usize,
         len: usize,
         img_points: &mut [PointX<Fq>],
-    ) -> (Fq, Fq) {
-        let mut A_cod = *A;
-        let mut C_cod = *C;
-
-        // TODO: clean this up.
+    ) {
         let mut eval_points = img_points.to_vec();
         eval_points.push(*kernel);
 
         // TODO: use a balanced strategy?
         for i in 0..len {
-            // TODO, this is computed too many times.
-            let mut C24 = C_cod.mul2();
-            let A24 = A_cod + C24;
-            C24.set_mul2();
-
             // Compute [ell^(len - i - 1)] K which is a point of order ell
             let mut ker_step = *eval_points.last().unwrap();
             for _ in 0..(len - i - 1) {
-                ker_step = Self::xmul_proj_u64_vartime(&A24, &C24, &ker_step, degree as u64);
+                ker_step = Self::xmul_proj_u64_vartime(A24, C24, &ker_step, degree as u64);
             }
-            (A_cod, C_cod) =
-                Self::velu_odd_isogeny_proj(&A24, &C24, &ker_step, degree, &mut eval_points);
+            Self::velu_odd_isogeny_proj(A24, C24, &ker_step, degree, &mut eval_points);
         }
 
         // TODO: I don't like this copy...
         img_points.copy_from_slice(&eval_points[..eval_points.len() - 1]);
-
-        (A_cod, C_cod)
     }
 
     pub fn velu_composite_isogeny_proj(
-        A: &Fq,
-        C: &Fq,
+        A24: &mut Fq,
+        C24: &mut Fq,
         kernel: &PointX<Fq>,
         degrees: &[(usize, usize)],
         img_points: &mut [PointX<Fq>],
-    ) -> (Fq, Fq) {
-        let mut A_cod = *A;
-        let mut C_cod = *C;
-
+    ) {
         let mut eval_points = img_points.to_vec();
         eval_points.push(*kernel);
 
         for i in 0..degrees.len() {
-            // TODO, this is computed too many times.
-            let mut C24 = C_cod.mul2();
-            let A24 = A_cod + C24;
-            C24.set_mul2();
-
             // At each step we will compute a degree^len isogeny
             let (ell, n) = degrees[i];
 
@@ -343,29 +313,20 @@ impl<Fq: FqTrait> Curve<Fq> {
             let mut ker_step = *eval_points.last().unwrap();
             for (p, e) in degrees.iter().skip(i + 1) {
                 for _ in 0..*e {
-                    ker_step = Self::xmul_proj_u64_vartime(&A24, &C24, &ker_step, *p as u64);
+                    ker_step = Self::xmul_proj_u64_vartime(A24, C24, &ker_step, *p as u64);
                 }
             }
 
             // Handle 2^n isogenies separately.
-            (A_cod, C_cod) = if ell == 2 {
-                Self::velu_two_power_isogeny_proj(&A_cod, &C_cod, &ker_step, n, &mut eval_points)
+            if ell == 2 {
+                Self::velu_two_power_isogeny_proj(A24, C24, &ker_step, n, &mut eval_points)
             } else {
-                Self::velu_odd_power_isogeny_proj(
-                    &A_cod,
-                    &C_cod,
-                    &ker_step,
-                    ell,
-                    n,
-                    &mut eval_points,
-                )
+                Self::velu_odd_power_isogeny_proj(A24, C24, &ker_step, ell, n, &mut eval_points)
             };
         }
 
         // TODO: I don't like this copy...
         img_points.copy_from_slice(&eval_points[..eval_points.len() - 1]);
-
-        (A_cod, C_cod)
     }
 
     // ============================================================
@@ -377,16 +338,16 @@ impl<Fq: FqTrait> Curve<Fq> {
         img_points: &mut [PointX<Fq>],
     ) -> Self {
         // 2-isogenies are handled with a special function
-        let (A, C) = if degree == 2 {
-            Self::velu_two_isogeny_proj(kernel, img_points)
+        if degree == 2 {
+            let (A, C) = Self::velu_two_isogeny_proj(kernel, img_points);
+            Self::new(&(A / C))
         } else {
-            let A24 = self.A + Fq::TWO;
-            let C24 = Fq::FOUR;
+            let mut A24 = self.A + Fq::TWO;
+            let mut C24 = Fq::FOUR;
 
-            Self::velu_odd_isogeny_proj(&A24, &C24, kernel, degree, img_points)
-        };
-
-        Self::new(&(A / C))
+            Self::velu_odd_isogeny_proj(&mut A24, &mut C24, kernel, degree, img_points);
+            Self::curve_from_A24_proj(&A24, &C24)
+        }
     }
 
     pub fn velu_prime_power_isogeny(
@@ -396,12 +357,16 @@ impl<Fq: FqTrait> Curve<Fq> {
         len: usize,
         img_points: &mut [PointX<Fq>],
     ) -> Self {
-        // TODO: I could make a 2-chain and an odd-chain here to call separately to stop the branch
-        // for degree = 2 in velu_prime_power_isogeny_proj
-        let (A, C) =
-            Self::velu_odd_power_isogeny_proj(&self.A, &Fq::ONE, kernel, degree, len, img_points);
+        let mut A24 = self.A + Fq::TWO;
+        let mut C24 = Fq::FOUR;
 
-        Self::new(&(A / C))
+        if degree == 2 {
+            Self::velu_two_power_isogeny_proj(&mut A24, &mut C24, kernel, len, img_points)
+        } else {
+            Self::velu_odd_power_isogeny_proj(&mut A24, &mut C24, kernel, degree, len, img_points)
+        };
+
+        Self::curve_from_A24_proj(&A24, &C24)
     }
 
     pub fn velu_composite_isogeny(
@@ -410,9 +375,11 @@ impl<Fq: FqTrait> Curve<Fq> {
         degrees: &[(usize, usize)],
         img_points: &mut [PointX<Fq>],
     ) -> Self {
-        let (A, C) =
-            Self::velu_composite_isogeny_proj(&self.A, &Fq::ONE, kernel, degrees, img_points);
+        let mut A24 = self.A + Fq::TWO;
+        let mut C24 = Fq::FOUR;
 
-        Self::new(&(A / C))
+        Self::velu_composite_isogeny_proj(&mut A24, &mut C24, kernel, degrees, img_points);
+
+        Self::curve_from_A24_proj(&A24, &C24)
     }
 }
