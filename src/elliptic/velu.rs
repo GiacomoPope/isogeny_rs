@@ -339,8 +339,8 @@ impl<Fq: FqTrait> Curve<Fq> {
     ) -> Self {
         // 2-isogenies are handled with a special function
         if degree == 2 {
-            let (a24, c24) = Self::velu_two_isogeny_proj(kernel, img_points);
-            Self::curve_from_A24_proj(&a24, &c24)
+            let (A24, C24) = Self::velu_two_isogeny_proj(kernel, img_points);
+            Self::curve_from_A24_proj(&A24, &C24)
         } else {
             let mut A24 = self.A + Fq::TWO;
             let mut C24 = Fq::FOUR;

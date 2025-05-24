@@ -59,7 +59,27 @@ mod velu_test {
     const QX: Fp2 = Fp2::const_decode_no_check(&Q_X_RE_BYTES, &Q_X_IM_BYTES);
     const CODOMAIN_AQ: Fp2 = Fp2::const_decode_no_check(&AQ_RE_BYTES, &AQ_IM_BYTES);
 
-    // Kernel of order (p + 1) / 8
+    // Kernel of order 8
+    const P2_X_RE_BYTES: [u8; 31] = [
+        66, 10, 195, 200, 119, 121, 247, 215, 37, 201, 174, 64, 203, 82, 174, 148, 208, 66, 52, 88,
+        14, 235, 78, 87, 157, 225, 72, 132, 184, 236, 0,
+    ];
+    const P2_X_IM_BYTES: [u8; 31] = [
+        5, 196, 47, 123, 38, 72, 69, 73, 24, 117, 23, 52, 64, 212, 176, 205, 84, 65, 190, 52, 185,
+        241, 164, 176, 7, 216, 51, 17, 69, 78, 1,
+    ];
+    const A2_RE_BYTES: [u8; 31] = [
+        58, 161, 125, 74, 214, 139, 30, 71, 195, 170, 165, 52, 16, 69, 78, 244, 230, 4, 53, 208,
+        29, 146, 222, 112, 5, 38, 150, 181, 152, 26, 2,
+    ];
+    const A2_IM_BYTES: [u8; 31] = [
+        183, 224, 108, 169, 150, 90, 167, 84, 236, 71, 3, 171, 108, 54, 91, 90, 108, 250, 7, 48,
+        125, 18, 89, 228, 223, 203, 17, 68, 87, 24, 0,
+    ];
+    const P2X: Fp2 = Fp2::const_decode_no_check(&P2_X_RE_BYTES, &P2_X_IM_BYTES);
+    const CODOMAIN_A2: Fp2 = Fp2::const_decode_no_check(&A2_RE_BYTES, &A2_IM_BYTES);
+
+    // factorisation of (p + 1)
     const DEGREE_FACTORS: [(usize, usize); 26] = [
         (2, 3),
         (3, 2),
@@ -139,6 +159,22 @@ mod velu_test {
 
         // Ensure the codomain matches the expected result.
         assert!(codomain.A.equals(&codomain_test.A) == u32::MAX);
+
+        // Pushing the kernel through should give the point at infinity.
+        assert!(images[0].Z.is_zero() == u32::MAX);
+    }
+
+    #[test]
+    fn test_two_prime_power_velu_codomain() {
+        let E = Curve::new(&Fp2::ZERO);
+        let ker = PointX::new(&P2X, &Fp2::ONE);
+
+        let codomain_test = Curve::new(&CODOMAIN_A2);
+        let mut images = [ker];
+        let codomain = E.velu_prime_power_isogeny(&ker, 2, 3, &mut images);
+
+        // Ensure the codomain matches the expected result.
+        assert!(codomain.j_invariant().equals(&codomain_test.j_invariant()) == u32::MAX);
 
         // Pushing the kernel through should give the point at infinity.
         assert!(images[0].Z.is_zero() == u32::MAX);
