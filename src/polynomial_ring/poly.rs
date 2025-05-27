@@ -1,6 +1,7 @@
 #![allow(dead_code)] // for now
 
 use fp2::traits::Fp as FpTrait;
+use rand_core::{CryptoRng, RngCore};
 
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::{
@@ -31,6 +32,16 @@ pub struct Polynomial<Fp: FpTrait> {
 }
 
 impl<Fp: FpTrait> Polynomial<Fp> {
+    /// Create a polynomial from a finite field element.
+    pub fn new_from_ele(a: &Fp) -> Self {
+        Self { coeffs: vec![*a] }
+    }
+
+    /// Create a polynomial from a slice of finite field elements.
+    pub fn new_from_slice(a: &[Fp]) -> Self {
+        Self { coeffs: a.to_vec() }
+    }
+
     /// The length of the polynomial. TODO: should we trim trailing zeros? If so, how often?
     fn len(&self) -> usize {
         self.coeffs.len()
@@ -57,6 +68,31 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         let mut r = self;
         r.reverse_into();
         r
+    }
+
+    /// Return 0xFFFFFFFF if self and other represent the same polynomial.
+    /// Otherwise, return 0x00000000.
+    pub fn equals(&self, other: &Self) -> u32 {
+        // TODO: do I want this constant time?
+        // eg: let mut equals = ct_u32_eq(self.len() as u32, other.len() as u32);
+        if self.len() != other.len() {
+            return 0;
+        }
+
+        let mut equals = u32::MAX;
+        for i in 0..self.len() {
+            equals &= self.coeffs[i].equals(&other[i]);
+        }
+        equals
+    }
+
+    /// Return 0xFFFFFFFF if self is zero, otherwise, return 0x00000000.
+    pub fn is_zero(&self) -> u32 {
+        let mut is_zero = u32::MAX;
+        for i in 0..self.len() {
+            is_zero &= self.coeffs[i].is_zero();
+        }
+        is_zero
     }
 
     /// Set self to it's negative.
@@ -133,6 +169,22 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         r.scale_small_into(k);
         r
     }
+
+    /// Set self to a random value
+    pub fn set_rand<R: CryptoRng + RngCore>(&mut self, rng: &mut R) {
+        for x in self.coeffs.iter_mut() {
+            x.set_rand(rng);
+        }
+    }
+
+    /// Return a new random polynomial with length d
+    pub fn rand<R: CryptoRng + RngCore>(rng: &mut R, d: usize) -> Self {
+        let mut r = Self {
+            coeffs: vec![Fp::ZERO; d],
+        };
+        r.set_rand(rng);
+        r
+    }
 }
 
 impl<Fp: FpTrait> Poly for Polynomial<Fp> {}
@@ -173,6 +225,17 @@ impl<Fp: FpTrait> Add for Polynomial<Fp> {
     }
 }
 
+impl<Fp: FpTrait> Add for &Polynomial<Fp> {
+    type Output = Polynomial<Fp>;
+
+    #[inline(always)]
+    fn add(self, other: &Polynomial<Fp>) -> Polynomial<Fp> {
+        let mut r = self.clone();
+        r.set_add(&other);
+        r
+    }
+}
+
 impl<Fp: FpTrait> AddAssign for Polynomial<Fp> {
     #[inline(always)]
     fn add_assign(&mut self, other: Polynomial<Fp>) {
@@ -186,6 +249,17 @@ impl<Fp: FpTrait> Sub for Polynomial<Fp> {
     #[inline(always)]
     fn sub(self, other: Polynomial<Fp>) -> Polynomial<Fp> {
         let mut r = self;
+        r.set_sub(&other);
+        r
+    }
+}
+
+impl<Fp: FpTrait> Sub for &Polynomial<Fp> {
+    type Output = Polynomial<Fp>;
+
+    #[inline(always)]
+    fn sub(self, other: &Polynomial<Fp>) -> Polynomial<Fp> {
+        let mut r = self.clone();
         r.set_sub(&other);
         r
     }
