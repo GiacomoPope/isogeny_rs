@@ -206,6 +206,18 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         res
     }
 
+    /// Compute the resultant of self with a polynomial g = \prod {x - ai}
+    /// given the roots ai.
+    // TODO: this is a very slow and stupid method, but speed comes later and
+    // I want to sketch sqrt velu.
+    pub fn resultant_multipoint(&self, ai: &[Fp]) -> Fp {
+        let mut res = Fp::ONE;
+        for a in ai.iter() {
+            res *= self.evaluate(a);
+        }
+        res
+    }
+
     /// Set self to a random value
     pub fn set_rand<R: CryptoRng + RngCore>(&mut self, rng: &mut R) {
         for x in self.coeffs.iter_mut() {
