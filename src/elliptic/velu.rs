@@ -78,10 +78,22 @@ impl<Fq: FqTrait> Curve<Fq> {
                 *P3 = *P;
                 Self::xdbl_proj(A24, C24, &mut P3.X, &mut P3.Z);
             }
+            3 => {
+                *P3 = *P;
+                Self::xdbl_proj(A24, C24, &mut P3.X, &mut P3.Z);
+                Self::xadd(&P.X, &P.Z, &P.X, &P.Z, &mut P3.X, &mut P3.Z);
+            }
             4 => {
                 *P3 = *P;
                 Self::xdbl_proj(A24, C24, &mut P3.X, &mut P3.Z);
                 Self::xdbl_proj(A24, C24, &mut P3.X, &mut P3.Z);
+            }
+            5 => {
+                let mut P2 = *P;
+                *P3 = *P;
+                Self::xdbl_proj(A24, C24, &mut P2.X, &mut P2.Z);
+                Self::xadd(&P.X, &P.Z, &P2.X, &P2.Z, &mut P3.X, &mut P3.Z);
+                Self::xadd(&P.X, &P.Z, &P2.X, &P2.Z, &mut P3.X, &mut P3.Z);
             }
 
             _ => {
@@ -151,19 +163,32 @@ impl<Fq: FqTrait> Curve<Fq> {
         n: u64,
         e: usize,
     ) -> PointX<Fq> {
-        // If n^e fits inside a u64 then we send this...
+        // If n^e fits inside a u64 then we simply send this
         let (x, overflow) = n.overflowing_pow(e as u32);
         if !overflow {
             return Self::xmul_proj_u64_vartime(A24, C24, P, x);
         }
 
-        // Otherwise multiply by n^e with e multiplications. We should really
-        // compute the largest e such that n^e fits in a u64 and then use this
-        // as input below.
+        // Compute the largest power y such that n^y fits inside a u64
+        // and represent n^e = n^(k * y + r)
+        let y = (64 / (64 - n.leading_zeros())) as usize;
+        let k = e / y;
+        let r = e % y;
+        debug_assert!(y * k + r == e);
+
+        // Compute n^y and n^r for the multiplications below.
+        // TODO: this is still wasteful, we should represent
+        // the scalar as a [u64] and pass this to a single
+        // function!
+        let n_y = n.wrapping_pow(y as u32);
+        let n_r = n.wrapping_pow(r as u32);
+
         let mut P3 = *P;
-        for _ in 0..e {
-            P3 = Self::xmul_proj_u64_vartime(A24, C24, &P3, n);
+        for _ in 0..k {
+            P3 = Self::xmul_proj_u64_vartime(A24, C24, &P3, n_y);
         }
+        P3 = Self::xmul_proj_u64_vartime(A24, C24, &P3, n_r);
+
         P3
     }
 
@@ -182,7 +207,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         kernel: &PointX<Fq>,
         img_points: &mut [PointX<Fq>],
     ) {
-        assert!(kernel.X.is_zero() != u32::MAX); // TODO: Handle this edge case
+        debug_assert!(kernel.X.is_zero() != u32::MAX); // TODO: Handle this edge case
 
         let mut A_codomain = kernel.X.square();
         let C_codomain = kernel.Z.square();
