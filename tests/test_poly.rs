@@ -122,4 +122,41 @@ mod test_polynomial_arithmetic {
         let g = f.scale_small(0);
         assert!(g.is_zero() == u32::MAX);
     }
+
+    #[test]
+    fn test_evaluation() {
+        let mut rng = DRNG::from_seed("polynomial_eval".as_bytes());
+
+        // Evaluating a constant polynomial should always give the same result
+        let a = Fp::rand(&mut rng);
+        let b = Fp::rand(&mut rng);
+        let f = PR::rand(&mut rng, 1);
+        let ea = f.evaluate(&a);
+        let eb = f.evaluate(&b);
+        assert!(ea.equals(&eb) == u32::MAX);
+
+        // Random degree four polynomial
+        let f = PR::rand(&mut rng, 5);
+
+        // Evaluating at zero should give you the constant coefficient
+        let e0 = f.evaluate(&Fp::ZERO);
+        let c0 = f.constant_coefficient().unwrap();
+        assert!(e0.equals(&c0) == u32::MAX);
+
+        // Evaluating at one should give you the sum of the coefficients
+        let e1 = f.evaluate(&Fp::ONE);
+        let c1 = f[0] + f[1] + f[2] + f[3] + f[4];
+        assert!(e1.equals(&c1) == u32::MAX);
+
+        // Dumb evaluation to compare against the type method.
+        let a = Fp::rand(&mut rng);
+        let ea = f.evaluate(&a);
+        let mut test_ea = f[0];
+        test_ea += f[1] * a;
+        test_ea += f[2] * (a * a);
+        test_ea += f[3] * (a * a * a);
+        test_ea += f[4] * (a * a * a * a);
+
+        assert!(ea.equals(&test_ea) == u32::MAX);
+    }
 }

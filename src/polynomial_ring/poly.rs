@@ -58,14 +58,22 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         }
     }
 
+    /// Return the constant coefficient of the polynomial
+    pub fn constant_coefficient(&self) -> Option<Fp> {
+        if self.len() == 0 {
+            return None;
+        }
+        Some(self.coeffs[0])
+    }
+
     /// Reverse the coefficients of self in place.
     fn reverse_into(&mut self) {
         self.coeffs.reverse();
     }
 
     /// Return the polynomial with coefficents reversed.
-    pub fn reverse(self) -> Polynomial<Fp> {
-        let mut r = self;
+    pub fn reverse(&self) -> Polynomial<Fp> {
+        let mut r = self.clone();
         r.reverse_into();
         r
     }
@@ -168,6 +176,34 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         let mut r = self.clone();
         r.scale_small_into(k);
         r
+    }
+
+    /// Evaluate a polynomial at a value `a`
+    pub fn evaluate(&self, a: &Fp) -> Fp {
+        // Handle degree 0 and 1 cases early.
+        if self.len() == 0 {
+            return Fp::ZERO;
+        } else if self.len() == 1 {
+            return self.coeffs[0];
+        } else if self.len() == 2 {
+            return self.coeffs[0] + *a * self.coeffs[1];
+        }
+
+        // Otherwise compute (c0 + c1 * a) for the linear piece
+        let mut res = self.coeffs[0] + *a * self.coeffs[1];
+        // Precompute a^2 for the quadratic piece
+        let mut a_n = a.square();
+        for i in 2..self.len() {
+            // Compute res += c_i * a^i for each step.
+            res += self.coeffs[i] * a_n;
+
+            // For the last step we can skip multiplying by a
+            if i != self.len() - 1 {
+                a_n *= *a;
+            }
+        }
+
+        res
     }
 
     /// Set self to a random value
