@@ -65,7 +65,7 @@ impl<Fq: FqTrait> Iterator for PointXMultiples<Fq> {
 impl<Fq: FqTrait> Curve<Fq> {
     /// P3 <- n*P, x-only variant using (A24 : C24).
     /// Integer n is represented as a u64 and is assumed to be public.
-    fn set_xmul_proj_u64_vartime(A24: &Fq, C24: &Fq, P3: &mut PointX<Fq>, P: &PointX<Fq>, n: u64) {
+    pub fn set_xmul_proj_u64_vartime(A24: &Fq, C24: &Fq, P3: &mut PointX<Fq>, P: &PointX<Fq>, n: u64) {
         // Handle small cases.
         match n {
             0 => {
@@ -136,7 +136,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// Return n*P as a new point (x-only variant) using (A24 : C24).
     /// Integer n is encoded as a u64 which is assumed to be a public value.
-    fn xmul_proj_u64_vartime(A24: &Fq, C24: &Fq, P: &PointX<Fq>, n: u64) -> PointX<Fq> {
+    pub fn xmul_proj_u64_vartime(A24: &Fq, C24: &Fq, P: &PointX<Fq>, n: u64) -> PointX<Fq> {
         let mut P3 = PointX::INFINITY;
         Self::set_xmul_proj_u64_vartime(A24, C24, &mut P3, P, n);
         P3
@@ -179,7 +179,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         (A24_cod, C24_cod)
     }
 
-    fn velu_odd_isogeny_proj(
+    pub fn velu_odd_isogeny_proj(
         A24: &mut Fq,
         C24: &mut Fq,
         kernel: &PointX<Fq>,
