@@ -3,11 +3,15 @@
 use fp2::traits::Fp as FpTrait;
 
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
-use std::{fmt::Display, ops::Index};
+use std::{
+    fmt::Display,
+    ops::{Index, IndexMut},
+};
 
 /// Trait for arithmetic for univariate polynomials in Fp[X]
 pub trait Poly:
     Index<usize>
+    + IndexMut<usize>
     + Sized
     + Neg<Output = Self>
     + Add<Output = Self>
@@ -43,7 +47,19 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         }
     }
 
-    /// Set self to it's negative
+    /// Reverse the coefficients of self in place.
+    fn reverse_into(&mut self) {
+        self.coeffs.reverse();
+    }
+
+    /// Return the polynomial with coefficents reversed.
+    pub fn reverse(self) -> Polynomial<Fp> {
+        let mut r = self;
+        r.reverse_into();
+        r
+    }
+
+    /// Set self to it's negative.
     fn set_neg(&mut self) {
         for x in self.coeffs.iter_mut() {
             x.set_neg();
@@ -70,8 +86,52 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         }
     }
 
-    fn set_mul(&mut self, _other: &Self) {
-        todo!()
+    /// Compute f * g with O(len(f) * len(g)) Fq multiplications using
+    /// schoolbook multiplication. Assumes that fg has enough space for
+    /// the result (len(f) + len(g) - 2).
+    fn schoolbook_multiplication(fg: &mut [Fp], f: &[Fp], g: &[Fp]) {
+        for i in 0..f.len() {
+            for j in 0..g.len() {
+                // TODO: this could be sped up when we know c[i + j] is zero
+                // which happens when i = 0 or when j + 1 = len(other)
+                fg[i + j] += f[i] * g[j]
+            }
+        }
+    }
+
+    /// Set self <- self * other
+    fn set_mul(&mut self, other: &Self) {
+        let mut fg_coeffs = vec![Fp::ZERO; self.len() + other.len() - 2];
+        Self::schoolbook_multiplication(&mut fg_coeffs, &self.coeffs, &other.coeffs);
+        self.coeffs = fg_coeffs;
+    }
+
+    /// Multiply all coefficients of the polynomial by a element of the finite field.
+    pub fn scale_into(&mut self, c: &Fp) {
+        for x in self.coeffs.iter_mut() {
+            *x *= *c;
+        }
+    }
+
+    /// Return  c * self for some c in the finite field.
+    pub fn scale(self, c: &Fp) -> Polynomial<Fp> {
+        let mut r = self;
+        r.scale_into(c);
+        r
+    }
+
+    /// Multiply all coefficients of the polynomial by a small value.
+    pub fn scale_small_into(&mut self, k: i32) {
+        for x in self.coeffs.iter_mut() {
+            x.set_mul_small(k);
+        }
+    }
+
+    /// Return c * self for some small c
+    pub fn scale_small(self, k: i32) -> Polynomial<Fp> {
+        let mut r = self;
+        r.scale_small_into(k);
+        r
     }
 }
 
@@ -82,6 +142,12 @@ impl<Fp: FpTrait> Index<usize> for Polynomial<Fp> {
 
     fn index(&self, index: usize) -> &Self::Output {
         self.coeffs.get(index).expect("Index out of bounds")
+    }
+}
+
+impl<Fp: FpTrait> IndexMut<usize> for Polynomial<Fp> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        self.coeffs.get_mut(index).expect("Index out of bounds")
     }
 }
 
