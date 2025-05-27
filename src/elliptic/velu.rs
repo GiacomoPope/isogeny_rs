@@ -78,10 +78,22 @@ impl<Fq: FqTrait> Curve<Fq> {
                 *P3 = *P;
                 Self::xdbl_proj(A24, C24, &mut P3.X, &mut P3.Z);
             }
+            3 => {
+                *P3 = *P;
+                Self::xdbl_proj(A24, C24, &mut P3.X, &mut P3.Z);
+                Self::xadd(&P.X, &P.Z, &P.X, &P.Z, &mut P3.X, &mut P3.Z);
+            }
             4 => {
                 *P3 = *P;
                 Self::xdbl_proj(A24, C24, &mut P3.X, &mut P3.Z);
                 Self::xdbl_proj(A24, C24, &mut P3.X, &mut P3.Z);
+            }
+            5 => {
+                let mut P2 = *P;
+                *P3 = *P;
+                Self::xdbl_proj(A24, C24, &mut P2.X, &mut P2.Z);
+                Self::xadd(&P.X, &P.Z, &P2.X, &P2.Z, &mut P3.X, &mut P3.Z);
+                Self::xadd(&P.X, &P.Z, &P2.X, &P2.Z, &mut P3.X, &mut P3.Z);
             }
 
             _ => {
@@ -142,6 +154,44 @@ impl<Fq: FqTrait> Curve<Fq> {
         P3
     }
 
+    /// Return [n^e]*P as a new point (x-only variant) using (A24 : C24).
+    /// Integer n is encoded as a u64 which is assumed to be a public value.
+    fn xmul_proj_u64_iter_vartime(
+        A24: &Fq,
+        C24: &Fq,
+        P: &PointX<Fq>,
+        n: u64,
+        e: usize,
+    ) -> PointX<Fq> {
+        // If n^e fits inside a u64 then we simply send this
+        let (x, overflow) = n.overflowing_pow(e as u32);
+        if !overflow {
+            return Self::xmul_proj_u64_vartime(A24, C24, P, x);
+        }
+
+        // Compute the largest power y such that n^y fits inside a u64
+        // and represent n^e = n^(k * y + r)
+        let y = (64 / (64 - n.leading_zeros())) as usize;
+        let k = e / y;
+        let r = e % y;
+        debug_assert!(y * k + r == e);
+
+        // Compute n^y and n^r for the multiplications below.
+        // TODO: this is still wasteful, we should represent
+        // the scalar as a [u64] and pass this to a single
+        // function!
+        let n_y = n.wrapping_pow(y as u32);
+        let n_r = n.wrapping_pow(r as u32);
+
+        let mut P3 = *P;
+        for _ in 0..k {
+            P3 = Self::xmul_proj_u64_vartime(A24, C24, &P3, n_y);
+        }
+        P3 = Self::xmul_proj_u64_vartime(A24, C24, &P3, n_r);
+
+        P3
+    }
+
     /// Compute (X + Z) and (X - Z) for [i]P for 0 < i <= (ell - 1) / 2
     fn edwards_multiples(A24: &Fq, C24: &Fq, constants: &mut [(Fq, Fq)], P: &PointX<Fq>) {
         let mut iP = PointXMultiples::new(A24, C24, P);
@@ -151,8 +201,13 @@ impl<Fq: FqTrait> Curve<Fq> {
         }
     }
 
-    fn velu_two_isogeny_proj(kernel: &PointX<Fq>, img_points: &mut [PointX<Fq>]) -> (Fq, Fq) {
-        assert!(kernel.X.is_zero() != u32::MAX); // TODO: Handle this edge case
+    fn velu_two_isogeny_proj(
+        A24: &mut Fq,
+        C24: &mut Fq,
+        kernel: &PointX<Fq>,
+        img_points: &mut [PointX<Fq>],
+    ) {
+        debug_assert!(kernel.X.is_zero() != u32::MAX); // TODO: Handle this edge case
 
         let mut A_codomain = kernel.X.square();
         let C_codomain = kernel.Z.square();
@@ -176,7 +231,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         let A24_cod = A_codomain + C24_cod;
         C24_cod.set_mul2();
 
-        (A24_cod, C24_cod)
+        *A24 = A24_cod;
+        *C24 = C24_cod;
     }
 
     pub fn velu_odd_isogeny_proj(
@@ -194,26 +250,6 @@ impl<Fq: FqTrait> Curve<Fq> {
         let d = (degree - 1) >> 1;
         let mut constants = vec![(Fq::ZERO, Fq::ZERO); d];
         Self::edwards_multiples(A24, C24, &mut constants, kernel);
-
-        // Evaluate each point through the isogeny
-        for P in img_points.iter_mut() {
-            let P_sum = P.X + P.Z;
-            let P_diff = P.X - P.Z;
-
-            let mut EY_sum;
-            let mut EZ_diff;
-            let mut X_new = Fq::ONE;
-            let mut Z_new = Fq::ONE;
-            for (Y_ed, Z_ed) in constants.iter() {
-                EZ_diff = *Z_ed * P_diff;
-                EY_sum = *Y_ed * P_sum;
-                X_new *= EZ_diff + EY_sum;
-                Z_new *= EZ_diff - EY_sum;
-            }
-
-            P.X *= X_new.square();
-            P.Z *= Z_new.square();
-        }
 
         // Compute the product of the edward multiples
         let mut prod_Y = Fq::ONE;
@@ -237,38 +273,32 @@ impl<Fq: FqTrait> Curve<Fq> {
         A_ed *= prod_Z;
         D_ed *= prod_Y;
 
+        // Evaluate each point through the isogeny
+        for P in img_points.iter_mut() {
+            let P_sum = P.X + P.Z;
+            let P_diff = P.X - P.Z;
+
+            let mut EY_sum;
+            let mut EZ_diff;
+            let mut X_new = Fq::ONE;
+            let mut Z_new = Fq::ONE;
+            for (Y_ed, Z_ed) in constants.iter() {
+                EZ_diff = *Z_ed * P_diff;
+                EY_sum = *Y_ed * P_sum;
+                X_new *= EZ_diff + EY_sum;
+                Z_new *= EZ_diff - EY_sum;
+            }
+
+            P.X *= X_new.square();
+            P.Z *= Z_new.square();
+        }
+
         // Convert back to Montgomery (A24 : C24)
-        // let A_codomain = (A_ed + D_ed).mul2();
-        // let C_codomain = A_ed - D_ed;
         *A24 = A_ed;
         *C24 = A_ed - D_ed;
     }
 
-    fn velu_two_power_isogeny_proj(
-        A24: &mut Fq,
-        C24: &mut Fq,
-        kernel: &PointX<Fq>,
-        len: usize,
-        img_points: &mut [PointX<Fq>],
-    ) {
-        let mut eval_points = img_points.to_vec();
-        eval_points.push(*kernel);
-
-        // TODO: use a balanced strategy?
-        for i in 0..len {
-            // Compute [2^(len - i - 1)]
-            let mut ker_step = *eval_points.last().unwrap();
-            Self::xdbl_proj_iter(A24, C24, &mut ker_step, len - i - 1);
-
-            // Compute the 2-isogeny
-            (*A24, *C24) = Self::velu_two_isogeny_proj(&ker_step, &mut eval_points);
-        }
-
-        // TODO: I don't like this copy...
-        img_points.copy_from_slice(&eval_points[..eval_points.len() - 1]);
-    }
-
-    fn velu_odd_power_isogeny_proj(
+    fn velu_prime_power_isogeny_proj(
         A24: &mut Fq,
         C24: &mut Fq,
         kernel: &PointX<Fq>,
@@ -276,21 +306,77 @@ impl<Fq: FqTrait> Curve<Fq> {
         len: usize,
         img_points: &mut [PointX<Fq>],
     ) {
-        let mut eval_points = img_points.to_vec();
-        eval_points.push(*kernel);
+        // We push the image points through at the same time as the strategy
+        // points, so we need to know how many images we're computing to keep
+        // track of them for the end.
+        let n = img_points.len();
 
-        // TODO: use a balanced strategy?
-        for i in 0..len {
-            // Compute [ell^(len - i - 1)] K which is a point of order ell
-            let mut ker_step = *eval_points.last().unwrap();
-            for _ in 0..(len - i - 1) {
-                ker_step = Self::xmul_proj_u64_vartime(A24, C24, &ker_step, degree as u64);
+        // Compute the amount of space we need for the balanced strategy.
+        let space = (usize::BITS - len.leading_zeros() + 1) as usize;
+
+        // These are a set of points of order ell^i, orders keeps track of the order i
+        // we also prepend the points we want to evaluate onto this vector.
+        let mut stategy_points: Vec<PointX<Fq>> = vec![PointX::INFINITY; space + n];
+        let mut orders: Vec<usize> = vec![0; space];
+
+        // Set the first elements of the vector to the points we want to push
+        // through the isogeny.
+        stategy_points[..n].copy_from_slice(img_points);
+
+        // Then set the next element to be the kernel input
+        stategy_points[n] = *kernel;
+        orders[0] = len;
+
+        // Compute the isogeny chain with a naive balanced strategy.
+        let mut k = 0;
+        for _ in 0..len {
+            // Get the next point of order 2
+            while orders[k] != 1 {
+                k += 1;
+                let m = orders[k - 1] / 2;
+                stategy_points[n + k] = stategy_points[n + k - 1];
+
+                // when ell = 2 we can do repeated doubling
+                if degree == 2 {
+                    Self::xdbl_proj_iter(A24, C24, &mut stategy_points[n + k], m);
+                } else {
+                    // Otherwise we have this janky repeated multiplication.
+                    stategy_points[n + k] = Self::xmul_proj_u64_iter_vartime(
+                        A24,
+                        C24,
+                        &stategy_points[n + k],
+                        degree as u64,
+                        m,
+                    )
+                }
+                orders[k] = orders[k - 1] - m;
             }
-            Self::velu_odd_isogeny_proj(A24, C24, &ker_step, degree, &mut eval_points);
+
+            // Point of order ell to compute isogeny
+            let ker_step = stategy_points[n + k];
+
+            // Compute the ell-isogeny
+            if degree == 2 {
+                Self::velu_two_isogeny_proj(A24, C24, &ker_step, &mut stategy_points[..(k + n)]);
+            } else {
+                Self::velu_odd_isogeny_proj(
+                    A24,
+                    C24,
+                    &ker_step,
+                    degree,
+                    &mut stategy_points[..(k + n)],
+                );
+            }
+
+            // Reduce the order of the points we evaluated and decrease k
+            for ord in orders.iter_mut().take(k) {
+                *ord -= 1;
+            }
+            k = k.saturating_sub(1);
         }
 
         // TODO: I don't like this copy...
-        img_points.copy_from_slice(&eval_points[..eval_points.len() - 1]);
+        img_points.copy_from_slice(&stategy_points[..n]);
     }
 
     pub fn velu_composite_isogeny_proj(
@@ -312,17 +398,9 @@ impl<Fq: FqTrait> Curve<Fq> {
             // ker_step will be a point with order ell^n
             let mut ker_step = *eval_points.last().unwrap();
             for (p, e) in degrees.iter().skip(i + 1) {
-                for _ in 0..*e {
-                    ker_step = Self::xmul_proj_u64_vartime(A24, C24, &ker_step, *p as u64);
-                }
+                ker_step = Self::xmul_proj_u64_iter_vartime(A24, C24, &ker_step, *p as u64, *e);
             }
-
-            // Handle 2^n isogenies separately.
-            if ell == 2 {
-                Self::velu_two_power_isogeny_proj(A24, C24, &ker_step, n, &mut eval_points)
-            } else {
-                Self::velu_odd_power_isogeny_proj(A24, C24, &ker_step, ell, n, &mut eval_points)
-            };
+            Self::velu_prime_power_isogeny_proj(A24, C24, &ker_step, ell, n, &mut eval_points)
         }
 
         // TODO: I don't like this copy...
@@ -337,17 +415,16 @@ impl<Fq: FqTrait> Curve<Fq> {
         degree: usize,
         img_points: &mut [PointX<Fq>],
     ) -> Self {
+        let mut A24 = self.A + Fq::TWO;
+        let mut C24 = Fq::FOUR;
+
         // 2-isogenies are handled with a special function
         if degree == 2 {
-            let (A24, C24) = Self::velu_two_isogeny_proj(kernel, img_points);
-            Self::curve_from_A24_proj(&A24, &C24)
+            Self::velu_two_isogeny_proj(&mut A24, &mut C24, kernel, img_points);
         } else {
-            let mut A24 = self.A + Fq::TWO;
-            let mut C24 = Fq::FOUR;
-
             Self::velu_odd_isogeny_proj(&mut A24, &mut C24, kernel, degree, img_points);
-            Self::curve_from_A24_proj(&A24, &C24)
         }
+        Self::curve_from_A24_proj(&A24, &C24)
     }
 
     pub fn velu_prime_power_isogeny(
@@ -359,12 +436,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     ) -> Self {
         let mut A24 = self.A + Fq::TWO;
         let mut C24 = Fq::FOUR;
-
-        if degree == 2 {
-            Self::velu_two_power_isogeny_proj(&mut A24, &mut C24, kernel, len, img_points)
-        } else {
-            Self::velu_odd_power_isogeny_proj(&mut A24, &mut C24, kernel, degree, len, img_points)
-        };
+        Self::velu_prime_power_isogeny_proj(&mut A24, &mut C24, kernel, degree, len, img_points);
 
         Self::curve_from_A24_proj(&A24, &C24)
     }
