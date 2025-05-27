@@ -124,7 +124,7 @@ impl<Fp: FpTrait> Polynomial<Fp> {
 
     /// Compute f * g with O(len(f) * len(g)) Fq multiplications using
     /// schoolbook multiplication. Assumes that fg has enough space for
-    /// the result (len(f) + len(g) - 2).
+    /// the result (len(f) + len(g) - 1).
     fn schoolbook_multiplication(fg: &mut [Fp], f: &[Fp], g: &[Fp]) {
         for i in 0..f.len() {
             for j in 0..g.len() {
@@ -137,7 +137,7 @@ impl<Fp: FpTrait> Polynomial<Fp> {
 
     /// Set self <- self * other
     fn set_mul(&mut self, other: &Self) {
-        let mut fg_coeffs = vec![Fp::ZERO; self.len() + other.len() - 2];
+        let mut fg_coeffs = vec![Fp::ZERO; self.len() + other.len() - 1];
         Self::schoolbook_multiplication(&mut fg_coeffs, &self.coeffs, &other.coeffs);
         self.coeffs = fg_coeffs;
     }
@@ -150,8 +150,8 @@ impl<Fp: FpTrait> Polynomial<Fp> {
     }
 
     /// Return  c * self for some c in the finite field.
-    pub fn scale(self, c: &Fp) -> Polynomial<Fp> {
-        let mut r = self;
+    pub fn scale(&self, c: &Fp) -> Polynomial<Fp> {
+        let mut r = self.clone();
         r.scale_into(c);
         r
     }
@@ -164,8 +164,8 @@ impl<Fp: FpTrait> Polynomial<Fp> {
     }
 
     /// Return c * self for some small c
-    pub fn scale_small(self, k: i32) -> Polynomial<Fp> {
-        let mut r = self;
+    pub fn scale_small(&self, k: i32) -> Polynomial<Fp> {
+        let mut r = self.clone();
         r.scale_small_into(k);
         r
     }
@@ -243,6 +243,13 @@ impl<Fp: FpTrait> AddAssign for Polynomial<Fp> {
     }
 }
 
+impl<Fp: FpTrait> AddAssign<&Polynomial<Fp>> for Polynomial<Fp> {
+    #[inline(always)]
+    fn add_assign(&mut self, other: &Polynomial<Fp>) {
+        self.set_add(other);
+    }
+}
+
 impl<Fp: FpTrait> Sub for Polynomial<Fp> {
     type Output = Polynomial<Fp>;
 
@@ -272,6 +279,13 @@ impl<Fp: FpTrait> SubAssign for Polynomial<Fp> {
     }
 }
 
+impl<Fp: FpTrait> SubAssign<&Polynomial<Fp>> for Polynomial<Fp> {
+    #[inline(always)]
+    fn sub_assign(&mut self, other: &Polynomial<Fp>) {
+        self.set_sub(other);
+    }
+}
+
 impl<Fp: FpTrait> Mul for Polynomial<Fp> {
     type Output = Polynomial<Fp>;
 
@@ -283,10 +297,28 @@ impl<Fp: FpTrait> Mul for Polynomial<Fp> {
     }
 }
 
+impl<Fp: FpTrait> Mul for &Polynomial<Fp> {
+    type Output = Polynomial<Fp>;
+
+    #[inline(always)]
+    fn mul(self, other: &Polynomial<Fp>) -> Polynomial<Fp> {
+        let mut r = self.clone();
+        r.set_mul(&other);
+        r
+    }
+}
+
 impl<Fp: FpTrait> MulAssign for Polynomial<Fp> {
     #[inline(always)]
     fn mul_assign(&mut self, other: Polynomial<Fp>) {
         self.set_mul(&other);
+    }
+}
+
+impl<Fp: FpTrait> MulAssign<&Polynomial<Fp>> for Polynomial<Fp> {
+    #[inline(always)]
+    fn mul_assign(&mut self, other: &Polynomial<Fp>) {
+        self.set_mul(other);
     }
 }
 
