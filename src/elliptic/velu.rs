@@ -1,8 +1,12 @@
 // TODO:
 //
+// Optimise Sqrt Velu, current implementation is very slow!
+//
 // Cofactor clearing. At the moment clearing the cofactor means multiplying by each ell_i e_i times,
 // which seems silly. I think we should probably have some function which converts the prime factorisation into &[u64; ...]
 // and then we use these limbs to do var time point multiplication.
+
+// use std::time::Instant;
 
 use fp2::traits::Fp as FqTrait;
 
@@ -318,6 +322,10 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// Compute roots of the polynomial \Prod (Z - x(Q)) for Q in the set
     /// I = {2b(2i + 1) | 0 <= i < c}
     fn precompute_hi_roots(hI_roots: &mut [Fq], A24: &Fq, C24: &Fq, kernel: &PointX<Fq>, b: usize) {
+        // For now, we collect the points in hI_points, then normalise these in a batch
+        // then set hI_roots to the x-coordinates.
+        let mut hI_points = vec![PointX::INFINITY; hI_roots.len()];
+
         // Set Q = [2b]K
         let mut Q = Self::xmul_proj_u64_vartime(A24, C24, kernel, (b + b) as u64);
 
@@ -326,47 +334,27 @@ impl<Fq: FqTrait> Curve<Fq> {
         Self::xdbl_proj(A24, C24, &mut step.X, &mut step.Z);
         let mut diff = Q;
 
-        // TODO: work projectively here to avoid the inversion for each point?
-        for r in hI_roots.iter_mut() {
-            *r = Q.x();
-            // TODO: we can skip the last addition
+        let n = hI_roots.len() - 1;
+        for (i, P) in hI_points.iter_mut().enumerate() {
+            *P = Q;
+
+            // For the last step, we don't need to do the diff add
+            if i == n {
+                break;
+            }
+
             let R = Self::xdiff_add(&Q, &step, &diff);
             diff = Q;
             Q = R;
         }
-    }
 
-    /// Given a point (X : Z) compute the three elliptic resultants on the Montgomery
-    /// curve, given by (with `a = X / Z` for now...).
-    /// -
-    /// - `f1 = (x * QZ - QX)^2
-    /// - `f2 = -2((xa + 1)(x + a) + 2Axa)`
-    /// - `f3 = -2* (2*A*QX*QZ*x + (QX*x + QZ)*(QZ*x + QX))
-    fn _old_elliptic_resultants<P: Poly<Fq>>(A: &Fq, Q: &PointX<Fq>) -> (P, P, P) {
-        // TODO: is it better to invert A / C to be used here, or work with (A : C)
-        // projectively? The cost balance is 1 inversion (~30M) or the cost of
-        // ~sqrt(degree) * n multiplications. Where n is the number of multiplications
-        // by C in this function.
+        // Normalise all the points with only one inversion using Montgomery's trick
+        PointX::batch_normalise(&mut hI_points);
 
-        // TODO: do operation counting to see if this is the fastest way
-        // to compute these three polynomials...
-        let QX_sqr = Q.X.square();
-        let QZ_sqr = Q.Z.square();
-        let QXQZ = Q.X * Q.Z;
-        let QXQZ_m2 = -QXQZ.mul2();
-
-        // f1 = (x * QZ - QX)^2
-        let f1 = P::new_from_slice(&[QX_sqr, QXQZ_m2, QZ_sqr]);
-
-        // f2 = -2*A*QX*QZ*x - 2*(QX*x + QZ)*(QZ*x + QX)
-        //    = -2 * (QX*QZ*x^2 + (A*QX*QZ + QX^2 + QZ^2)*x + QX*QZ)
-        let f2_linear = -(*A * QXQZ + QX_sqr + QZ_sqr).mul2();
-        let f2 = P::new_from_slice(&[QXQZ_m2, f2_linear, QXQZ_m2]);
-
-        // f3 = (x * QX - QZ)^2
-        let f3 = P::new_from_slice(&[QZ_sqr, QXQZ_m2, QX_sqr]);
-
-        (f1, f2, f3)
+        // Now set hI_roots to the x-coordinates of the points
+        for (r, P) in hI_roots.iter_mut().zip(hI_points.iter()) {
+            *r = P.X
+        }
     }
 
     /// Given a point (X : Z) we want to compute three elliptic resultants on the Montgomery
@@ -398,7 +386,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         ker: &PointX<Fq>,
     ) {
         // TODO: this is dumb, but we need A rather than (A24 : C24) for the
-        // current formula...
+        // current formula, or we work projectively in elliptic_resultants.
         let A = (*A24 / *C24).mul4() - Fq::TWO;
 
         // Initalise values for the addition chain, we repeatedly add [2]Q for each step
@@ -417,6 +405,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         }
     }
 
+    /// Precompute the set of elements [i]ker for i in the set K
     fn precompute_hK_points(hK_points: &mut [PointX<Fq>], A24: &Fq, C24: &Fq, kernel: &PointX<Fq>) {
         let mut Q = *kernel;
         Self::xdbl_proj(A24, C24, &mut Q.X, &mut Q.Z);
@@ -433,6 +422,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         }
     }
 
+    /// Understanding the polynomial hK = prod(x * PZ - PX) for the set in hK, then
+    /// evaluate this polynomial at alpha = 1 and alpha = -1
     fn hK_codomain(hK_points: &[PointX<Fq>]) -> (Fq, Fq) {
         let mut h1 = Fq::ONE;
         let mut h2 = Fq::ONE;
@@ -443,6 +434,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         (h1, h2)
     }
 
+    /// Understanding the polynomial hK = prod(x * PZ - PX) for the set in hK, then
+    /// evaluate this polynomial at alpha and 1/alpha (projectively)
     fn hK_eval(hK_points: &[PointX<Fq>], alpha: &Fq) -> (Fq, Fq) {
         let mut h1 = Fq::ONE;
         let mut h2 = Fq::ONE;
@@ -453,6 +446,9 @@ impl<Fq: FqTrait> Curve<Fq> {
         (h1, h2)
     }
 
+    /// Compute an isogeny using the sqrt-velu algorithm O(\sqrt{ell}) complexity.
+    /// https://velusqrt.isogeny.org
+    /// WARNING: this function is grossly underperforming due to slow polynomial arithmetic.
     pub fn sqrt_velu_odd_isogeny_proj<P: Poly<Fq>>(
         A24: &mut Fq,
         C24: &mut Fq,
@@ -462,21 +458,35 @@ impl<Fq: FqTrait> Curve<Fq> {
     ) {
         // baby step, giant step values
         // TODO: better sqrt?
-        let b = (((degree + 1) as f64).sqrt() as usize) / 2;
-        let c = (degree + 1) / (4 * b);
-        let stop = degree - 4 * b * c;
+        let size_J = (((degree + 1) as f64).sqrt() as usize) / 2;
+        let size_I = (degree + 1) / (4 * size_J);
+        let size_K = (degree - 4 * size_J * size_I - 1) / 2;
+
+        // println!("b = {}", size_J);
+        // println!("c = {}", size_I);
+        // println!("stop = {}", size_K);
 
         // Precompute the roots of the polynomial Prod(x - [i]P.x()) for i in the set I
-        let mut hI_roots = vec![Fq::ZERO; c];
-        Self::precompute_hi_roots(&mut hI_roots, A24, C24, kernel, b);
+        // let start = Instant::now();
+        let mut hI_roots = vec![Fq::ZERO; size_I];
+        Self::precompute_hi_roots(&mut hI_roots, A24, C24, kernel, size_J);
+        // let hi_time = start.elapsed();
+        // println!("hi precomp time: {:?}", hi_time);
 
-        // Precompute three polynomials for each point [j]P for j in J
-        let mut eJ_coeffs = vec![(Fq::ZERO, Fq::ZERO, Fq::ZERO, Fq::ZERO); b];
+        // Precompute coefficients for three polynomials for each point [j]P for j in J
+        let mut eJ_coeffs = vec![(Fq::ZERO, Fq::ZERO, Fq::ZERO, Fq::ZERO); size_J];
         Self::precompute_eJ_coeffs(&mut eJ_coeffs, A24, C24, kernel);
+        // let ej_time = start.elapsed();
+        // println!("ej precomp time: {:?}", ej_time - hi_time);
 
         // Precompute the polynomial (x - [k]P.x()) for k in the set K
-        let mut hK_points = vec![PointX::INFINITY; (stop - 1) / 2];
+        let mut hK_points = vec![PointX::INFINITY; size_K];
         Self::precompute_hK_points(&mut hK_points, A24, C24, kernel);
+        // let hk_time = start.elapsed();
+        // println!("hk precomp time: {:?}", hk_time - ej_time);
+
+        // let precomp = start.elapsed();
+        // println!("precomp time: {:?}", precomp);
 
         // Compute prod(f0 + f1 + f2) and prod(f0 - f1 + f2) which we will compute
         // resultants of with hI_roots.
@@ -497,9 +507,16 @@ impl<Fq: FqTrait> Curve<Fq> {
             E1J *= t1;
         }
 
+        // let e_comp = start.elapsed();
+        // println!("E comp time: {:?}", e_comp - precomp);
+
         // Compute the codomain.
         let r0 = E0J.resultant_from_roots(&hI_roots);
         let r1 = E1J.resultant_from_roots(&hI_roots);
+
+        // let two_res = start.elapsed();
+        // println!("2x res time: {:?}", two_res - e_comp);
+
         let (m0, m1) = Self::hK_codomain(&hK_points);
 
         // Compute (ri * mi)^8 * (A ∓ 2)^degree
@@ -571,6 +588,9 @@ impl<Fq: FqTrait> Curve<Fq> {
         // Convert back to Montgomery (A24 : C24)
         *A24 = A_ed;
         *C24 = A_ed - D_ed;
+
+        // let stop = start.elapsed();
+        // println!("time for all: {:?}", stop);
     }
 
     // ============================================================

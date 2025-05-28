@@ -55,6 +55,15 @@ impl<Fq: FpTrait> PointX<Fq> {
         Fq::condswap(&mut P.X, &mut Q.X, ctl);
         Fq::condswap(&mut P.Z, &mut Q.Z, ctl);
     }
+
+    pub fn batch_normalise(points: &mut [Self]) {
+        let mut zs: Vec<Fq> = points.iter().map(|point| point.Z).collect();
+        Fq::batch_invert(&mut zs);
+        for (i, P) in points.iter_mut().enumerate() {
+            P.X *= zs[i];
+            P.Z = Fq::ONE;
+        }
+    }
 }
 
 impl<Fq: FpTrait> ::std::fmt::Display for PointX<Fq> {
