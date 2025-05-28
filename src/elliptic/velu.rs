@@ -326,7 +326,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         Self::xdbl_proj(A24, C24, &mut step.X, &mut step.Z);
         let mut diff = Q;
 
-        // TODO: work projectively here to avoid the inversion for each point!
+        // TODO: work projectively here to avoid the inversion for each point?
         for r in hI_roots.iter_mut() {
             *r = Q.x();
             // TODO: we can skip the last addition
@@ -549,9 +549,9 @@ impl<Fq: FqTrait> Curve<Fq> {
 
                 // Compute alpha^2 * f0 + alpha f1 + f2
                 f0 *= alpha;
-                f0 += f1.clone();
+                f0 += f1;
                 f0 *= alpha;
-                f0 += f2.clone();
+                f0 += f2;
 
                 E1J *= f0;
             }
