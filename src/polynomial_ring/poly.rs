@@ -10,19 +10,7 @@ use std::{
 };
 
 /// Trait for arithmetic for univariate polynomials in Fp[X]
-pub trait Poly:
-    Index<usize>
-    + IndexMut<usize>
-    + Sized
-    + Neg<Output = Self>
-    + Add<Output = Self>
-    + AddAssign
-    + Sub<Output = Self>
-    + SubAssign
-    + Mul<Output = Self>
-    + MulAssign
-    + Display
-{
+pub trait Poly: Index<usize> + IndexMut<usize> + Sized + Display {
     // TODO
 }
 
@@ -47,14 +35,28 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         self.coeffs.len()
     }
 
-    /// The degree of the polynomial. TODO: should we trim trailing zeros? If so, how often?
-    /// We return None for the zero polynomial (instead of -inf which is a bit too big for my
-    /// computer...)
-    fn degree(&self) -> Option<usize> {
-        if self.coeffs.is_empty() {
+    /// Truncate leading zeros from the polynomial
+    fn truncate_leading_zeros(&mut self) {
+        // find the index of the first non-zero element
+        let mut i = self.len() - 1;
+        while i > 0 && self.coeffs[i].is_zero() == u32::MAX {
+            i -= 1;
+        }
+        self.coeffs.truncate(i);
+    }
+
+    /// Return the degree of the polynomial.
+    // TODO: should we trim trailing zeros and mutate while computing the degree or do the following
+    // and allow trailing zeros to remain.
+    pub fn degree(&self) -> Option<usize> {
+        let mut i = self.len() - 1;
+        while i > 0 && self.coeffs[i].is_zero() == u32::MAX {
+            i -= 1;
+        }
+        if i == 0 && self.coeffs[0].is_zero() == u32::MAX {
             None
         } else {
-            Some(self.len() - 1)
+            Some(i)
         }
     }
 
@@ -103,30 +105,17 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         is_zero
     }
 
-    /// Set self to it's negative.
-    fn set_neg(&mut self) {
-        for x in self.coeffs.iter_mut() {
-            x.set_neg();
+    /// Compute f <-- f + g, assumes that the length of f and g are the same.
+    fn add_into(f: &mut [Fp], g: &[Fp]) {
+        for i in 0..g.len() {
+            f[i] += g[i];
         }
     }
 
-    /// Set self <- self + other
-    // TODO: should we assume other has length smaller or equal to
-    // self, or dynamically extend?
-    fn set_add(&mut self, other: &Self) {
-        let k = self.len().min(other.len());
-        for i in 0..k {
-            self.coeffs[i] += other[i];
-        }
-    }
-
-    /// Set self <- self - other
-    // TODO: should we assume other has length smaller or equal to
-    // self, or dynamically extend?
-    fn set_sub(&mut self, other: &Self) {
-        let k = self.len().min(other.len());
-        for i in 0..k {
-            self.coeffs[i] -= other[i];
+    /// Compute f <-- f - g, assumes that the length of f and g are the same.
+    fn sub_into(f: &mut [Fp], g: &[Fp]) {
+        for i in 0..g.len() {
+            f[i] -= g[i];
         }
     }
 
@@ -141,6 +130,29 @@ impl<Fp: FpTrait> Polynomial<Fp> {
                 fg[i + j] += f[i] * g[j]
             }
         }
+    }
+
+    /// Set self to it's negative.
+    fn set_neg(&mut self) {
+        for x in self.coeffs.iter_mut() {
+            x.set_neg();
+        }
+    }
+
+    /// Set self <- self + other
+    fn set_add(&mut self, other: &Self) {
+        if self.len() < other.len() {
+            self.coeffs.resize(other.len(), Fp::ZERO);
+        }
+        Self::add_into(&mut self.coeffs, &other.coeffs);
+    }
+
+    /// Set self <- self - other
+    fn set_sub(&mut self, other: &Self) {
+        if self.len() < other.len() {
+            self.coeffs.resize(other.len(), Fp::ZERO);
+        }
+        Self::sub_into(&mut self.coeffs, &other.coeffs);
     }
 
     /// Set self <- self * other
@@ -179,6 +191,7 @@ impl<Fp: FpTrait> Polynomial<Fp> {
     }
 
     /// Evaluate a polynomial at a value `a`
+    // TODO: is this over engineered?
     pub fn evaluate(&self, a: &Fp) -> Fp {
         // Handle degree 0 and 1 cases early.
         if self.len() == 0 {
@@ -251,29 +264,18 @@ impl<Fp: FpTrait> IndexMut<usize> for Polynomial<Fp> {
     }
 }
 
-impl<Fp: FpTrait> Neg for Polynomial<Fp> {
+impl<Fp: FpTrait> Neg for &Polynomial<Fp> {
     type Output = Polynomial<Fp>;
 
     #[inline(always)]
     fn neg(self) -> Polynomial<Fp> {
-        let mut r = self;
+        let mut r = self.clone();
         r.set_neg();
         r
     }
 }
 
-impl<Fp: FpTrait> Add for Polynomial<Fp> {
-    type Output = Polynomial<Fp>;
-
-    #[inline(always)]
-    fn add(self, other: Polynomial<Fp>) -> Polynomial<Fp> {
-        let mut r = self;
-        r.set_add(&other);
-        r
-    }
-}
-
-impl<Fp: FpTrait> Add for &Polynomial<Fp> {
+impl<Fp: FpTrait> Add<&Polynomial<Fp>> for &Polynomial<Fp> {
     type Output = Polynomial<Fp>;
 
     #[inline(always)]
@@ -284,13 +286,6 @@ impl<Fp: FpTrait> Add for &Polynomial<Fp> {
     }
 }
 
-impl<Fp: FpTrait> AddAssign for Polynomial<Fp> {
-    #[inline(always)]
-    fn add_assign(&mut self, other: Polynomial<Fp>) {
-        self.set_add(&other);
-    }
-}
-
 impl<Fp: FpTrait> AddAssign<&Polynomial<Fp>> for Polynomial<Fp> {
     #[inline(always)]
     fn add_assign(&mut self, other: &Polynomial<Fp>) {
@@ -298,18 +293,7 @@ impl<Fp: FpTrait> AddAssign<&Polynomial<Fp>> for Polynomial<Fp> {
     }
 }
 
-impl<Fp: FpTrait> Sub for Polynomial<Fp> {
-    type Output = Polynomial<Fp>;
-
-    #[inline(always)]
-    fn sub(self, other: Polynomial<Fp>) -> Polynomial<Fp> {
-        let mut r = self;
-        r.set_sub(&other);
-        r
-    }
-}
-
-impl<Fp: FpTrait> Sub for &Polynomial<Fp> {
+impl<Fp: FpTrait> Sub<&Polynomial<Fp>> for &Polynomial<Fp> {
     type Output = Polynomial<Fp>;
 
     #[inline(always)]
@@ -320,13 +304,6 @@ impl<Fp: FpTrait> Sub for &Polynomial<Fp> {
     }
 }
 
-impl<Fp: FpTrait> SubAssign for Polynomial<Fp> {
-    #[inline(always)]
-    fn sub_assign(&mut self, other: Polynomial<Fp>) {
-        self.set_sub(&other);
-    }
-}
-
 impl<Fp: FpTrait> SubAssign<&Polynomial<Fp>> for Polynomial<Fp> {
     #[inline(always)]
     fn sub_assign(&mut self, other: &Polynomial<Fp>) {
@@ -334,18 +311,7 @@ impl<Fp: FpTrait> SubAssign<&Polynomial<Fp>> for Polynomial<Fp> {
     }
 }
 
-impl<Fp: FpTrait> Mul for Polynomial<Fp> {
-    type Output = Polynomial<Fp>;
-
-    #[inline(always)]
-    fn mul(self, other: Polynomial<Fp>) -> Polynomial<Fp> {
-        let mut r = self;
-        r.set_mul(&other);
-        r
-    }
-}
-
-impl<Fp: FpTrait> Mul for &Polynomial<Fp> {
+impl<Fp: FpTrait> Mul<&Polynomial<Fp>> for &Polynomial<Fp> {
     type Output = Polynomial<Fp>;
 
     #[inline(always)]
@@ -353,13 +319,6 @@ impl<Fp: FpTrait> Mul for &Polynomial<Fp> {
         let mut r = self.clone();
         r.set_mul(&other);
         r
-    }
-}
-
-impl<Fp: FpTrait> MulAssign for Polynomial<Fp> {
-    #[inline(always)]
-    fn mul_assign(&mut self, other: Polynomial<Fp>) {
-        self.set_mul(&other);
     }
 }
 

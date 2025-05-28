@@ -10,9 +10,9 @@ mod test_polynomial_arithmetic {
     fn test_addition() {
         let mut rng = DRNG::from_seed("polynomial_addition".as_bytes());
 
-        let f = PR::rand(&mut rng, 5);
+        let f = PR::rand(&mut rng, 4);
         let g = PR::rand(&mut rng, 5);
-        let h = PR::rand(&mut rng, 5);
+        let h = PR::rand(&mut rng, 6);
 
         let t1 = &(&f + &g) + &h;
         let t2 = &f + &(&g + &h);
@@ -20,22 +20,25 @@ mod test_polynomial_arithmetic {
         assert!(t1.equals(&t2) == u32::MAX);
 
         let mut t1 = f.clone();
-        t1 += g;
-        t1 += h;
+        t1 += &g;
+        t1 += &h;
         assert!(t1.equals(&t2) == u32::MAX);
 
         let zero = PR::new_from_ele(&Fp::ZERO);
         let t1 = &f + &zero;
         assert!(t1.equals(&f) == u32::MAX);
+
+        let f_neg = -&f;
+        assert!((&f + &f_neg).is_zero() == u32::MAX);
     }
 
     #[test]
     fn test_subtraction() {
         let mut rng = DRNG::from_seed("polynomial_subtraction".as_bytes());
 
-        let f = PR::rand(&mut rng, 5);
+        let f = PR::rand(&mut rng, 4);
         let g = PR::rand(&mut rng, 5);
-        let h = PR::rand(&mut rng, 5);
+        let h = PR::rand(&mut rng, 6);
 
         let t1 = &(&f - &g) - &h;
         let t2 = &f - &(&g + &h);
@@ -43,8 +46,8 @@ mod test_polynomial_arithmetic {
         assert!(t1.equals(&t2) == u32::MAX);
 
         let mut t1 = f.clone();
-        t1 -= g;
-        t1 -= h;
+        t1 -= &g;
+        t1 -= &h;
         assert!(t1.equals(&t2) == u32::MAX);
 
         let zero = &f - &f;
@@ -55,9 +58,9 @@ mod test_polynomial_arithmetic {
     fn test_multiplication() {
         let mut rng = DRNG::from_seed("polynomial_multiplication".as_bytes());
 
-        let f = PR::rand(&mut rng, 5);
+        let f = PR::rand(&mut rng, 4);
         let g = PR::rand(&mut rng, 5);
-        let h = PR::rand(&mut rng, 5);
+        let h = PR::rand(&mut rng, 6);
 
         let t1 = &(&f * &g) * &h;
         let t2 = &f * &(&g * &h);
@@ -65,16 +68,16 @@ mod test_polynomial_arithmetic {
         assert!(t1.equals(&t2) == u32::MAX);
 
         let mut t1 = f.clone();
-        t1 *= g;
-        t1 *= h;
+        t1 *= &g;
+        t1 *= &h;
         assert!(t1.equals(&t2) == u32::MAX);
 
         let one = PR::new_from_ele(&Fp::ONE);
-        t1 *= one;
+        t1 *= &one;
         assert!(t1.equals(&t2) == u32::MAX);
 
         let zero = PR::new_from_ele(&Fp::ZERO);
-        t1 *= zero;
+        t1 *= &zero;
         assert!(t1.is_zero() == u32::MAX);
     }
 
@@ -158,5 +161,32 @@ mod test_polynomial_arithmetic {
         test_ea += f[4] * (a * a * a * a);
 
         assert!(ea.equals(&test_ea) == u32::MAX);
+    }
+
+    #[test]
+    fn test_degree() {
+        let f = PR::new_from_slice(&[Fp::ZERO]);
+        assert!(f.degree() == None);
+
+        let f = PR::new_from_slice(&[Fp::ONE]);
+        assert!(f.degree().unwrap() == 0);
+
+        let f = PR::new_from_slice(&[Fp::ZERO, Fp::ONE]);
+        assert!(f.degree().unwrap() == 1);
+
+        let f = PR::new_from_slice(&[Fp::ZERO, Fp::ZERO, Fp::ZERO, Fp::ZERO, Fp::ONE, Fp::ZERO]);
+        assert!(f.degree().unwrap() == 4);
+
+        let f = PR::new_from_slice(&[Fp::ZERO, Fp::ZERO, Fp::ZERO, Fp::ZERO, Fp::ZERO, Fp::ZERO]);
+        assert!(f.degree() == None);
+
+        let f = PR::new_from_slice(&[Fp::ONE, Fp::ZERO, Fp::ZERO, Fp::ZERO, Fp::ZERO, Fp::ZERO]);
+        assert!(f.degree().unwrap() == 0);
+
+        let f = PR::new_from_slice(&[Fp::ZERO, Fp::ONE, Fp::ZERO, Fp::ZERO, Fp::ZERO, Fp::ZERO]);
+        assert!(f.degree().unwrap() == 1);
+
+        let f = PR::new_from_slice(&[Fp::ZERO, Fp::ZERO, Fp::ZERO, Fp::ZERO, Fp::ONE, Fp::ZERO]);
+        assert!(f.degree().unwrap() == 4);
     }
 }
