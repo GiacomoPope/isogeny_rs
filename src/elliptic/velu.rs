@@ -395,34 +395,40 @@ impl<Fq: FqTrait> Curve<Fq> {
         }
     }
 
-    fn precompute_hK_polynomial<P: Poly<Fq>>(
-        A24: &Fq,
-        C24: &Fq,
-        kernel: &PointX<Fq>,
-        stop: usize,
-    ) -> P {
-        let mut hK_poly = P::new_from_ele(&Fq::ONE);
-
+    fn precompute_hK_points(hK_points: &mut [PointX<Fq>], A24: &Fq, C24: &Fq, kernel: &PointX<Fq>) {
         let mut Q = *kernel;
         Self::xdbl_proj(A24, C24, &mut Q.X, &mut Q.Z);
         let step = Q;
         let mut R = Q;
         Self::xdbl_proj(A24, C24, &mut R.X, &mut R.Z);
 
-        for _ in (2..stop).step_by(2) {
-            let (X, Z) = Q.coords();
+        for P in hK_points.iter_mut() {
+            *P = Q;
 
-            // TODO: this is creating many new vectors, this should be fixed.
-            let linear = P::new_from_slice(&[-X, Z]);
-            hK_poly *= linear;
-
-            // (Q, R) = (R, Self::xdiff_add(&R, &step, &Q))
+            // TODO: we can skip this last add in the loop
             let S = Self::xdiff_add(&R, &step, &Q);
-            Q = R;
-            R = S;
+            (Q, R) = (R, S)
         }
+    }
 
-        hK_poly
+    fn hK_codomain(hK_points: &[PointX<Fq>]) -> (Fq, Fq) {
+        let mut h1 = Fq::ONE;
+        let mut h2 = Fq::ONE;
+        for P in hK_points.iter() {
+            h1 *= P.Z - P.X;
+            h2 *= -(P.Z + P.X);
+        }
+        (h1, h2)
+    }
+
+    fn hK_eval(hK_points: &[PointX<Fq>], alpha: &Fq) -> (Fq, Fq) {
+        let mut h1 = Fq::ONE;
+        let mut h2 = Fq::ONE;
+        for P in hK_points.iter() {
+            h1 *= P.Z - P.X * *alpha;
+            h2 *= *alpha * P.Z - P.X;
+        }
+        (h1, h2)
     }
 
     pub fn sqrt_velu_odd_isogeny_proj<P: Poly<Fq>>(
@@ -434,8 +440,8 @@ impl<Fq: FqTrait> Curve<Fq> {
     ) {
         // baby step, giant step values
         // TODO: better sqrt?
-        let b = (((degree - 1) as f64).sqrt() as usize) / 2;
-        let c = (degree - 1) / (4 * b);
+        let b = (((degree + 1) as f64).sqrt() as usize) / 2;
+        let c = (degree + 1) / (4 * b);
         let stop = degree - 4 * b * c;
 
         // Precompute the roots of the polynomial Prod(x - [i]P.x()) for i in the set I
@@ -447,15 +453,16 @@ impl<Fq: FqTrait> Curve<Fq> {
         Self::precompute_eJ_polynomials(&mut eJ_polys, A24, C24, kernel);
 
         // Precompute the polynomial (x - [k]P.x()) for k in the set K
-        let hK_poly: P = Self::precompute_hK_polynomial(A24, C24, kernel, stop);
-        let hK_rev_poly = hK_poly.reverse();
+        let mut hK_points = vec![PointX::INFINITY; (stop - 1) / 2];
+        Self::precompute_hK_points(&mut hK_points, A24, C24, kernel);
 
         // Compute prod(f0 + f1 + f2) and prod(f0 - f1 + f2) which we will compute
         // resultants of with hI_roots.
         let mut E0J = P::new_from_ele(&Fq::ONE);
         let mut E1J = P::new_from_ele(&Fq::ONE);
         for (f0, f1, f2) in eJ_polys.iter() {
-            // TODO: lol.
+            // TODO: do I really have to clone these?! Rework the trait to
+            // allow for borrowed multiplication.
             E0J *= (f0.clone() + f1.clone()) + f2.clone();
             E1J *= (f0.clone() - f1.clone()) + f2.clone();
         }
@@ -463,8 +470,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         // Compute the codomain.
         let r0 = E0J.resultant_from_roots(&hI_roots);
         let r1 = E1J.resultant_from_roots(&hI_roots);
-        let m0 = hK_poly.evaluate(&Fq::ONE);
-        let m1 = hK_poly.evaluate(&Fq::MINUS_ONE);
+        let (m0, m1) = Self::hK_codomain(&hK_points);
 
         // Compute (ri * mi)^8 * (A ∓ 2)^degree
         let mut num = r0 * m0;
@@ -482,15 +488,27 @@ impl<Fq: FqTrait> Curve<Fq> {
         A_ed *= den;
         D_ed *= num;
 
-        // Evaluate each point through the isogeny
+        // Evaluate each point through the isogeny.
+        //
+        // Here we have for each point P (X : Z) the option to compute
+        // the fi elliptic polynomials of degree 2 with scaling by (X/Z) twice per step
+        // at a cost of b * 6M or by computing PX^2, PZ^2 and PX * PZ and then scaling
+        // three times at a cost of b * (9M  + 1M + 2S).
+        //
+        // Additionally in hK_eval if we use alpha we need `stop` additional
+        // multiplications.
+        //
+        // The question is for what values of b and stop should we compute alpha = X/Z
+        // to save multiplications for the cost of about 30M for the inversion for alpha
+        //
+        // Roughly it seems that if b = 5 it seems to be worth inverting and seeing as we
+        // expect to use this for degree ~ 100 I think the inversion is always good?
         for P in img_points.iter_mut() {
             if P.is_zero() == u32::MAX {
                 continue;
             }
 
-            // TODO: remove this inversion.
             let alpha = P.x();
-
             let mut E1J = P::new_from_ele(&Fq::ONE);
             for (f0, f1, f2) in eJ_polys.iter() {
                 let mut t1 = f0.clone();
@@ -505,8 +523,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
             let r0 = E0J.resultant_from_roots(&hI_roots);
             let r1 = E1J.resultant_from_roots(&hI_roots);
-            let m0 = hK_rev_poly.evaluate(&alpha);
-            let m1 = hK_poly.evaluate(&alpha);
+            let (m0, m1) = Self::hK_eval(&hK_points, &alpha);
 
             let r0m0 = r0 * m0;
             let r1m1 = r1 * m1;

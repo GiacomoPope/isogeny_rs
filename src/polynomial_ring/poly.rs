@@ -28,7 +28,13 @@ pub trait Poly<Fp: FpTrait>:
     fn set_from_slice(&mut self, a: &[Fp]);
 
     fn reverse(&self) -> Self;
+
+    fn scale(&self, a: &Fp) -> Self;
+
+    fn evaluate_at_one(&self) -> Fp;
+    fn evaluate_at_minus_one(&self) -> Fp;
     fn evaluate(&self, a: &Fp) -> Fp;
+
     fn resultant_from_roots(&self, ai: &[Fp]) -> Fp;
 }
 
@@ -242,6 +248,32 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         res
     }
 
+    pub fn evaluate_at_one(&self) -> Fp {
+        if self.len() == 0 {
+            return Fp::ZERO;
+        }
+        let mut res = self.coeffs[0];
+        for i in 1..self.len() {
+            res += self.coeffs[i]
+        }
+        res
+    }
+
+    pub fn evaluate_at_minus_one(&self) -> Fp {
+        if self.len() == 0 {
+            return Fp::ZERO;
+        }
+        let mut res = self.coeffs[0];
+        for i in 1..self.len() {
+            if (i & 1) == 1 {
+                res -= self.coeffs[i]
+            } else {
+                res += self.coeffs[i]
+            }
+        }
+        res
+    }
+
     /// Compute the resultant of self with a polynomial g = \prod {x - ai}
     /// given the roots ai.
     // TODO: this is a very slow and stupid method, but speed comes later and
@@ -286,8 +318,18 @@ impl<Fp: FpTrait> Poly<Fp> for Polynomial<Fp> {
         self.reverse()
     }
 
+    fn scale(&self, a: &Fp) -> Self {
+        self.scale(a)
+    }
+
     fn evaluate(&self, a: &Fp) -> Fp {
         self.evaluate(a)
+    }
+    fn evaluate_at_one(&self) -> Fp {
+        self.evaluate_at_one()
+    }
+    fn evaluate_at_minus_one(&self) -> Fp {
+        self.evaluate_at_minus_one()
     }
 
     fn resultant_from_roots(&self, ai: &[Fp]) -> Fp {
