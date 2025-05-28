@@ -329,6 +329,20 @@ impl<Fp: FpTrait> MulAssign<&Polynomial<Fp>> for Polynomial<Fp> {
     }
 }
 
+impl<Fp: FpTrait> MulAssign<Fp> for Polynomial<Fp> {
+    #[inline(always)]
+    fn mul_assign(&mut self, other: Fp) {
+        self.scale_into(&other);
+    }
+}
+
+impl<Fp: FpTrait> MulAssign<&Fp> for Polynomial<Fp> {
+    #[inline(always)]
+    fn mul_assign(&mut self, other: &Fp) {
+        self.scale_into(other);
+    }
+}
+
 impl<Fq: FpTrait> ::std::fmt::Display for Polynomial<Fq> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         write!(f, "TODO")

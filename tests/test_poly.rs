@@ -110,6 +110,10 @@ mod test_polynomial_arithmetic {
         let t2 = f.scale(&Fp::FOUR);
         assert!(t1.equals(&t2) == u32::MAX);
 
+        let mut t2 = f.clone();
+        t2 *= &Fp::FOUR;
+        assert!(t1.equals(&t2) == u32::MAX);
+
         let t2 = f.scale_small(4);
         assert!(t1.equals(&t2) == u32::MAX);
 
