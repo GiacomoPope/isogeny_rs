@@ -6,6 +6,8 @@
 
 use fp2::traits::Fp as FqTrait;
 
+use crate::polynomial_ring::poly::Poly;
+
 use super::{curve::Curve, point::PointX};
 
 /// A structure which allows iterating over [i]P = (X : Z)
@@ -63,6 +65,11 @@ impl<Fq: FqTrait> Iterator for PointXMultiples<Fq> {
 }
 
 impl<Fq: FqTrait> Curve<Fq> {
+    //============================================================
+    // Variable time methods to compute [n]P and [n^ell]P for
+    // cofactor clearing during isogeny computations. Should be
+    // refactored to improve performance for large cofactors.
+
     /// P3 <- n*P, x-only variant using (A24 : C24).
     /// Integer n is represented as a u64 and is assumed to be public.
     pub fn set_xmul_proj_u64_vartime(A24: &Fq, C24: &Fq, P3: &mut PointX<Fq>, P: &PointX<Fq>, n: u64) {
@@ -192,6 +199,12 @@ impl<Fq: FqTrait> Curve<Fq> {
         P3
     }
 
+    // ============================================================
+    // Internal functions for Velu isogenies with complexity O(ell)
+    // suitable for all prime ell. Expects as input (A24 : C24) for
+    // a domain instead of the Curve type to avoid inversions during
+    // isogeny curve computations.
+
     /// Compute (X + Z) and (X - Z) for [i]P for 0 < i <= (ell - 1) / 2
     fn edwards_multiples(A24: &Fq, C24: &Fq, constants: &mut [(Fq, Fq)], P: &PointX<Fq>) {
         let mut iP = PointXMultiples::new(A24, C24, P);
@@ -298,6 +311,37 @@ impl<Fq: FqTrait> Curve<Fq> {
         *C24 = A_ed - D_ed;
     }
 
+    // ============================================================
+    // Sqrt Velu functions for large ell-isogenies
+    //
+    //
+    /// Compute roots of the polynomial \Prod (Z - x(Q)) for Q in the set
+    /// I = {2b(2i + 1) | 0 <= i < c}
+    fn precompute_hi_roots(hI_roots: &mut [Fq], A24: &Fq, C24: &Fq, kernel: &PointX<Fq>, b: usize) {
+        // Set Q = b^2 K
+        let mut Q = Self::xmul_proj_u64_vartime(A24, C24, kernel, (b * b) as u64);
+
+        // Initalise values for the addition chain
+        let mut step = Q;
+        Self::xdbl_proj(A24, C24, &mut step.X, &mut step.Z);
+        let mut diff = Q;
+
+        // TODO: work projectively here to avoid the inversion for each point!
+        for r in hI_roots.iter_mut() {
+            *r = Q.x();
+            (Q, diff) = (Self::xdiff_add(&Q, &step, &diff), diff);
+        }
+    }
+
+    // TODO: how can I handle returning polynomials here...
+    // fn elliptic_resultants() -> (Poly<Fq>, Poly<Fq>, Poly<Fq>) {
+    //     todo!()
+    // }
+
+    // ============================================================
+    // Internal methods for computing isogeny chains of degree ell^e
+    // and generic composite orders of degree \prod ell_i^ei
+
     fn velu_prime_power_isogeny_proj(
         A24: &mut Fq,
         C24: &mut Fq,
@@ -379,7 +423,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         img_points.copy_from_slice(&stategy_points[..n]);
     }
 
-    pub fn velu_composite_isogeny_proj(
+    fn velu_composite_isogeny_proj(
         A24: &mut Fq,
         C24: &mut Fq,
         kernel: &PointX<Fq>,
@@ -408,6 +452,8 @@ impl<Fq: FqTrait> Curve<Fq> {
     }
 
     // ============================================================
+    // Public functions which compute isogenies given user-friendly
+    // inputs and types etc.
 
     pub fn velu_prime_isogeny(
         self,
