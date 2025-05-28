@@ -2,7 +2,10 @@
 
 #[cfg(test)]
 mod velu_test {
-    use isogeny::elliptic::{curve::Curve, point::PointX};
+    use isogeny::{
+        elliptic::{curve::Curve, point::PointX},
+        polynomial_ring::poly::Polynomial,
+    };
 
     // Toy prime, with smooth p + 1
     // p + 1 = 2^3 * 3^2 * 5 * 7 * 11 * 13 * 17 * 19 * 23 * 29 * 31 * 37 * 41 * 43 * 47 * 53 * 59 * 61 * 67 * 71 * 73 * 79 * 83 * 89 * 97 * 163^16
@@ -220,6 +223,44 @@ mod velu_test {
         let codomain_test = Curve::new(&CODOMAIN_AK);
         let mut images = [ker];
         let codomain = E.velu_composite_isogeny(&ker, &DEGREE_FACTORS, &mut images);
+
+        // Ensure the codomain matches the expected result.
+        assert!(codomain.j_invariant().equals(&codomain_test.j_invariant()) == u32::MAX);
+
+        // Pushing the kernel through should give the point at infinity.
+        assert!(images[0].Z.is_zero() == u32::MAX);
+    }
+
+    #[test]
+    fn test_velu_projective_codomain() {
+        let ker = PointX::new(&PX, &Fp2::ONE);
+        let codomain_test = Curve::new(&CODOMAIN_AP);
+        let mut images = [ker];
+
+        let mut A24 = Fp2::TWO;
+        let mut C24 = Fp2::FOUR;
+        Curve::velu_odd_isogeny_proj(&mut A24, &mut C24, &ker, 163, &mut images);
+        let codomain = Curve::curve_from_A24_proj(&A24, &C24);
+
+        // Ensure the codomain matches the expected result.
+        assert!(codomain.j_invariant().equals(&codomain_test.j_invariant()) == u32::MAX);
+
+        // Pushing the kernel through should give the point at infinity.
+        assert!(images[0].Z.is_zero() == u32::MAX);
+    }
+
+    #[test]
+    fn test_sqrt_velu_projective_codomain() {
+        let ker = PointX::new(&PX, &Fp2::ONE);
+        let codomain_test = Curve::new(&CODOMAIN_AP);
+        let mut images = [ker];
+
+        let mut A24 = Fp2::TWO;
+        let mut C24 = Fp2::FOUR;
+
+        type P = Polynomial<Fp2>;
+        Curve::sqrt_velu_odd_isogeny_proj::<P>(&mut A24, &mut C24, &ker, 163, &mut images);
+        let codomain = Curve::curve_from_A24_proj(&A24, &C24);
 
         // Ensure the codomain matches the expected result.
         assert!(codomain.j_invariant().equals(&codomain_test.j_invariant()) == u32::MAX);

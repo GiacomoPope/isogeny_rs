@@ -10,8 +10,26 @@ use std::{
 };
 
 /// Trait for arithmetic for univariate polynomials in Fp[X]
-pub trait Poly: Index<usize> + IndexMut<usize> + Sized + Display {
-    // TODO
+pub trait Poly<Fp: FpTrait>:
+    Clone
+    + Default
+    + Display
+    + Index<usize>
+    + IndexMut<usize>
+    + Sized
+    + Add<Output = Self>
+    + AddAssign
+    + Sub<Output = Self>
+    + MulAssign<Self>
+    + MulAssign<Fp>
+{
+    fn new_from_ele(a: &Fp) -> Self;
+    fn new_from_slice(a: &[Fp]) -> Self;
+    fn set_from_slice(&mut self, a: &[Fp]);
+
+    fn reverse(&self) -> Self;
+    fn evaluate(&self, a: &Fp) -> Fp;
+    fn resultant_from_roots(&self, ai: &[Fp]) -> Fp;
 }
 
 #[derive(Clone, Debug)]
@@ -28,6 +46,11 @@ impl<Fp: FpTrait> Polynomial<Fp> {
     /// Create a polynomial from a slice of finite field elements.
     pub fn new_from_slice(a: &[Fp]) -> Self {
         Self { coeffs: a.to_vec() }
+    }
+
+    /// Set the coefficients of a polynomial from a slice
+    pub fn set_from_slice(&mut self, a: &[Fp]) {
+        self.coeffs.copy_from_slice(a)
     }
 
     /// The length of the polynomial. TODO: should we trim trailing zeros? If so, how often?
@@ -74,7 +97,7 @@ impl<Fp: FpTrait> Polynomial<Fp> {
     }
 
     /// Return the polynomial with coefficents reversed.
-    pub fn reverse(&self) -> Polynomial<Fp> {
+    pub fn reverse(&self) -> Self {
         let mut r = self.clone();
         r.reverse_into();
         r
@@ -223,7 +246,7 @@ impl<Fp: FpTrait> Polynomial<Fp> {
     /// given the roots ai.
     // TODO: this is a very slow and stupid method, but speed comes later and
     // I want to sketch sqrt velu.
-    pub fn resultant_multipoint(&self, ai: &[Fp]) -> Fp {
+    pub fn resultant_from_roots(&self, ai: &[Fp]) -> Fp {
         let mut res = Fp::ONE;
         for a in ai.iter() {
             res *= self.evaluate(a);
@@ -248,7 +271,29 @@ impl<Fp: FpTrait> Polynomial<Fp> {
     }
 }
 
-impl<Fp: FpTrait> Poly for Polynomial<Fp> {}
+impl<Fp: FpTrait> Poly<Fp> for Polynomial<Fp> {
+    fn new_from_ele(a: &Fp) -> Self {
+        Self::new_from_ele(a)
+    }
+    fn new_from_slice(a: &[Fp]) -> Self {
+        Self::new_from_slice(a)
+    }
+    fn set_from_slice(&mut self, a: &[Fp]) {
+        self.set_from_slice(a)
+    }
+
+    fn reverse(&self) -> Self {
+        self.reverse()
+    }
+
+    fn evaluate(&self, a: &Fp) -> Fp {
+        self.evaluate(a)
+    }
+
+    fn resultant_from_roots(&self, ai: &[Fp]) -> Fp {
+        self.resultant_from_roots(ai)
+    }
+}
 
 impl<Fp: FpTrait> Index<usize> for Polynomial<Fp> {
     type Output = Fp;
@@ -264,6 +309,14 @@ impl<Fp: FpTrait> IndexMut<usize> for Polynomial<Fp> {
     }
 }
 
+impl<Fp: FpTrait> Default for Polynomial<Fp> {
+    fn default() -> Self {
+        Self {
+            coeffs: vec![Fp::ONE; 1],
+        }
+    }
+}
+
 impl<Fp: FpTrait> Neg for &Polynomial<Fp> {
     type Output = Polynomial<Fp>;
 
@@ -275,14 +328,32 @@ impl<Fp: FpTrait> Neg for &Polynomial<Fp> {
     }
 }
 
+impl<Fp: FpTrait> Add<Polynomial<Fp>> for Polynomial<Fp> {
+    type Output = Polynomial<Fp>;
+
+    #[inline(always)]
+    fn add(self, other: Polynomial<Fp>) -> Polynomial<Fp> {
+        let mut r = self.clone();
+        r.set_add(&other);
+        r
+    }
+}
+
 impl<Fp: FpTrait> Add<&Polynomial<Fp>> for &Polynomial<Fp> {
     type Output = Polynomial<Fp>;
 
     #[inline(always)]
     fn add(self, other: &Polynomial<Fp>) -> Polynomial<Fp> {
         let mut r = self.clone();
-        r.set_add(&other);
+        r.set_add(other);
         r
+    }
+}
+
+impl<Fp: FpTrait> AddAssign<Polynomial<Fp>> for Polynomial<Fp> {
+    #[inline(always)]
+    fn add_assign(&mut self, other: Polynomial<Fp>) {
+        self.set_add(&other);
     }
 }
 
@@ -293,13 +364,24 @@ impl<Fp: FpTrait> AddAssign<&Polynomial<Fp>> for Polynomial<Fp> {
     }
 }
 
+impl<Fp: FpTrait> Sub<Polynomial<Fp>> for Polynomial<Fp> {
+    type Output = Polynomial<Fp>;
+
+    #[inline(always)]
+    fn sub(self, other: Polynomial<Fp>) -> Polynomial<Fp> {
+        let mut r = self.clone();
+        r.set_sub(&other);
+        r
+    }
+}
+
 impl<Fp: FpTrait> Sub<&Polynomial<Fp>> for &Polynomial<Fp> {
     type Output = Polynomial<Fp>;
 
     #[inline(always)]
     fn sub(self, other: &Polynomial<Fp>) -> Polynomial<Fp> {
         let mut r = self.clone();
-        r.set_sub(&other);
+        r.set_sub(other);
         r
     }
 }
@@ -317,8 +399,16 @@ impl<Fp: FpTrait> Mul<&Polynomial<Fp>> for &Polynomial<Fp> {
     #[inline(always)]
     fn mul(self, other: &Polynomial<Fp>) -> Polynomial<Fp> {
         let mut r = self.clone();
-        r.set_mul(&other);
+        r.set_mul(other);
         r
+    }
+}
+
+// TODO: ideally we don't want to do the moving here?
+impl<Fp: FpTrait> MulAssign<Polynomial<Fp>> for Polynomial<Fp> {
+    #[inline(always)]
+    fn mul_assign(&mut self, other: Polynomial<Fp>) {
+        self.set_mul(&other);
     }
 }
 
