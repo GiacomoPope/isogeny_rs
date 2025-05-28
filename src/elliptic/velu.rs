@@ -339,28 +339,32 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// Given a point (X : Z) compute the three elliptic resultants on the Montgomery
     /// curve, given by (with `a = X / Z` for now...).
     /// -
-    /// - `f1 = (x - a)^2`
+    /// - `f1 = (x * QZ - QX)^2
     /// - `f2 = -2((xa + 1)(x + a) + 2Axa)`
-    /// - `f3 = (ax - 1)^2`
-    fn elliptic_resultants<P: Poly<Fq>>(A: &Fq, P: &PointX<Fq>) -> (P, P, P) {
-        // TODO: work projectively here to avoid the inversion for each point!
-        let a = P.x();
-        let a2 = a.mul2();
-        let a_sqr = a.square();
+    /// - `f3 = -2* (2*A*QX*QZ*x + (QX*x + QZ)*(QZ*x + QX))
+    fn elliptic_resultants<P: Poly<Fq>>(A: &Fq, Q: &PointX<Fq>) -> (P, P, P) {
+        // TODO: is it better to invert A / C to be used here, or work with (A : C)
+        // projectively? The cost balance is 1 inversion (~30M) or the cost of
+        // ~sqrt(degree) * n multiplications. Where n is the number of multiplications
+        // by C in this function.
 
         // TODO: do operation counting to see if this is the fastest way
         // to compute these three polynomials...
+        let QX_sqr = Q.X.square();
+        let QZ_sqr = Q.Z.square();
+        let QXQZ = Q.X * Q.Z;
+        let QXQZ_m2 = -QXQZ.mul2();
 
-        // f1 = (x - a)^2
-        let f1 = P::new_from_slice(&[a_sqr, -a2, Fq::ONE]);
+        // f1 = (x * QZ - QX)^2
+        let f1 = P::new_from_slice(&[QX_sqr, QXQZ_m2, QZ_sqr]);
 
-        // f2 = -2 * ((x*a + 1) * (x + a) + 2 * A * x * a)
-        //    = -2 * (a*x^2 + (2*A*a + a^2 + 1)*x + a)
-        let f2_linear = -(*A * a2 + a_sqr + Fq::ONE).mul2();
-        let f2 = P::new_from_slice(&[-a2, f2_linear, -a2]);
+        // f2 = -2*A*QX*QZ*x - 2*(QX*x + QZ)*(QZ*x + QX)
+        //    = -2 * (QX*QZ*x^2 + (A*QX*QZ + QX^2 + QZ^2)*x + QX*QZ)
+        let f2_linear = -(*A * QXQZ + QX_sqr + QZ_sqr).mul2();
+        let f2 = P::new_from_slice(&[QXQZ_m2, f2_linear, QXQZ_m2]);
 
-        // f3 = (x*a - 1)^2
-        let f3 = P::new_from_slice(&[Fq::ONE, -a2, a_sqr]);
+        // f3 = (x * QX - QZ)^2
+        let f3 = P::new_from_slice(&[QZ_sqr, QXQZ_m2, QX_sqr]);
 
         (f1, f2, f3)
     }
