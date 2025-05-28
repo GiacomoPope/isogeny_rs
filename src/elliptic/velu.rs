@@ -342,7 +342,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// - `f1 = (x * QZ - QX)^2
     /// - `f2 = -2((xa + 1)(x + a) + 2Axa)`
     /// - `f3 = -2* (2*A*QX*QZ*x + (QX*x + QZ)*(QZ*x + QX))
-    fn elliptic_resultants<P: Poly<Fq>>(A: &Fq, Q: &PointX<Fq>) -> (P, P, P) {
+    fn _old_elliptic_resultants<P: Poly<Fq>>(A: &Fq, Q: &PointX<Fq>) -> (P, P, P) {
         // TODO: is it better to invert A / C to be used here, or work with (A : C)
         // projectively? The cost balance is 1 inversion (~30M) or the cost of
         // ~sqrt(degree) * n multiplications. Where n is the number of multiplications
@@ -369,8 +369,30 @@ impl<Fq: FqTrait> Curve<Fq> {
         (f1, f2, f3)
     }
 
-    fn precompute_eJ_polynomials<P: Poly<Fq>>(
-        eJ_polys: &mut [(P, P, P)],
+    /// Given a point (X : Z) we want to compute three elliptic resultants on the Montgomery
+    /// curve, but of the three quadratic polynomials, there are only actually four unique
+    /// coefficients. QX^2, QZ^2, -2*QX*QZ and -2 * (A*QX*QZ + QX^2 + QZ^2). This is what
+    /// we precompute and store for later computations.
+    fn elliptic_resultants(A: &Fq, Q: &PointX<Fq>) -> (Fq, Fq, Fq, Fq) {
+        // TODO: is it better to invert A / C to be used here, or work with (A : C)
+        // projectively? The cost balance is 1 inversion (~30M) or the cost of
+        // ~sqrt(degree) * n multiplications. Where n is the number of multiplications
+        // by C in this function.
+
+        // TODO: do operation counting to see if this is the fastest way
+        // to compute these three polynomials...
+        let QX_sqr = Q.X.square();
+        let QZ_sqr = Q.Z.square();
+        let QXQZ = Q.X * Q.Z;
+        let QXQZ_m2 = -QXQZ.mul2();
+
+        let f2_linear = -(*A * QXQZ + QX_sqr + QZ_sqr).mul2();
+
+        (QX_sqr, QZ_sqr, QXQZ_m2, f2_linear)
+    }
+
+    fn precompute_eJ_coeffs(
+        eJ_coeffs: &mut [(Fq, Fq, Fq, Fq)],
         A24: &Fq,
         C24: &Fq,
         ker: &PointX<Fq>,
@@ -386,8 +408,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         Self::xdbl_proj(A24, C24, &mut step.X, &mut step.Z);
         let mut diff = Q;
 
-        for polys in eJ_polys.iter_mut() {
-            *polys = Self::elliptic_resultants(&A, &Q);
+        for eJ_coeffs in eJ_coeffs.iter_mut() {
+            *eJ_coeffs = Self::elliptic_resultants(&A, &Q);
             // TODO: we can skip the last addition
             let R = Self::xdiff_add(&Q, &step, &diff);
             diff = Q;
@@ -449,8 +471,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         Self::precompute_hi_roots(&mut hI_roots, A24, C24, kernel, b);
 
         // Precompute three polynomials for each point [j]P for j in J
-        let mut eJ_polys = vec![(P::default(), P::default(), P::default()); b];
-        Self::precompute_eJ_polynomials(&mut eJ_polys, A24, C24, kernel);
+        let mut eJ_coeffs = vec![(Fq::ZERO, Fq::ZERO, Fq::ZERO, Fq::ZERO); b];
+        Self::precompute_eJ_coeffs(&mut eJ_coeffs, A24, C24, kernel);
 
         // Precompute the polynomial (x - [k]P.x()) for k in the set K
         let mut hK_points = vec![PointX::INFINITY; (stop - 1) / 2];
@@ -460,11 +482,19 @@ impl<Fq: FqTrait> Curve<Fq> {
         // resultants of with hI_roots.
         let mut E0J = P::new_from_ele(&Fq::ONE);
         let mut E1J = P::new_from_ele(&Fq::ONE);
-        for (f0, f1, f2) in eJ_polys.iter() {
-            // TODO: do I really have to clone these?! Rework the trait to
-            // allow for borrowed multiplication.
-            E0J *= (f0.clone() + f1.clone()) + f2.clone();
-            E1J *= (f0.clone() - f1.clone()) + f2.clone();
+        for (QX_sqr, QZ_sqr, f1_1, f2_1) in eJ_coeffs.iter() {
+            let c0_0 = *QX_sqr + *f1_1 + *QZ_sqr;
+            let c0_1 = f1_1.mul2() + *f2_1;
+            let c1_0 = c0_0 - f1_1.mul2();
+            let c1_1 = c0_1 - f2_1.mul2();
+
+            // t0 = f0 + f1 + f2 using that f0 = f2.reverse()
+            // t1 = f0 - f1 + f2 using that f0 = f2.reverse()
+            let t0 = P::new_from_slice(&[c0_0, c0_1, c0_0]);
+            let t1 = P::new_from_slice(&[c1_0, c1_1, c1_0]);
+
+            E0J *= t0;
+            E1J *= t1;
         }
 
         // Compute the codomain.
@@ -510,14 +540,20 @@ impl<Fq: FqTrait> Curve<Fq> {
 
             let alpha = P.x();
             let mut E1J = P::new_from_ele(&Fq::ONE);
-            for (f0, f1, f2) in eJ_polys.iter() {
-                let mut t1 = f0.clone();
-                t1 *= alpha;
-                t1 += f1.clone();
-                t1 *= alpha;
-                t1 += f2.clone();
+            for (QX_sqr, QZ_sqr, f1_1, f2_1) in eJ_coeffs.iter() {
+                // TODO: can I do better here than making the polynomials and then
+                // scaling? Probably...
+                let mut f0 = P::new_from_slice(&[*QX_sqr, *f1_1, *QZ_sqr]);
+                let f1 = P::new_from_slice(&[*f1_1, *f2_1, *f1_1]);
+                let f2 = P::new_from_slice(&[*QZ_sqr, *f1_1, *QX_sqr]);
 
-                E1J *= t1;
+                // Compute alpha^2 * f0 + alpha f1 + f2
+                f0 *= alpha;
+                f0 += f1.clone();
+                f0 *= alpha;
+                f0 += f2.clone();
+
+                E1J *= f0;
             }
             let E0J = E1J.reverse();
 
