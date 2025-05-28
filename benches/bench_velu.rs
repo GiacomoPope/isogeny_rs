@@ -103,10 +103,38 @@ mod benchmark_velu {
         });
     }
 
+    fn bench_inversion(c: &mut Criterion) {
+        let bench_id = format!("Benchmarking inversion...",);
+        c.bench_function(&bench_id, |b| {
+            b.iter(|| {
+                black_box(PX).invert();
+            })
+        });
+    }
+
+    fn bench_varmul(c: &mut Criterion) {
+        let ker = PointX::new(&PX, &Fp2::ONE);
+        let A24 = Fp2::TWO;
+        let C24 = Fp2::FOUR;
+        let v = 6;
+
+        let bench_id = format!("Benchmarking multiplication...",);
+        c.bench_function(&bench_id, |b| {
+            b.iter(|| {
+                Curve::xmul_proj_u64_vartime(
+                    black_box(&A24),
+                    black_box(&C24),
+                    black_box(&ker),
+                    black_box((v + v) as u64),
+                )
+            })
+        });
+    }
+
     criterion_group! {
         name = benchmark_velu;
         config = Criterion::default().measurement_time(Duration::from_secs(10));
-        targets = bench_velu, bench_sqrt_velu,
+        targets = bench_velu, bench_sqrt_velu, bench_inversion, bench_varmul
     }
 }
 

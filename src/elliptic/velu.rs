@@ -108,7 +108,7 @@ impl<Fq: FqTrait> Curve<Fq> {
             }
 
             _ => {
-                let nbitlen = 63 - n.leading_ones();
+                let nbitlen = u64::BITS - n.leading_zeros();
 
                 let mut X0 = Fq::ONE;
                 let mut Z0 = Fq::ZERO;
@@ -159,7 +159,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// Return n*P as a new point (x-only variant) using (A24 : C24).
     /// Integer n is encoded as a u64 which is assumed to be a public value.
-    fn xmul_proj_u64_vartime(A24: &Fq, C24: &Fq, P: &PointX<Fq>, n: u64) -> PointX<Fq> {
+    pub fn xmul_proj_u64_vartime(A24: &Fq, C24: &Fq, P: &PointX<Fq>, n: u64) -> PointX<Fq> {
         let mut P3 = PointX::INFINITY;
         Self::set_xmul_proj_u64_vartime(A24, C24, &mut P3, P, n);
         P3
@@ -515,7 +515,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         let r1 = E1J.resultant_from_roots(&hI_roots);
 
         // let two_res = start.elapsed();
-        // println!("2x res time: {:?}", two_res - e_comp);
+        // println!("2x resultant time: {:?}", two_res - e_comp);
 
         let (m0, m1) = Self::hK_codomain(&hK_points);
 
@@ -534,6 +534,9 @@ impl<Fq: FqTrait> Curve<Fq> {
 
         A_ed *= den;
         D_ed *= num;
+
+        // let stop = start.elapsed();
+        // println!("time for all: {:?}", stop);
 
         // Evaluate each point through the isogeny.
         //
@@ -588,9 +591,6 @@ impl<Fq: FqTrait> Curve<Fq> {
         // Convert back to Montgomery (A24 : C24)
         *A24 = A_ed;
         *C24 = A_ed - D_ed;
-
-        // let stop = start.elapsed();
-        // println!("time for all: {:?}", stop);
     }
 
     // ============================================================
