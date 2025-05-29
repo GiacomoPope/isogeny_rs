@@ -488,10 +488,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         // let precomp = start.elapsed();
         // println!("precomp time: {:?}", precomp);
 
-        // Compute prod(f0 + f1 + f2) and prod(f0 - f1 + f2) which we will compute
-        // resultants of with hI_roots.
-        let mut E0J = P::new_from_ele(&Fq::ONE);
-        let mut E1J = P::new_from_ele(&Fq::ONE);
+        let mut E0J_leaves: Vec<[Fq; 3]> = Vec::with_capacity(size_J);
+        let mut E1J_leaves: Vec<[Fq; 3]> = Vec::with_capacity(size_J);
         for (QX_sqr, QZ_sqr, f1_1, f2_1) in eJ_coeffs.iter() {
             let c0_0 = *QX_sqr + *f1_1 + *QZ_sqr;
             let c0_1 = f1_1.mul2() + *f2_1;
@@ -500,12 +498,18 @@ impl<Fq: FqTrait> Curve<Fq> {
 
             // t0 = f0 + f1 + f2 using that f0 = f2.reverse()
             // t1 = f0 - f1 + f2 using that f0 = f2.reverse()
-            let t0 = P::new_from_slice(&[c0_0, c0_1, c0_0]);
-            let t1 = P::new_from_slice(&[c1_0, c1_1, c1_0]);
-
-            E0J *= t0;
-            E1J *= t1;
+            E0J_leaves.push([c0_0, c0_1, c0_0]);
+            E1J_leaves.push([c1_0, c1_1, c1_0]);
         }
+        // TODO: use this tree to compute the resultant!
+        let E0J_tree = P::product_tree(&E0J_leaves);
+        let E0J = P::product_from_tree(&E0J_tree);
+
+        // TODO: use this tree to compute the resultant!
+        let E1J_tree = P::product_tree(&E1J_leaves);
+        let E1J = P::product_from_tree(&E1J_tree);
+        debug_assert!(E0J.degree().unwrap() == 2 * size_J);
+        debug_assert!(E1J.degree().unwrap() == 2 * size_J);
 
         // let e_comp = start.elapsed();
         // println!("E comp time: {:?}", e_comp - precomp);
@@ -557,24 +561,23 @@ impl<Fq: FqTrait> Curve<Fq> {
             if P.is_zero() == u32::MAX {
                 continue;
             }
-
             let alpha = P.x();
-            let mut E1J = P::new_from_ele(&Fq::ONE);
+            let alpha_sqr = alpha.square();
+
+            let mut E1J_leaves: Vec<[Fq; 3]> = Vec::with_capacity(size_J);
             for (QX_sqr, QZ_sqr, f1_1, f2_1) in eJ_coeffs.iter() {
-                // TODO: can I do better here than making the polynomials and then
-                // scaling? Probably...
-                let mut f0 = P::new_from_slice(&[*QX_sqr, *f1_1, *QZ_sqr]);
-                let f1 = P::new_from_slice(&[*f1_1, *f2_1, *f1_1]);
-                let f2 = P::new_from_slice(&[*QZ_sqr, *f1_1, *QX_sqr]);
-
-                // Compute alpha^2 * f0 + alpha f1 + f2
-                f0 *= alpha;
-                f0 += f1;
-                f0 *= alpha;
-                f0 += f2;
-
-                E1J *= f0;
+                let tmp = alpha * *f1_1;
+                let c0 = alpha_sqr * *QX_sqr + tmp + *QZ_sqr;
+                let c1 = alpha_sqr * *f1_1 + alpha * *f2_1 + *f1_1;
+                let c2 = alpha_sqr * *QZ_sqr + tmp + *QX_sqr;
+                E1J_leaves.push([c0, c1, c2]);
             }
+            // TODO: use this tree to compute the resultant!
+            let E1J_tree = P::product_tree(&E1J_leaves);
+            let E1J = P::product_from_tree(&E1J_tree);
+
+            // TODO: do I not do this trick and compute a product so I
+            // have the tree for resultants?
             let E0J = E1J.reverse();
 
             let r0 = E0J.resultant_from_roots(&hI_roots);

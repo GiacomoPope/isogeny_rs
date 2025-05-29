@@ -27,11 +27,16 @@ pub trait Poly<Fp: FpTrait>:
     fn new_from_slice(a: &[Fp]) -> Self;
     fn set_from_slice(&mut self, a: &[Fp]);
 
+    fn degree(&self) -> Option<usize>;
+
     fn reverse(&self) -> Self;
 
     fn scale(&self, a: &Fp) -> Self;
 
     fn evaluate(&self, a: &Fp) -> Fp;
+
+    fn product_tree(leaves: &[[Fp; 3]]) -> Vec<Vec<Fp>>;
+    fn product_from_tree(leaves: &[Vec<Fp>]) -> Self;
 
     fn resultant_from_roots(&self, ai: &[Fp]) -> Fp;
 }
@@ -146,17 +151,25 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         }
     }
 
-    /// Compute f * g with O(len(f) * len(g)) Fq multiplications using
+    /// Compute f * g with O(len(f) * len(g)) Fp multiplications using
     /// schoolbook multiplication. Assumes that fg has enough space for
     /// the result (len(f) + len(g) - 1).
     fn schoolbook_multiplication(fg: &mut [Fp], f: &[Fp], g: &[Fp]) {
         for i in 0..f.len() {
             for j in 0..g.len() {
-                // TODO: this could be sped up when we know c[i + j] is zero
-                // which happens when i = 0 or when j + 1 = len(other)
-                fg[i + j] += f[i] * g[j]
+                if i == 0 || j + 1 == g.len() {
+                    fg[i + j] = f[i] * g[j]
+                } else {
+                    fg[i + j] += f[i] * g[j]
+                }
             }
         }
+    }
+
+    /// TODO: implement other polynomial multiplication (Karatsuba, probably)
+    fn mul_into(fg: &mut [Fp], f: &[Fp], g: &[Fp]) {
+        assert!(f.len() - 1 + g.len() - 1 == fg.len() - 1);
+        Self::schoolbook_multiplication(fg, f, g)
     }
 
     /// Set self to it's negative.
@@ -185,7 +198,7 @@ impl<Fp: FpTrait> Polynomial<Fp> {
     /// Set self <- self * other
     fn set_mul(&mut self, other: &Self) {
         let mut fg_coeffs = vec![Fp::ZERO; self.len() + other.len() - 1];
-        Self::schoolbook_multiplication(&mut fg_coeffs, &self.coeffs, &other.coeffs);
+        Self::mul_into(&mut fg_coeffs, &self.coeffs, &other.coeffs);
         self.coeffs = fg_coeffs;
     }
 
@@ -215,6 +228,94 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         let mut r = self.clone();
         r.scale_small_into(k);
         r
+    }
+
+    /// Naive implementation of a product tree, maybe this needs optimisations...
+    pub fn product_tree(leaves: &[[Fp; 3]]) -> Vec<Vec<Fp>> {
+        // Number of leaves and depth for the tree.
+        let n = leaves.len();
+        let log_n = usize::BITS - (2 * n - 1).leading_zeros();
+
+        // Each layer of the tree is a vector of Fp elements, the leaves are n
+        // polynomials of degree 2, then the next are n/2 polynomials of degree
+        // 4 (and potenitally one of degree 2 if n is odd) and so on until the
+        // root of the tree is a single polynomial of degree 2*n.
+        let mut layers: Vec<Vec<Fp>> = Vec::with_capacity(log_n as usize);
+
+        // Store the quadratic polynomials inside an input buffer
+        let mut buf_in: Vec<Fp> = leaves
+            .iter()
+            .flat_map(|poly| poly.iter().copied())
+            .collect();
+        let mut buf_out = vec![Fp::ZERO; 3 * n];
+
+        // Store the leaves of the tree in layers.
+        layers.push(buf_in.clone());
+
+        // Iterate over the remaining layers,
+        for i in 1..log_n {
+            // At each layer in the tree the degree of each polynomial is at most 2^i.
+            let deg = 1 << i;
+            let len = deg + 1;
+            let out_len = 2 * deg + 1;
+
+            // The majority of the multiplications will be h <- f * g where f and g
+            // both have degree `deg`. This will be done k times when (2 * n = 2 * deg * k + r)
+            let k = n / deg;
+            let r = (n << 1) & ((1 << (i + 1)) - 1);
+
+            // Keep track of the slices for the length deg + 1 polys for input and
+            // length 2*degree + 1 polynomials as output for multiplication.
+            let mut idx_in = 0;
+            let mut idx_out = 0;
+
+            // Compute k full multiplications into the buffer.
+            for _ in 0..k {
+                Self::mul_into(
+                    &mut buf_out[idx_out..idx_out + out_len],
+                    &buf_in[idx_in..idx_in + len],
+                    &buf_in[idx_in + len..idx_in + 2 * len],
+                );
+                idx_out += out_len;
+                idx_in += 2 * len;
+            }
+
+            if r > 0 {
+                // By this point, we have consumed pairs of polynomials of degree `deg`
+                // If `r` is larger than `deg` then we need to do an unbalanced multiplication
+                // of a degree `deg` polynomial with a degree `r - deg` polynomial
+                if r > deg {
+                    let len_rem = r - deg + 1;
+                    Self::mul_into(
+                        &mut buf_out[idx_out..idx_out + r + 1],
+                        &buf_in[idx_in..idx_in + len],
+                        &buf_in[idx_in + len..idx_in + len + len_rem],
+                    );
+                } else {
+                    // Otherwise we want to copy the polynomial from the in buffer to the
+                    // out buffer
+                    buf_out[idx_out..idx_out + r + 1]
+                        .copy_from_slice(&buf_in[idx_in..idx_in + r + 1]);
+                }
+            }
+
+            // Move the multiplication result into the input buffer and append
+            // this into the layers.
+            std::mem::swap(&mut buf_in, &mut buf_out);
+            layers.push(buf_in.clone());
+        }
+        debug_assert!(layers.len() == log_n as usize);
+
+        layers
+    }
+
+    /// Computes the polynomial product(leaves).
+    pub fn product_from_tree(tree: &[Vec<Fp>]) -> Self {
+        let n = tree[0].len() / 3;
+        let root = tree.last().unwrap();
+        Self {
+            coeffs: root[..2 * n + 1].to_vec(),
+        }
     }
 
     /// Evaluate a polynomial at a value `a`
@@ -286,6 +387,10 @@ impl<Fp: FpTrait> Poly<Fp> for Polynomial<Fp> {
         self.set_from_slice(a)
     }
 
+    fn degree(&self) -> Option<usize> {
+        self.degree()
+    }
+
     fn reverse(&self) -> Self {
         self.reverse()
     }
@@ -296,6 +401,14 @@ impl<Fp: FpTrait> Poly<Fp> for Polynomial<Fp> {
 
     fn evaluate(&self, a: &Fp) -> Fp {
         self.evaluate(a)
+    }
+
+    fn product_tree(leaves: &[[Fp; 3]]) -> Vec<Vec<Fp>> {
+        Self::product_tree(leaves)
+    }
+
+    fn product_from_tree(tree: &[Vec<Fp>]) -> Self {
+        Self::product_from_tree(tree)
     }
 
     fn resultant_from_roots(&self, ai: &[Fp]) -> Fp {
@@ -441,8 +554,15 @@ impl<Fp: FpTrait> MulAssign<&Fp> for Polynomial<Fp> {
     }
 }
 
-impl<Fq: FpTrait> ::std::fmt::Display for Polynomial<Fq> {
+impl<Fp: FpTrait> ::std::fmt::Display for Polynomial<Fp> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        write!(f, "TODO")
+        for (i, c) in self.coeffs.iter().enumerate().rev() {
+            if i == 0 {
+                write!(f, "({})", c)?
+            } else {
+                write!(f, "({})*x^{} + ", c, i)?
+            }
+        }
+        Ok(())
     }
 }
