@@ -540,7 +540,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         D_ed *= num;
 
         // let stop = start.elapsed();
-        // println!("time for all: {:?}", stop);
+        // println!("time for all: {:?}\n", stop);
 
         // Evaluate each point through the isogeny.
         //
@@ -557,6 +557,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         //
         // Roughly it seems that if b = 5 it seems to be worth inverting and seeing as we
         // expect to use this for degree ~ 100 I think the inversion is always good?
+
+        // let img_start = Instant::now();
         for P in img_points.iter_mut() {
             if P.is_zero() == u32::MAX {
                 continue;
@@ -590,6 +592,8 @@ impl<Fq: FqTrait> Curve<Fq> {
             P.X = r0m0.square() * alpha;
             P.Z = r1m1.square();
         }
+        // let img_end = img_start.elapsed();
+        // println!("time for image: {:?}\n\n", img_end);
 
         // Convert back to Montgomery (A24 : C24)
         *A24 = A_ed;

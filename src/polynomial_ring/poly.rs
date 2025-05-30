@@ -462,33 +462,23 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         }
     }
 
-    /// Evaluate a polynomial at a value `a`
-    // TODO: is this over engineered?
+    /// Evaluate a polynomial at a value `a` using Horner's method.
     pub fn evaluate(&self, a: &Fp) -> Fp {
         // Handle degree 0 and 1 cases early.
         if self.len() == 0 {
             return Fp::ZERO;
         } else if self.len() == 1 {
             return self.coeffs[0];
-        } else if self.len() == 2 {
-            return self.coeffs[0] + *a * self.coeffs[1];
         }
 
-        // Otherwise compute (c0 + c1 * a) for the linear piece
-        let mut res = self.coeffs[0] + *a * self.coeffs[1];
-        // Precompute a^2 for the quadratic piece
-        let mut a_n = a.square();
-        for i in 2..self.len() {
-            // Compute res += c_i * a^i for each step.
-            res += self.coeffs[i] * a_n;
-
-            // For the last step we can skip multiplying by a
-            if i != self.len() - 1 {
-                a_n *= *a;
-            }
+        // Iterate from the last to the first coefficicent using Horner's method
+        // to evaluate the polynomial.
+        let mut bi = Fp::ZERO;
+        let deg = self.degree().unwrap();
+        for i in 0..=deg {
+            bi = *a * bi + self.coeffs[deg - i];
         }
-
-        res
+        bi
     }
 
     /// Compute the resultant of self with a polynomial g = \prod {x - ai}
