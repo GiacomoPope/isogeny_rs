@@ -18,8 +18,41 @@ The hope is that after enough work, this library makes implementing new protocol
 
 This library currently contains:
 
-- SQIsign verification following the [SQIsign spec](https://sqisign.org)
+- SQIsign verification following the version two [SQIsign spec](https://sqisign.org)
 - A toy implementation of SIDH to demonstrate 2-isogenies and 3-isogenies
+
+## Algorithms
+
+### Isogenies between Elliptic Curves
+
+Algorithms to compute prime, prime-power and composite degree isogenies for Montgomery curves using algorithms from:
+
+- [A simple and compact algorithm for SIDH with arbitrary degree isogenies](https://ia.cr/2017/1198)
+  by Craig Costello and Huseyin Hisil for the small, odd $\ell$ degree isogenies
+- [Computing Isogenies between Montgomery Curves Using the Action of (0, 0)](https://ia.cr/2017/1198)
+  by Joost Renes for the $2$-isogenies
+- A trick from [A faster way to the CSIDH](https://ia.cr/2018/782) by Michael Meyer and Steffen Reith
+  for faster codomain computations using twisted Edwards curves
+- [Faster computation of isogenies of large prime degree](https://velusqrt.isogeny.org/) the VeluSqrt formula
+  by Daniel J. Bernstein, Luca De Feo, Antonin Leroux, Benjamin Smith for large $\ell$ degree isogenies
+
+The VeluSqrt requires fast polynomial arithmetic which is implemented in the `src/polynomial_ring` directory, but there are a few optimisations (such as using scaled remainder trees for resultants) to gain additional performance.
+
+### Isogenies between Elliptic Products
+
+Algorithms to compute $(2^N, 2^N)$-isogenies between elliptic products is implemented following:
+
+- [An Algorithmic Approach to (2, 2)-isogenies in the Theta Model and Applications to Isogeny-based Cryptography](https://eprint.iacr.org/2023/1747) by Pierrick Dartois, Luciano Maino, Giacomo Pope, and Damien Robert.
+
+Currently it is assumed that the torsion above the kernel is known to avoid square roots in the last two steps of the isogeny chain, but it's a small amount of work to lift this requirement.
+
+### Weil and Tate Pairings from Cubical Arithmetic
+
+Over the extension field $GF(p^2)$ we have implemented Weil and Tate pairings following the paper:
+
+- [Simpler and faster pairings from the Montgomery Ladder](https://eprint.iacr.org/2025/672) by Giacomo Pope, Krijn Reijnders, Damien Robert, Alessandro Sferlazza and Benjamin Smith.
+
+It's almost-trivial to allow this to work for $GF(p)$ as well, but care needs to be taken on how to generalise the reduced Tate pairing as the exponent for the base field and extension field is different. This is really a code-problem and not a maths problem.
 
 ## Associated Work
 
