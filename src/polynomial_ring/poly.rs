@@ -139,6 +139,7 @@ impl<Fp: FpTrait> Polynomial<Fp> {
 
     /// Compute f <-- f + g, assumes that the length of f and g are the same.
     fn add_into(f: &mut [Fp], g: &[Fp]) {
+        debug_assert!(f.len() == g.len());
         for i in 0..g.len() {
             f[i] += g[i];
         }
@@ -146,6 +147,7 @@ impl<Fp: FpTrait> Polynomial<Fp> {
 
     /// Compute f <-- f - g, assumes that the length of f and g are the same.
     fn sub_into(f: &mut [Fp], g: &[Fp]) {
+        debug_assert!(f.len() == g.len());
         for i in 0..g.len() {
             f[i] -= g[i];
         }
@@ -155,6 +157,7 @@ impl<Fp: FpTrait> Polynomial<Fp> {
     /// schoolbook multiplication. Assumes that fg has enough space for
     /// the result (len(f) + len(g) - 1).
     fn schoolbook_multiplication(fg: &mut [Fp], f: &[Fp], g: &[Fp]) {
+        debug_assert!(fg.len() == f.len() + g.len() - 1);
         for i in 0..f.len() {
             for j in 0..g.len() {
                 if i == 0 || j + 1 == g.len() {
@@ -166,10 +169,148 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         }
     }
 
+    /// Compute f * g with ~O(n^1.5) Fp multiplications using Karastuba multiplication.
+    /// Assumes that fg has enough space for the result (len(f) + len(g) - 1).
+    fn karatsuba_multiplication(fg: &mut [Fp], f: &[Fp], g: &[Fp]) {
+        // Ensure that the degree of f is larger or equal to g (for balancing the split later)
+        if f.len() < g.len() {
+            Self::karatsuba_multiplication(fg, g, f);
+            return;
+        }
+
+        // If g has length zero, then we set f * g to be zero.
+        if g.is_empty() {
+            for c in fg.iter_mut() {
+                *c = Fp::ZERO;
+            }
+            return;
+        }
+
+        // If g has length one we simply scale all coefficients by g0.
+        if g.len() == 1 {
+            let g0 = g[0];
+            for i in 0..f.len() {
+                fg[i] = f[i] * g0;
+            }
+            return;
+        }
+
+        // For small degree f, g we use basic multiplication strategies with
+        // O(n^2) operations. TODO: set the right bound for when to fall back
+        // to this.
+        if f.len() <= 4 {
+            Self::schoolbook_multiplication(fg, f, g);
+            return;
+        }
+
+        // We are now at the point where f.len() >= 4 and we will split f into
+        // a high and low part at floor(f.len() / 2) to perform a divide and
+        // conquer strategy by Karastuba.
+        let nf = f.len() / 2;
+        let mf = f.len() - nf;
+
+        // When g is particularly small we cannot split g into two halves, so we
+        // have to modify Karatsuba to split f at floor(f.len() / 2) and then
+        // multiply f_lo and f_hi by the whole of g.
+        if g.len() <= nf {
+            // We can compute f_lo * g directly into the first nf + g.len() - 1 elements
+            // of the output.
+            Self::karatsuba_multiplication(&mut fg[..nf + g.len() - 1], &f[..nf], g);
+
+            // We then compute f_hi * g which will have length mf + g.len() - 1.
+            // The bottom g.len() - 1 elements we need to add into fg while we can
+            // directly copy the rest of the elements into the top of fg.
+            let mut fg_hi = vec![Fp::ZERO; mf + g.len() - 1];
+            Self::karatsuba_multiplication(&mut fg_hi, &f[nf..nf + mf], g);
+            Self::add_into(&mut fg[nf..nf + g.len() - 1], &fg_hi[..g.len() - 1]);
+            fg[nf + g.len() - 1..].copy_from_slice(&fg_hi[g.len() - 1..]);
+
+            return;
+        }
+
+        // We are now at the point where we can split f = f_lo + x^nf * f_hi and
+        // g = g_lo + x^nf * g_hi without an issue, with deg(f) >= deg(g).
+        let mg = g.len() - nf;
+
+        // The idea is that we now perform three calls to karatsuba_multiplication
+        // on half-length inputs. Writing f * g = fg_lo + x^fn (fg_mid) + x^2*fn (fg_hi)
+        // we need to compute:
+        //
+        // - fg_lo = f_lo * g_lo
+        // - fg_mid = f_lo * g_hi + f_hi * g_lo
+        //          = (f_lo + f_hi) * (g_lo + g_hi) - f_lo * g_lo - f_hi * g_hi
+        // - fg_hi  = f_hi * g_hi
+        //
+        // Which means we need to compute only three multiplications: f_lo * g_lo,
+        // f_hi * g_hi and (f_lo + f_hi) * (f_lo + f_hi).
+        //
+        // - fg_lo will have length 2*fn - 1 and fill the bottom of fg[..2*fn - 1].
+        // - fg_hi will have length fm + gm - 1 and fill the top (without overlap)
+        //   of fg[2*fn..]
+        // - fg_mid will have length max(fn, fm) + max(fn, gm) - 1 and will fill
+        //   from fg[fn..fn + fg_mid_len], to do this we will add the result into
+        //   fg after the copies above.
+
+        // The fg_lo and fg_hi parts of the computation are simple and we can
+        // multiply straight into the output buffer.
+        Self::karatsuba_multiplication(&mut fg[..nf + nf - 1], &f[..nf], &g[..nf]);
+        Self::karatsuba_multiplication(&mut fg[nf + nf..], &f[nf..], &g[nf..]);
+
+        // Now we compute f_lo + f_hi and g_lo + g_hi.
+
+        // As nf is floor(len(f) / 2) then mf will either be nf or nf + 1, so we
+        // can fit the sum into mf space and then add nf elements to it.
+        // TODO: work with less allocations?
+        let mut f_mid = f[nf..].to_vec();
+        Self::add_into(&mut f_mid[..nf], &f[..nf]);
+
+        // For g_lo + g_hi we need to be more careful, as len(g) <= len(f) we might
+        // have that mg < nf.
+        let mut g_mid = vec![Fp::ZERO; nf.max(mg)];
+        if mg < nf {
+            g_mid.copy_from_slice(&g[..nf]);
+            Self::add_into(&mut g_mid[..mg], &g[nf..]);
+        } else {
+            g_mid.copy_from_slice(&g[nf..]);
+            Self::add_into(&mut g_mid[..nf], &g[..nf]);
+        }
+
+        // Now we have both pieces, we compute their product into a temp buffer.
+        let mut fg_mid = vec![Fp::ZERO; mf + nf.max(mg) - 1];
+        Self::karatsuba_multiplication(&mut fg_mid, &f_mid, &g_mid);
+
+        // We then compute (f_lo + f_hi) * (f_lo + f_hi) - f_lo * g_lo - f_hi * g_hi
+        // with two subtractions.
+        Self::sub_into(&mut fg_mid[..nf + nf - 1], &fg[..nf + nf - 1]);
+        Self::sub_into(&mut fg_mid[..mf + mg - 1], &fg[nf + nf..]);
+
+        // We now need to set the remaining window of fg which doesn't overlap with
+        // the high and low pieces, and add in the last part. The dumb thing to do
+        // is to zero out the single element which has yet to be copied over, but
+        // we could save one addition by instead doing one copy at fg[nf + nf - 1]
+        // and then add in two windows from fg[nf .. nf + nf - 1] and then fg[nf + nf ...].
+        fg[nf + nf - 1] = Fp::ZERO;
+        Self::add_into(&mut fg[nf..nf + mf + nf.max(mg) - 1], &fg_mid);
+    }
+
     /// TODO: implement other polynomial multiplication (Karatsuba, probably)
     fn mul_into(fg: &mut [Fp], f: &[Fp], g: &[Fp]) {
-        assert!(f.len() - 1 + g.len() - 1 == fg.len() - 1);
-        Self::schoolbook_multiplication(fg, f, g)
+        assert!(f.len() + g.len() - 1 <= fg.len());
+        Self::karatsuba_multiplication(fg, f, g)
+    }
+
+    /// TODO: testing only.
+    pub fn basic_mul(&self, other: &Self) -> Self {
+        let mut coeffs = vec![Fp::ZERO; self.len() + other.len() - 1];
+        Self::schoolbook_multiplication(&mut coeffs, &self.coeffs, &other.coeffs);
+        Self { coeffs }
+    }
+
+    /// TODO: testing only.
+    pub fn karatsuba_mul(&self, other: &Self) -> Self {
+        let mut coeffs = vec![Fp::ZERO; self.len() + other.len() - 1];
+        Self::karatsuba_multiplication(&mut coeffs, &self.coeffs, &other.coeffs);
+        Self { coeffs }
     }
 
     /// Set self to it's negative.
