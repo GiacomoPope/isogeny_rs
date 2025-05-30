@@ -322,9 +322,9 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// Compute roots of the polynomial \Prod (Z - x(Q)) for Q in the set
     /// I = {2b(2i + 1) | 0 <= i < c}
     fn precompute_hi_roots(hI_roots: &mut [Fq], A24: &Fq, C24: &Fq, kernel: &PointX<Fq>, b: usize) {
-        // For now, we collect the points in hI_points, then normalise these in a batch
-        // then set hI_roots to the x-coordinates.
-        let mut hI_points = vec![PointX::INFINITY; hI_roots.len()];
+        // Collect Q.X into hI_roots. We then collect Q.Z into a temp buffer, which we invert and
+        // multiply into hI_roots.
+        let mut zs = vec![Fq::ZERO; hI_roots.len()];
 
         // Set Q = [2b]K
         let mut Q = Self::xmul_proj_u64_vartime(A24, C24, kernel, (b + b) as u64);
@@ -334,26 +334,26 @@ impl<Fq: FqTrait> Curve<Fq> {
         Self::xdbl_proj(A24, C24, &mut step.X, &mut step.Z);
         let mut diff = Q;
 
-        let n = hI_roots.len() - 1;
-        for (i, P) in hI_points.iter_mut().enumerate() {
-            *P = Q;
+        let n = hI_roots.len();
+        for i in 0..n {
+            hI_roots[i] = Q.X;
+            zs[i] = Q.Z;
 
             // For the last step, we don't need to do the diff add
-            if i == n {
+            if i == n - 1 {
                 break;
             }
-
             let R = Self::xdiff_add(&Q, &step, &diff);
             diff = Q;
             Q = R;
         }
 
-        // Normalise all the points with only one inversion using Montgomery's trick
-        PointX::batch_normalise(&mut hI_points);
+        // Invert the z coordinates
+        Fq::batch_invert(&mut zs);
 
-        // Now set hI_roots to the x-coordinates of the points
-        for (r, P) in hI_roots.iter_mut().zip(hI_points.iter()) {
-            *r = P.X
+        // Compute X / Z for the roots in hI_roots
+        for (X, Z) in hI_roots.iter_mut().zip(zs.iter()) {
+            *X *= *Z;
         }
     }
 
@@ -362,11 +362,6 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// coefficients. QX^2, QZ^2, -2*QX*QZ and -2 * (A*QX*QZ + QX^2 + QZ^2). This is what
     /// we precompute and store for later computations.
     fn elliptic_resultants(A: &Fq, Q: &PointX<Fq>) -> (Fq, Fq, Fq, Fq) {
-        // TODO: is it better to invert A / C to be used here, or work with (A : C)
-        // projectively? The cost balance is 1 inversion (~30M) or the cost of
-        // ~sqrt(degree) * n multiplications. Where n is the number of multiplications
-        // by C in this function.
-
         // TODO: do operation counting to see if this is the fastest way
         // to compute these three polynomials...
         let QX_sqr = Q.X.square();
@@ -385,8 +380,11 @@ impl<Fq: FqTrait> Curve<Fq> {
         C24: &Fq,
         ker: &PointX<Fq>,
     ) {
-        // TODO: this is dumb, but we need A rather than (A24 : C24) for the
-        // current formula, or we work projectively in elliptic_resultants.
+        // TODO: we could work projectively here with (A : C) instead of A. This saves us one inversion
+        // (about 30M) but adds multiplications by C throughout elliptic_resultants. For ell = 100 which
+        // is the best we could hope for in terms of sqrt beating linear velu, we would have size_J = 10
+        // and so we would need to ensure that multiplication by C only adds at most 2M per loop. For larger
+        // J it gets even less likely that we'll be able to save multiplications...
         let A = (*A24 / *C24).mul4() - Fq::TWO;
 
         // Initalise values for the addition chain, we repeatedly add [2]Q for each step
@@ -396,9 +394,14 @@ impl<Fq: FqTrait> Curve<Fq> {
         Self::xdbl_proj(A24, C24, &mut step.X, &mut step.Z);
         let mut diff = Q;
 
-        for eJ_coeffs in eJ_coeffs.iter_mut() {
+        let n = eJ_coeffs.len();
+        for (i, eJ_coeffs) in eJ_coeffs.iter_mut().enumerate() {
             *eJ_coeffs = Self::elliptic_resultants(&A, &Q);
-            // TODO: we can skip the last addition
+
+            // For the last step we can skip the addition.
+            if i == n - 1 {
+                break;
+            }
             let R = Self::xdiff_add(&Q, &step, &diff);
             diff = Q;
             Q = R;
@@ -413,10 +416,14 @@ impl<Fq: FqTrait> Curve<Fq> {
         let mut R = Q;
         Self::xdbl_proj(A24, C24, &mut R.X, &mut R.Z);
 
-        for P in hK_points.iter_mut() {
+        let n = hK_points.len();
+        for (i, P) in hK_points.iter_mut().enumerate() {
             *P = Q;
 
-            // TODO: we can skip this last add in the loop
+            // For the last step, we can skip the addition.
+            if i == n - 1 {
+                break;
+            }
             let S = Self::xdiff_add(&R, &step, &Q);
             (Q, R) = (R, S)
         }
@@ -462,9 +469,9 @@ impl<Fq: FqTrait> Curve<Fq> {
         let size_I = (degree + 1) / (4 * size_J);
         let size_K = (degree - 4 * size_J * size_I - 1) / 2;
 
-        // println!("b = {}", size_J);
-        // println!("c = {}", size_I);
-        // println!("stop = {}", size_K);
+        // println!("size_I = {}", size_I);
+        // println!("size_J = {}", size_J);
+        // println!("size_K = {}", size_K);
 
         // Precompute the roots of the polynomial Prod(x - [i]P.x()) for i in the set I
         // let start = Instant::now();
@@ -488,8 +495,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         // let precomp = start.elapsed();
         // println!("precomp time: {:?}", precomp);
 
-        let mut E0J_leaves: Vec<[Fq; 3]> = Vec::with_capacity(size_J);
-        let mut E1J_leaves: Vec<[Fq; 3]> = Vec::with_capacity(size_J);
+        let mut E0J_leaves: Vec<P> = Vec::with_capacity(size_J);
+        let mut E1J_leaves: Vec<P> = Vec::with_capacity(size_J);
         for (QX_sqr, QZ_sqr, f1_1, f2_1) in eJ_coeffs.iter() {
             let c0_0 = *QX_sqr + *f1_1 + *QZ_sqr;
             let c0_1 = f1_1.mul2() + *f2_1;
@@ -498,16 +505,13 @@ impl<Fq: FqTrait> Curve<Fq> {
 
             // t0 = f0 + f1 + f2 using that f0 = f2.reverse()
             // t1 = f0 - f1 + f2 using that f0 = f2.reverse()
-            E0J_leaves.push([c0_0, c0_1, c0_0]);
-            E1J_leaves.push([c1_0, c1_1, c1_0]);
+            E0J_leaves.push(P::new_from_slice(&[c0_0, c0_1, c0_0]));
+            E1J_leaves.push(P::new_from_slice(&[c1_0, c1_1, c1_0]));
         }
-        // TODO: use this tree to compute the resultant!
-        let E0J_tree = P::product_tree(&E0J_leaves);
-        let E0J = P::product_from_tree(&E0J_tree);
+        let E0J = P::product_tree_root(&E0J_leaves);
 
         // TODO: use this tree to compute the resultant!
-        let E1J_tree = P::product_tree(&E1J_leaves);
-        let E1J = P::product_from_tree(&E1J_tree);
+        let E1J = P::product_tree_root(&E1J_leaves);
         debug_assert!(E0J.degree().unwrap() == 2 * size_J);
         debug_assert!(E1J.degree().unwrap() == 2 * size_J);
 
@@ -566,20 +570,15 @@ impl<Fq: FqTrait> Curve<Fq> {
             let alpha = P.x();
             let alpha_sqr = alpha.square();
 
-            let mut E1J_leaves: Vec<[Fq; 3]> = Vec::with_capacity(size_J);
+            let mut E1J_leaves: Vec<P> = Vec::with_capacity(size_J);
             for (QX_sqr, QZ_sqr, f1_1, f2_1) in eJ_coeffs.iter() {
                 let tmp = alpha * *f1_1;
                 let c0 = alpha_sqr * *QX_sqr + tmp + *QZ_sqr;
                 let c1 = alpha_sqr * *f1_1 + alpha * *f2_1 + *f1_1;
                 let c2 = alpha_sqr * *QZ_sqr + tmp + *QX_sqr;
-                E1J_leaves.push([c0, c1, c2]);
+                E1J_leaves.push(P::new_from_slice(&[c0, c1, c2]));
             }
-            // TODO: use this tree to compute the resultant!
-            let E1J_tree = P::product_tree(&E1J_leaves);
-            let E1J = P::product_from_tree(&E1J_tree);
-
-            // TODO: do I not do this trick and compute a product so I
-            // have the tree for resultants?
+            let E1J = P::product_tree_root(&E1J_leaves);
             let E0J = E1J.reverse();
 
             let r0 = E0J.resultant_from_roots(&hI_roots);

@@ -35,8 +35,9 @@ pub trait Poly<Fp: FpTrait>:
 
     fn evaluate(&self, a: &Fp) -> Fp;
 
-    fn product_tree(leaves: &[[Fp; 3]]) -> Vec<Vec<Fp>>;
-    fn product_from_tree(leaves: &[Vec<Fp>]) -> Self;
+    fn product_tree_root(v: &[Self]) -> Self;
+    fn product_tree_quadratic_leaves(leaves: &[[Fp; 3]]) -> Vec<Vec<Fp>>;
+    fn product_from_tree(tree: &[Vec<Fp>]) -> Self;
 
     fn resultant_from_roots(&self, ai: &[Fp]) -> Fp;
 }
@@ -374,8 +375,19 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         r
     }
 
-    /// Naive implementation of a product tree, maybe this needs optimisations...
-    pub fn product_tree(leaves: &[[Fp; 3]]) -> Vec<Vec<Fp>> {
+    /// Computes the root of a product tree given a slice of the leaves.
+    pub fn product_tree_root(v: &[Self]) -> Self {
+        if v.len() == 1 {
+            return v[0].clone();
+        }
+        let half = v.len() >> 1;
+        &Self::product_tree_root(&v[..half]) * &Self::product_tree_root(&v[half..])
+    }
+
+    /// Computation of a product tree given an array of coefficients of
+    /// quadratic polynomials as leaves. Avoids performing many memory
+    /// allocations, but the code is a little harder to read.
+    pub fn product_tree_quadratic_leaves(leaves: &[[Fp; 3]]) -> Vec<Vec<Fp>> {
         // Number of leaves and depth for the tree.
         let n = leaves.len();
         let log_n = usize::BITS - (2 * n - 1).leading_zeros();
@@ -453,7 +465,8 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         layers
     }
 
-    /// Computes the polynomial product(leaves).
+    /// Computes the polynomial product(leaves) assuming a tree given by
+    /// product_tree_quadratic_leaves.
     pub fn product_from_tree(tree: &[Vec<Fp>]) -> Self {
         let n = tree[0].len() / 3;
         let root = tree.last().unwrap();
@@ -537,8 +550,12 @@ impl<Fp: FpTrait> Poly<Fp> for Polynomial<Fp> {
         self.evaluate(a)
     }
 
-    fn product_tree(leaves: &[[Fp; 3]]) -> Vec<Vec<Fp>> {
-        Self::product_tree(leaves)
+    fn product_tree_root(v: &[Self]) -> Self {
+        Self::product_tree_root(v)
+    }
+
+    fn product_tree_quadratic_leaves(leaves: &[[Fp; 3]]) -> Vec<Vec<Fp>> {
+        Self::product_tree_quadratic_leaves(leaves)
     }
 
     fn product_from_tree(tree: &[Vec<Fp>]) -> Self {
