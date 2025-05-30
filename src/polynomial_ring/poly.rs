@@ -199,6 +199,19 @@ impl<Fp: FpTrait> Polynomial<Fp> {
             return;
         }
 
+        // When f is linear, then we also know g is linear and we can
+        // save one multiplication compared to the naive method.
+        if f.len() == 2 {
+            let t1 = f[0] + f[1];
+            let t2 = g[0] + g[1];
+            fg[0] = f[0] * g[0];
+            fg[2] = f[1] * g[1];
+            fg[1] = t1 * t2;
+            fg[1] -= fg[0];
+            fg[1] -= fg[2];
+            return;
+        }
+
         // For small degree f, g we use basic multiplication strategies with
         // O(n^2) operations. TODO: set the right bound for when to fall back
         // to this.
