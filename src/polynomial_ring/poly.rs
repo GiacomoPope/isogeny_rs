@@ -139,7 +139,7 @@ impl<Fp: FpTrait> Polynomial<Fp> {
 
     /// Compute f <-- f + g, assumes that the length of f and g are the same.
     fn add_into(f: &mut [Fp], g: &[Fp]) {
-        debug_assert!(f.len() == g.len());
+        debug_assert!(f.len() >= g.len());
         for i in 0..g.len() {
             f[i] += g[i];
         }
@@ -147,7 +147,7 @@ impl<Fp: FpTrait> Polynomial<Fp> {
 
     /// Compute f <-- f - g, assumes that the length of f and g are the same.
     fn sub_into(f: &mut [Fp], g: &[Fp]) {
-        debug_assert!(f.len() == g.len());
+        debug_assert!(f.len() >= g.len());
         for i in 0..g.len() {
             f[i] -= g[i];
         }
@@ -157,7 +157,8 @@ impl<Fp: FpTrait> Polynomial<Fp> {
     /// schoolbook multiplication. Assumes that fg has enough space for
     /// the result (len(f) + len(g) - 1).
     fn schoolbook_multiplication(fg: &mut [Fp], f: &[Fp], g: &[Fp]) {
-        debug_assert!(fg.len() == f.len() + g.len() - 1);
+        debug_assert!(fg.len() >= f.len() + g.len() - 1);
+
         for i in 0..f.len() {
             for j in 0..g.len() {
                 if i == 0 || j + 1 == g.len() {
@@ -172,6 +173,8 @@ impl<Fp: FpTrait> Polynomial<Fp> {
     /// Compute f * g with ~O(n^1.5) Fp multiplications using Karastuba multiplication.
     /// Assumes that fg has enough space for the result (len(f) + len(g) - 1).
     fn karatsuba_multiplication(fg: &mut [Fp], f: &[Fp], g: &[Fp]) {
+        debug_assert!(fg.len() >= f.len() + g.len() - 1);
+
         // Ensure that the degree of f is larger or equal to g (for balancing the split later)
         if f.len() < g.len() {
             Self::karatsuba_multiplication(fg, g, f);
