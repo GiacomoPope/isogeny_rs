@@ -1,8 +1,12 @@
 // TODO:
 //
+// Optimise Sqrt Velu, current implementation is very slow!
+//
 // Cofactor clearing. At the moment clearing the cofactor means multiplying by each ell_i e_i times,
 // which seems silly. I think we should probably have some function which converts the prime factorisation into &[u64; ...]
 // and then we use these limbs to do var time point multiplication.
+
+// use std::time::Instant;
 
 use fp2::traits::Fp as FqTrait;
 
@@ -104,7 +108,7 @@ impl<Fq: FqTrait> Curve<Fq> {
             }
 
             _ => {
-                let nbitlen = 63 - n.leading_ones();
+                let nbitlen = u64::BITS - n.leading_zeros();
 
                 let mut X0 = Fq::ONE;
                 let mut Z0 = Fq::ZERO;
@@ -313,30 +317,287 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     // ============================================================
     // Sqrt Velu functions for large ell-isogenies
-    //
-    //
+    // WARNING: this is underperforming because of inefficienies absolutely everywhere!
+
     /// Compute roots of the polynomial \Prod (Z - x(Q)) for Q in the set
     /// I = {2b(2i + 1) | 0 <= i < c}
     fn precompute_hi_roots(hI_roots: &mut [Fq], A24: &Fq, C24: &Fq, kernel: &PointX<Fq>, b: usize) {
-        // Set Q = b^2 K
-        let mut Q = Self::xmul_proj_u64_vartime(A24, C24, kernel, (b * b) as u64);
+        // Collect Q.X into hI_roots. We then collect Q.Z into a temp buffer, which we invert and
+        // multiply into hI_roots.
+        let mut zs = vec![Fq::ZERO; hI_roots.len()];
 
-        // Initalise values for the addition chain
+        // Set Q = [2b]K
+        let mut Q = Self::xmul_proj_u64_vartime(A24, C24, kernel, (b + b) as u64);
+
+        // Initalise values for the addition chain, we repeatedly add [2]Q for each step
         let mut step = Q;
         Self::xdbl_proj(A24, C24, &mut step.X, &mut step.Z);
         let mut diff = Q;
 
-        // TODO: work projectively here to avoid the inversion for each point!
-        for r in hI_roots.iter_mut() {
-            *r = Q.x();
-            (Q, diff) = (Self::xdiff_add(&Q, &step, &diff), diff);
+        let n = hI_roots.len();
+        for i in 0..n {
+            hI_roots[i] = Q.X;
+            zs[i] = Q.Z;
+
+            // For the last step, we don't need to do the diff add
+            if i == n - 1 {
+                break;
+            }
+            let R = Self::xdiff_add(&Q, &step, &diff);
+            diff = Q;
+            Q = R;
+        }
+
+        // Invert the z coordinates
+        Fq::batch_invert(&mut zs);
+
+        // Compute X / Z for the roots in hI_roots
+        for (X, Z) in hI_roots.iter_mut().zip(zs.iter()) {
+            *X *= *Z;
         }
     }
 
-    // TODO: how can I handle returning polynomials here...
-    // fn elliptic_resultants() -> (Poly<Fq>, Poly<Fq>, Poly<Fq>) {
-    //     todo!()
-    // }
+    /// Given a point (X : Z) we want to compute three elliptic resultants on the Montgomery
+    /// curve, but of the three quadratic polynomials, there are only actually four unique
+    /// coefficients. QX^2, QZ^2, -2*QX*QZ and -2 * (A*QX*QZ + QX^2 + QZ^2). This is what
+    /// we precompute and store for later computations.
+    fn elliptic_resultants(A: &Fq, Q: &PointX<Fq>) -> (Fq, Fq, Fq, Fq) {
+        // TODO: do operation counting to see if this is the fastest way
+        // to compute these three polynomials...
+        let QX_sqr = Q.X.square();
+        let QZ_sqr = Q.Z.square();
+        let QXQZ = Q.X * Q.Z;
+        let QXQZ_m2 = -QXQZ.mul2();
+
+        let f2_linear = -(*A * QXQZ + QX_sqr + QZ_sqr).mul2();
+
+        (QX_sqr, QZ_sqr, QXQZ_m2, f2_linear)
+    }
+
+    fn precompute_eJ_coeffs(
+        eJ_coeffs: &mut [(Fq, Fq, Fq, Fq)],
+        A24: &Fq,
+        C24: &Fq,
+        ker: &PointX<Fq>,
+    ) {
+        // TODO: we could work projectively here with (A : C) instead of A. This saves us one inversion
+        // (about 30M) but adds multiplications by C throughout elliptic_resultants. For ell = 100 which
+        // is the best we could hope for in terms of sqrt beating linear velu, we would have size_J = 10
+        // and so we would need to ensure that multiplication by C only adds at most 2M per loop. For larger
+        // J it gets even less likely that we'll be able to save multiplications...
+        let A = (*A24 / *C24).mul4() - Fq::TWO;
+
+        // Initalise values for the addition chain, we repeatedly add [2]Q for each step
+        // to compute [j]Q for j in {1, 3, 5, 7, ...}
+        let mut Q = *ker;
+        let mut step = Q;
+        Self::xdbl_proj(A24, C24, &mut step.X, &mut step.Z);
+        let mut diff = Q;
+
+        let n = eJ_coeffs.len();
+        for (i, eJ_coeffs) in eJ_coeffs.iter_mut().enumerate() {
+            *eJ_coeffs = Self::elliptic_resultants(&A, &Q);
+
+            // For the last step we can skip the addition.
+            if i == n - 1 {
+                break;
+            }
+            let R = Self::xdiff_add(&Q, &step, &diff);
+            diff = Q;
+            Q = R;
+        }
+    }
+
+    /// Precompute the set of elements [i]ker for i in the set K
+    fn precompute_hK_points(hK_points: &mut [PointX<Fq>], A24: &Fq, C24: &Fq, kernel: &PointX<Fq>) {
+        let mut Q = *kernel;
+        Self::xdbl_proj(A24, C24, &mut Q.X, &mut Q.Z);
+        let step = Q;
+        let mut R = Q;
+        Self::xdbl_proj(A24, C24, &mut R.X, &mut R.Z);
+
+        let n = hK_points.len();
+        for (i, P) in hK_points.iter_mut().enumerate() {
+            *P = Q;
+
+            // For the last step, we can skip the addition.
+            if i == n - 1 {
+                break;
+            }
+            let S = Self::xdiff_add(&R, &step, &Q);
+            (Q, R) = (R, S)
+        }
+    }
+
+    /// Understanding the polynomial hK = prod(x * PZ - PX) for the set in hK, then
+    /// evaluate this polynomial at alpha = 1 and alpha = -1
+    fn hK_codomain(hK_points: &[PointX<Fq>]) -> (Fq, Fq) {
+        let mut h1 = Fq::ONE;
+        let mut h2 = Fq::ONE;
+        for P in hK_points.iter() {
+            h1 *= P.Z - P.X;
+            h2 *= -(P.Z + P.X);
+        }
+        (h1, h2)
+    }
+
+    /// Understanding the polynomial hK = prod(x * PZ - PX) for the set in hK, then
+    /// evaluate this polynomial at alpha and 1/alpha (projectively)
+    fn hK_eval(hK_points: &[PointX<Fq>], alpha: &Fq) -> (Fq, Fq) {
+        let mut h1 = Fq::ONE;
+        let mut h2 = Fq::ONE;
+        for P in hK_points.iter() {
+            h1 *= P.Z - P.X * *alpha;
+            h2 *= *alpha * P.Z - P.X;
+        }
+        (h1, h2)
+    }
+
+    /// Compute an isogeny using the sqrt-velu algorithm O(\sqrt{ell}) complexity.
+    /// https://velusqrt.isogeny.org
+    /// WARNING: this function is grossly underperforming due to slow polynomial arithmetic.
+    pub fn sqrt_velu_odd_isogeny_proj<P: Poly<Fq>>(
+        A24: &mut Fq,
+        C24: &mut Fq,
+        kernel: &PointX<Fq>,
+        degree: usize,
+        img_points: &mut [PointX<Fq>],
+    ) {
+        // baby step, giant step values
+        // TODO: better sqrt?
+        let size_J = (((degree + 1) as f64).sqrt() as usize) / 2;
+        let size_I = (degree + 1) / (4 * size_J);
+        let size_K = (degree - 4 * size_J * size_I - 1) / 2;
+
+        // println!("size_I = {}", size_I);
+        // println!("size_J = {}", size_J);
+        // println!("size_K = {}", size_K);
+
+        // Precompute the roots of the polynomial Prod(x - [i]P.x()) for i in the set I
+        // let start = Instant::now();
+        let mut hI_roots = vec![Fq::ZERO; size_I];
+        Self::precompute_hi_roots(&mut hI_roots, A24, C24, kernel, size_J);
+        // let hi_time = start.elapsed();
+        // println!("hi precomp time: {:?}", hi_time);
+
+        // Precompute coefficients for three polynomials for each point [j]P for j in J
+        let mut eJ_coeffs = vec![(Fq::ZERO, Fq::ZERO, Fq::ZERO, Fq::ZERO); size_J];
+        Self::precompute_eJ_coeffs(&mut eJ_coeffs, A24, C24, kernel);
+        // let ej_time = start.elapsed();
+        // println!("ej precomp time: {:?}", ej_time - hi_time);
+
+        // Precompute the polynomial (x - [k]P.x()) for k in the set K
+        let mut hK_points = vec![PointX::INFINITY; size_K];
+        Self::precompute_hK_points(&mut hK_points, A24, C24, kernel);
+        // let hk_time = start.elapsed();
+        // println!("hk precomp time: {:?}", hk_time - ej_time);
+
+        // let precomp = start.elapsed();
+        // println!("precomp time: {:?}", precomp);
+
+        let mut E0J_leaves: Vec<P> = Vec::with_capacity(size_J);
+        let mut E1J_leaves: Vec<P> = Vec::with_capacity(size_J);
+        for (QX_sqr, QZ_sqr, f1_1, f2_1) in eJ_coeffs.iter() {
+            let c0_0 = *QX_sqr + *f1_1 + *QZ_sqr;
+            let c0_1 = f1_1.mul2() + *f2_1;
+            let c1_0 = c0_0 - f1_1.mul2();
+            let c1_1 = c0_1 - f2_1.mul2();
+
+            // t0 = f0 + f1 + f2 using that f0 = f2.reverse()
+            // t1 = f0 - f1 + f2 using that f0 = f2.reverse()
+            E0J_leaves.push(P::new_from_slice(&[c0_0, c0_1, c0_0]));
+            E1J_leaves.push(P::new_from_slice(&[c1_0, c1_1, c1_0]));
+        }
+        let E0J = P::product_tree_root(&E0J_leaves);
+
+        // TODO: use this tree to compute the resultant!
+        let E1J = P::product_tree_root(&E1J_leaves);
+        debug_assert!(E0J.degree().unwrap() == 2 * size_J);
+        debug_assert!(E1J.degree().unwrap() == 2 * size_J);
+
+        // let e_comp = start.elapsed();
+        // println!("E comp time: {:?}", e_comp - precomp);
+
+        // Compute the codomain.
+        let r0 = E0J.resultant_from_roots(&hI_roots);
+        let r1 = E1J.resultant_from_roots(&hI_roots);
+
+        // let two_res = start.elapsed();
+        // println!("2x resultant time: {:?}", two_res - e_comp);
+
+        let (m0, m1) = Self::hK_codomain(&hK_points);
+
+        // Compute (ri * mi)^8 * (A ∓ 2)^degree
+        let mut num = r0 * m0;
+        let mut den = r1 * m1;
+        for _ in 0..3 {
+            num.set_square();
+            den.set_square();
+        }
+
+        let mut A_ed = *A24; // A_ed = (A + 2*C)
+        let mut D_ed = *A24 - *C24; // D_ed = (A - 2*C)
+        A_ed.set_pow_u64_vartime(degree as u64);
+        D_ed.set_pow_u64_vartime(degree as u64);
+
+        A_ed *= den;
+        D_ed *= num;
+
+        // let stop = start.elapsed();
+        // println!("time for all: {:?}\n", stop);
+
+        // Evaluate each point through the isogeny.
+        //
+        // Here we have for each point P (X : Z) the option to compute
+        // the fi elliptic polynomials of degree 2 with scaling by (X/Z) twice per step
+        // at a cost of b * 6M or by computing PX^2, PZ^2 and PX * PZ and then scaling
+        // three times at a cost of b * (9M  + 1M + 2S).
+        //
+        // Additionally in hK_eval if we use alpha we need `stop` additional
+        // multiplications.
+        //
+        // The question is for what values of b and stop should we compute alpha = X/Z
+        // to save multiplications for the cost of about 30M for the inversion for alpha
+        //
+        // Roughly it seems that if b = 5 it seems to be worth inverting and seeing as we
+        // expect to use this for degree ~ 100 I think the inversion is always good?
+
+        // let img_start = Instant::now();
+        for P in img_points.iter_mut() {
+            if P.is_zero() == u32::MAX {
+                continue;
+            }
+            let alpha = P.x();
+            let alpha_sqr = alpha.square();
+
+            let mut E1J_leaves: Vec<P> = Vec::with_capacity(size_J);
+            for (QX_sqr, QZ_sqr, f1_1, f2_1) in eJ_coeffs.iter() {
+                let tmp = alpha * *f1_1;
+                let c0 = alpha_sqr * *QX_sqr + tmp + *QZ_sqr;
+                let c1 = alpha_sqr * *f1_1 + alpha * *f2_1 + *f1_1;
+                let c2 = alpha_sqr * *QZ_sqr + tmp + *QX_sqr;
+                E1J_leaves.push(P::new_from_slice(&[c0, c1, c2]));
+            }
+            let E1J = P::product_tree_root(&E1J_leaves);
+            let E0J = E1J.reverse();
+
+            let r0 = E0J.resultant_from_roots(&hI_roots);
+            let r1 = E1J.resultant_from_roots(&hI_roots);
+            let (m0, m1) = Self::hK_eval(&hK_points, &alpha);
+
+            let r0m0 = r0 * m0;
+            let r1m1 = r1 * m1;
+
+            P.X = r0m0.square() * alpha;
+            P.Z = r1m1.square();
+        }
+        // let img_end = img_start.elapsed();
+        // println!("time for image: {:?}\n\n", img_end);
+
+        // Convert back to Montgomery (A24 : C24)
+        *A24 = A_ed;
+        *C24 = A_ed - D_ed;
+    }
 
     // ============================================================
     // Internal methods for computing isogeny chains of degree ell^e

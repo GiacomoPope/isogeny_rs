@@ -82,6 +82,22 @@ mod test_polynomial_arithmetic {
     }
 
     #[test]
+    fn test_multiplication_large() {
+        let mut rng = DRNG::from_seed("polynomial_multiplication_large".as_bytes());
+
+        for i in 0..5 {
+            let f = PR::rand(&mut rng, 100 - i);
+            let g = PR::rand(&mut rng, 150 - 20 * i);
+            let h = PR::rand(&mut rng, 200 - 15 * i);
+
+            let t1 = f.basic_mul(&g).basic_mul(&h);
+            let t2 = f.karatsuba_mul(&g).karatsuba_mul(&h);
+
+            assert!(t1.equals(&t2) == u32::MAX);
+        }
+    }
+
+    #[test]
     fn test_squaring() {
         // TODO: do specalised squaring method?
         let mut rng = DRNG::from_seed("polynomial_squaring".as_bytes());
