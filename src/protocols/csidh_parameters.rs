@@ -1,12 +1,15 @@
 use super::csidh::Csidh;
 use crate::fields::csidh::Csidh512;
 
+
+
+
 mod csidh_512 {
     use crate::protocols::csidh::CsidhParameters;
 
     pub const NUM_PRIMES: usize = 74;
     const MAX_EXPONENT: usize = 5;
-    const COFACTOR: u64 = 4;
+    const COFACTOR: usize = 2;
     const PRIMES: [u64; NUM_PRIMES] = [
          3,   5,   7,  11,  13,  17,  19,  23,  29,  31,  37,  41,  43,  47,  53,  59,
         61,  67,  71,  73,  79,  83,  89,  97, 101, 103, 107, 109, 113, 127, 131, 137,

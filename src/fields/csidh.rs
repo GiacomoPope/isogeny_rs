@@ -19,8 +19,10 @@ fp2::define_fp_core!(
 );
 
 #[cfg(test)]
-mod test_csidh_arithmetic {
+mod test_csidh_512_arithmetic {
     use super::{Csidh512};
 
     fp2::define_fp_tests!(Csidh512);
+
 }
+
