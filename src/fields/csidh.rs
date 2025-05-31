@@ -1,22 +1,26 @@
 
 // CSIDH - 512
 const CSIDH_512_MODULUS: [u64; 8] = [
-    0x1b81b90533c6c87b, 0xc2721bf457aca835, 0x516730cc1f0b4f25, 0xa7aac6c567f35507,
-    0x5afbfcc69322c9cd, 0xb42d083aedc88c42, 0xfc8ab0d15e3e4c4a, 0x65b48e8f740f89bf,
+    0x1B81B90533C6C87B,
+    0xC2721BF457ACA835,
+    0x516730CC1F0B4F25,
+    0xA7AAC6C567F35507,
+    0x5AFBFCC69322C9CD,
+    0xB42D083AEDC88C42,
+    0xFC8AB0D15E3E4C4A,
+    0x65B48E8F740F89BF,
 ];
 
 
 
-fp2::define_fp2_from_modulus!(
+fp2::define_fp_core!(
     typename = Csidh512,
-    base_typename = Csidh512Base,
     modulus = CSIDH_512_MODULUS,
 );
 
 #[cfg(test)]
 mod test_csidh_arithmetic {
-    use super::{Csidh512Base};
+    use super::{Csidh512};
 
-    fp2::define_fp_tests!(Csidh512Base);
-    //fp2::define_fp2_tests!(Csidh512, CSIDH_512_MODULUS, 2);
+    fp2::define_fp_tests!(Csidh512);
 }

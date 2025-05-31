@@ -4,7 +4,7 @@ use crate::fields::csidh::Csidh512;
 mod csidh_512 {
     use crate::protocols::csidh::CsidhParameters;
 
-    const NUM_PRIMES: usize = 74;
+    pub const NUM_PRIMES: usize = 74;
     const MAX_EXPONENT: usize = 5;
     const COFACTOR: u64 = 4;
     const PRIMES: [u64; NUM_PRIMES] = [
@@ -15,7 +15,7 @@ mod csidh_512 {
        317, 331, 337, 347, 349, 353, 359, 367, 373, 587,
     ];
 
-    pub const CSIDH_PARAMS: CsidhParameters = CsidhParameters {
+    pub const CSIDH_PARAMS: CsidhParameters<NUM_PRIMES> = CsidhParameters {
         num_primes: NUM_PRIMES,
         max_exponent: MAX_EXPONENT,
         two_cofactor: COFACTOR,
@@ -24,4 +24,4 @@ mod csidh_512 {
 }
 
 
-pub const CSIDH_512: Csidh<Csidh512> = Csidh::new(&csidh_512::CSIDH_PARAMS);
+pub const CSIDH_512: Csidh<Csidh512, {csidh_512::NUM_PRIMES}> = Csidh::new(&csidh_512::CSIDH_PARAMS);

@@ -7,24 +7,24 @@ use crate::elliptic::{curve::Curve, point::PointX};
 use rand_core::{CryptoRng, RngCore};
 
 #[derive(Clone, Copy, Debug)]
-pub struct CsidhParameters {
+pub struct CsidhParameters<const COUNT: usize> {
     pub num_primes: usize,
     pub max_exponent: usize,
     pub two_cofactor: u64,
-    pub primes: [u64; 74],  //Todo: we need to somehow load this from params...
+    pub primes: [u64; COUNT],  //Todo: we need to somehow load this from params...
 }
 
 
-pub struct Csidh<Fp: FqTrait> {
+pub struct Csidh<Fp: FqTrait, const COUNT: usize> {
     num_primes: usize,
     max_exponent: usize,
     two_cofactor: u64,
     base: Fp,
-    primes: [u64; 74],   //Todo: we need to somehow load this from params...
+    primes: [u64; COUNT],   //Todo: we need to somehow load this from params...
 }
 
-pub struct CsidhPrivateKey {
-    e : [u64; 74]
+pub struct CsidhPrivateKey<const COUNT: usize> {
+    e : [u64; COUNT]
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -32,8 +32,8 @@ pub struct CsidhPublicKey<Fp: FqTrait> {
     pub A : Fp
 }
 
-impl<Fp: FqTrait> Csidh<Fp> {
-    pub const fn new(params: &CsidhParameters) -> Self {
+impl<Fp: FqTrait, const COUNT: usize> Csidh<Fp, COUNT> {
+    pub const fn new(params: &CsidhParameters<COUNT>) -> Self {
         Self { 
             num_primes: params.num_primes,
             max_exponent: params.max_exponent,
@@ -47,15 +47,15 @@ impl<Fp: FqTrait> Csidh<Fp> {
         CsidhPublicKey{ A: self.base }
     }
 
-    fn sample_secret_key(&self) -> CsidhPrivateKey {
+    fn sample_secret_key(&self) -> CsidhPrivateKey<COUNT> {
         // for testing, always use [1,1,1,...,1] as key
-        CsidhPrivateKey { e: [1u64; 74] }
+        CsidhPrivateKey { e: [1u64; COUNT] }
     }
 
     fn action<R: CryptoRng + RngCore>(
         &self, 
         public_key: &CsidhPublicKey<Fp>, 
-        private_key: &CsidhPrivateKey,
+        private_key: &CsidhPrivateKey<COUNT>,
         rng: &mut R) 
         -> CsidhPublicKey<Fp> {
         
@@ -115,7 +115,7 @@ impl<Fp: FqTrait> Csidh<Fp> {
 
 
     pub fn keygen<R: CryptoRng + RngCore>(self, 
-        rng: &mut R) -> (CsidhPrivateKey, CsidhPublicKey<Fp>) {
+        rng: &mut R) -> (CsidhPrivateKey<COUNT>, CsidhPublicKey<Fp>) {
         let sk = self.sample_secret_key();
 
         let pk = self.action(&self.starting_curve(), &sk, rng);
@@ -126,7 +126,7 @@ impl<Fp: FqTrait> Csidh<Fp> {
     pub fn derive_shared_key<R: CryptoRng + RngCore>(
         self, 
         public_key: &CsidhPublicKey<Fp>, 
-        private_key: &CsidhPrivateKey,
+        private_key: &CsidhPrivateKey<COUNT>,
         rng: &mut R,) -> CsidhPublicKey<Fp> {
         
         // todo: verify
