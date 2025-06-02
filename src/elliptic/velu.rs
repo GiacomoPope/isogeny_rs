@@ -14,6 +14,8 @@ use crate::polynomial_ring::poly::Poly;
 
 use super::{curve::Curve, point::PointX};
 
+const VELU_SQRT_THRESHOLD: usize = 200;
+
 /// A structure which allows iterating over [i]P = (X : Z)
 struct PointXMultiples<Fq: FqTrait> {
     P: PointX<Fq>,
@@ -317,145 +319,170 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     // ============================================================
     // Sqrt Velu functions for large ell-isogenies
-    // WARNING: this is underperforming because of inefficienies absolutely everywhere!
+    // WARNING: this is underperforming currently due to missing optimisations in some
+    // specialised polynomial arithmetic to allow for fast scaled remainder trees and
+    // other smaller things.
 
-    /// Compute roots of the polynomial \Prod (Z - x(Q)) for Q in the set
-    /// I = {2b(2i + 1) | 0 <= i < c}
-    fn precompute_hi_roots(hI_roots: &mut [Fq], A24: &Fq, C24: &Fq, kernel: &PointX<Fq>, b: usize) {
-        // Collect Q.X into hI_roots. We then collect Q.Z into a temp buffer, which we invert and
-        // multiply into hI_roots.
-        let mut zs = vec![Fq::ZERO; hI_roots.len()];
-
-        // Set Q = [2b]K
-        let mut Q = Self::xmul_proj_u64_vartime(A24, C24, kernel, (b + b) as u64);
-
-        // Initalise values for the addition chain, we repeatedly add [2]Q for each step
-        let mut step = Q;
-        Self::xdbl_proj(A24, C24, &mut step.X, &mut step.Z);
-        let mut diff = Q;
-
-        let n = hI_roots.len();
-        for i in 0..n {
-            hI_roots[i] = Q.X;
-            zs[i] = Q.Z;
-
-            // For the last step, we don't need to do the diff add
-            if i == n - 1 {
-                break;
-            }
-            let R = Self::xdiff_add(&Q, &step, &diff);
-            diff = Q;
-            Q = R;
-        }
-
-        // Invert the z coordinates
-        Fq::batch_invert(&mut zs);
-
-        // Compute X / Z for the roots in hI_roots
-        for (X, Z) in hI_roots.iter_mut().zip(zs.iter()) {
-            *X *= *Z;
-        }
-    }
-
-    /// Given a point (X : Z) we want to compute three elliptic resultants on the Montgomery
-    /// curve, but of the three quadratic polynomials, there are only actually four unique
-    /// coefficients. QX^2, QZ^2, -2*QX*QZ and -2 * (A*QX*QZ + QX^2 + QZ^2). This is what
-    /// we precompute and store for later computations.
-    fn elliptic_resultants(A: &Fq, Q: &PointX<Fq>) -> (Fq, Fq, Fq, Fq) {
-        // TODO: do operation counting to see if this is the fastest way
-        // to compute these three polynomials...
-        let QX_sqr = Q.X.square();
-        let QZ_sqr = Q.Z.square();
-        let QXQZ = Q.X * Q.Z;
-        let QXQZ_m2 = -QXQZ.mul2();
-
-        let f2_linear = -(*A * QXQZ + QX_sqr + QZ_sqr).mul2();
-
-        (QX_sqr, QZ_sqr, QXQZ_m2, f2_linear)
-    }
-
-    fn precompute_eJ_coeffs(
-        eJ_coeffs: &mut [(Fq, Fq, Fq, Fq)],
+    /// Precompute the points in the three partitions I, J and K using x-only arithmetic.
+    // TODO: study Algorithm 1 of ia.cr/2024/584 and see if this still will lead to
+    // performance gains for our implementation.
+    fn precompute_partitions(
+        xI: &mut [PointX<Fq>],
+        xJ: &mut [PointX<Fq>],
+        xK: &mut [PointX<Fq>],
         A24: &Fq,
         C24: &Fq,
-        ker: &PointX<Fq>,
+        P: &PointX<Fq>,
     ) {
-        // TODO: we could work projectively here with (A : C) instead of A. This saves us one inversion
-        // (about 30M) but adds multiplications by C throughout elliptic_resultants. For ell = 100 which
-        // is the best we could hope for in terms of sqrt beating linear velu, we would have size_J = 10
-        // and so we would need to ensure that multiplication by C only adds at most 2M per loop. For larger
-        // J it gets even less likely that we'll be able to save multiplications...
-        let A = (*A24 / *C24).mul4() - Fq::TWO;
+        let size_I = xI.len();
+        let size_J = xJ.len();
+        let size_K = xK.len();
 
-        // Initalise values for the addition chain, we repeatedly add [2]Q for each step
-        // to compute [j]Q for j in {1, 3, 5, 7, ...}
-        let mut Q = *ker;
-        let mut step = Q;
-        Self::xdbl_proj(A24, C24, &mut step.X, &mut step.Z);
-        let mut diff = Q;
+        debug_assert!(size_I >= size_J);
+        debug_assert!(size_J > 1);
 
-        let n = eJ_coeffs.len();
-        for (i, eJ_coeffs) in eJ_coeffs.iter_mut().enumerate() {
-            *eJ_coeffs = Self::elliptic_resultants(&A, &Q);
+        let mut P2 = *P;
+        Self::xdbl_proj(A24, C24, &mut P2.X, &mut P2.Z);
 
-            // For the last step we can skip the addition.
-            if i == n - 1 {
-                break;
-            }
-            let R = Self::xdiff_add(&Q, &step, &diff);
-            diff = Q;
-            Q = R;
+        // First we compute [j]P for j in {1, 3, ... 2*size_J - 1}
+        xJ[0] = *P;
+        xJ[1] = Self::xdiff_add(&xJ[0], &P2, &xJ[0]);
+        for i in 2..size_J {
+            xJ[i] = Self::xdiff_add(&xJ[i - 1], &P2, &xJ[i - 2]);
+        }
+
+        // Next we want to compute x([i]P) for i in {2*size_J * (2i + 1)}
+        let mut P4 = P2;
+        Self::xdbl_proj(A24, C24, &mut P4.X, &mut P4.Z);
+
+        // First we compute [2*size_J]P which we can do efficiently from the computation
+        // of xJ above. We assume the degree of the isogeny is known (and so size_J is also
+        // known, so we allow the branch (we could do two conditional swaps).
+        let b_half_floor = size_J / 2;
+        let b_half_ceil = size_J - b_half_floor;
+        let Q = if (size_J % 2) == 1 {
+            Self::xdiff_add(&xJ[b_half_ceil], &xJ[b_half_floor - 1], &P4)
+        } else {
+            Self::xdiff_add(&xJ[b_half_ceil], &xJ[b_half_floor - 1], &P2)
+        };
+
+        // We need [2]Q as a step-size to generate xI
+        let mut Q2 = Q;
+        Self::xdbl_proj(A24, C24, &mut Q2.X, &mut Q2.Z);
+
+        xI[0] = Q;
+        xI[1] = Self::xdiff_add(&xI[0], &Q2, &xI[0]);
+        for i in 2..size_I {
+            xI[i] = Self::xdiff_add(&xI[i - 1], &Q2, &xI[i - 2]);
+        }
+
+        // Finally we compute [k]P for k in {4*sJ*sI + 1, ...,  ell - 4, ell - 2}
+        // We need to be careful when xK is small, so there's a few early returns
+        // below.
+        if xK.is_empty() {
+            return;
+        }
+        xK[0] = P2;
+        if size_K == 1 {
+            return;
+        }
+        xK[1] = P4;
+        for i in 2..size_K {
+            xK[i] = Self::xdiff_add(&xK[i - 1], &P2, &xK[i - 2]);
         }
     }
 
-    /// Precompute the set of elements [i]ker for i in the set K
-    fn precompute_hK_points(hK_points: &mut [PointX<Fq>], A24: &Fq, C24: &Fq, kernel: &PointX<Fq>) {
-        let mut Q = *kernel;
-        Self::xdbl_proj(A24, C24, &mut Q.X, &mut Q.Z);
-        let step = Q;
-        let mut R = Q;
-        Self::xdbl_proj(A24, C24, &mut R.X, &mut R.Z);
+    #[inline]
+    fn precompute_eJ_values(
+        eJ_coeffs: &mut [(Fq, Fq, Fq)],
+        hJ_points: &[PointX<Fq>],
+        A24: &Fq,
+        C24: &Fq,
+    ) {
+        // TODO: we could work projectively here with (A : C) instead of A. This saves us one inversion
+        // (about 60M for CSIDH 512 or 30M for 256-bit Fp2) but adds multiplications by C throughout codomain
+        // and image computations.
+        //
+        // I believe this ends up being 2M * J extra for codomain computations and 2M * J extra for each
+        // image. We expect velu to start being better for ell = 100, so we're paying a cost of 60M - 20M(1 + n)
+        // at this degree where n is the number of images we are computing. For ell = 587, the max for
+        // CSIDH 512 we're paying a cost of 60M - 48M(1 + n) and so is a saving when we do one eval.
+        let A = (*A24 / *C24).mul4() - Fq::TWO;
+        for (i, P) in hJ_points.iter().enumerate() {
+            let (X, Z) = P.coords();
+            let XZ = X * Z;
 
-        let n = hK_points.len();
-        for (i, P) in hK_points.iter_mut().enumerate() {
-            *P = Q;
+            let add_sqr = (X + Z).square();
+            let XZ4neg = -XZ.mul4();
+            let AXZ4neg = A * XZ4neg;
 
-            // For the last step, we can skip the addition.
-            if i == n - 1 {
-                break;
-            }
-            let S = Self::xdiff_add(&R, &step, &Q);
-            (Q, R) = (R, S)
+            eJ_coeffs[i] = (add_sqr, XZ4neg, AXZ4neg);
         }
+    }
+
+    /// Compute the product of an array of Fq values using a product tree.
+    // TODO: this could be placed into the Fp2 library.
+    fn product_tree_root_fq(v: &[Fq]) -> Fq {
+        if v.len() == 1 {
+            return v[0];
+        }
+        let half = v.len() >> 1;
+        Self::product_tree_root_fq(&v[..half]) * Self::product_tree_root_fq(&v[half..])
     }
 
     /// Understanding the polynomial hK = prod(x * PZ - PX) for the set in hK, then
     /// evaluate this polynomial at alpha = 1 and alpha = -1
+    #[inline]
     fn hK_codomain(hK_points: &[PointX<Fq>]) -> (Fq, Fq) {
-        let mut h1 = Fq::ONE;
-        let mut h2 = Fq::ONE;
+        // We have the factorisation of hK into linear pieces, so we evaluate
+        // each factor to get an Fq element and then compute the product of these
+        // with a product tree.
+        let mut h1_linear = Vec::with_capacity(hK_points.len());
+        let mut h2_linear = Vec::with_capacity(hK_points.len());
+
         for P in hK_points.iter() {
-            h1 *= P.Z - P.X;
-            h2 *= -(P.Z + P.X);
+            h1_linear.push(P.Z - P.X);
+            h2_linear.push(-(P.Z + P.X));
         }
+
+        let h1 = Self::product_tree_root_fq(&h1_linear);
+        let h2 = Self::product_tree_root_fq(&h2_linear);
+
         (h1, h2)
     }
 
     /// Understanding the polynomial hK = prod(x * PZ - PX) for the set in hK, then
-    /// evaluate this polynomial at alpha and 1/alpha (projectively)
-    fn hK_eval(hK_points: &[PointX<Fq>], alpha: &Fq) -> (Fq, Fq) {
-        let mut h1 = Fq::ONE;
-        let mut h2 = Fq::ONE;
+    /// evaluate this polynomial at alpha and 1/alpha (projectively) where we have
+    /// alpha = (X : Z) and we take as input X + Z and X - Z.
+    #[inline]
+    fn hK_eval(hK_points: &[PointX<Fq>], XpZ: &Fq, XmZ: &Fq) -> (Fq, Fq) {
+        // We have the factorisation of hK into linear pieces, so we evaluate
+        // each factor to get an Fq element and then compute the product of these
+        // with a product tree.
+        let mut h1_linear = Vec::with_capacity(hK_points.len());
+        let mut h2_linear = Vec::with_capacity(hK_points.len());
+
+        let mut t1;
+        let mut t2;
         for P in hK_points.iter() {
-            h1 *= P.Z - P.X * *alpha;
-            h2 *= *alpha * P.Z - P.X;
+            t1 = P.X + P.Z;
+            t1 *= *XmZ;
+
+            t2 = P.X - P.Z;
+            t2 *= *XpZ;
+
+            h1_linear.push(t1 - t2);
+            h2_linear.push(t1 + t2);
         }
+
+        let h1 = Self::product_tree_root_fq(&h1_linear);
+        let h2 = Self::product_tree_root_fq(&h2_linear);
+
         (h1, h2)
     }
 
     /// Compute an isogeny using the sqrt-velu algorithm O(\sqrt{ell}) complexity.
     /// https://velusqrt.isogeny.org
-    /// WARNING: this function is grossly underperforming due to slow polynomial arithmetic.
     pub fn sqrt_velu_odd_isogeny_proj<P: Poly<Fq>>(
         A24: &mut Fq,
         C24: &mut Fq,
@@ -469,62 +496,53 @@ impl<Fq: FqTrait> Curve<Fq> {
         let size_I = (degree + 1) / (4 * size_J);
         let size_K = (degree - 4 * size_J * size_I - 1) / 2;
 
-        // println!("size_I = {}", size_I);
-        // println!("size_J = {}", size_J);
-        // println!("size_K = {}", size_K);
+        // Compute the points in the I, J and K partitions.
+        let mut hI_points = vec![PointX::INFINITY; size_I];
+        let mut hJ_points = vec![PointX::INFINITY; size_J];
+        let mut hK_points = vec![PointX::INFINITY; size_K];
+        Self::precompute_partitions(
+            &mut hI_points,
+            &mut hJ_points,
+            &mut hK_points,
+            A24,
+            C24,
+            kernel,
+        );
 
         // Precompute the roots of the polynomial Prod(x - [i]P.x()) for i in the set I
-        // let start = Instant::now();
-        let mut hI_roots = vec![Fq::ZERO; size_I];
-        Self::precompute_hi_roots(&mut hI_roots, A24, C24, kernel, size_J);
-        // let hi_time = start.elapsed();
-        // println!("hi precomp time: {:?}", hi_time);
+        // In another implementation, we might instead compute the polynomial, which we
+        // would use as input into a remainder tree instead...
+        PointX::batch_normalise(&mut hI_points);
+        let hI_roots: Vec<Fq> = hI_points.iter().map(|P| P.X).collect();
 
-        // Precompute coefficients for three polynomials for each point [j]P for j in J
-        let mut eJ_coeffs = vec![(Fq::ZERO, Fq::ZERO, Fq::ZERO, Fq::ZERO); size_J];
-        Self::precompute_eJ_coeffs(&mut eJ_coeffs, A24, C24, kernel);
-        // let ej_time = start.elapsed();
-        // println!("ej precomp time: {:?}", ej_time - hi_time);
-
-        // Precompute the polynomial (x - [k]P.x()) for k in the set K
-        let mut hK_points = vec![PointX::INFINITY; size_K];
-        Self::precompute_hK_points(&mut hK_points, A24, C24, kernel);
-        // let hk_time = start.elapsed();
-        // println!("hk precomp time: {:?}", hk_time - ej_time);
-
-        // let precomp = start.elapsed();
-        // println!("precomp time: {:?}", precomp);
+        // Precompute (X + Z)^2, (X - Z)^2, -4XZ and -4XZ*A
+        let mut eJ_precomp = vec![(Fq::ZERO, Fq::ZERO, Fq::ZERO); size_J];
+        Self::precompute_eJ_values(&mut eJ_precomp, &hJ_points, A24, C24); // Cost: size_J * (1S + 2M)
 
         let mut E0J_leaves: Vec<P> = Vec::with_capacity(size_J);
         let mut E1J_leaves: Vec<P> = Vec::with_capacity(size_J);
-        for (QX_sqr, QZ_sqr, f1_1, f2_1) in eJ_coeffs.iter() {
-            let c0_0 = *QX_sqr + *f1_1 + *QZ_sqr;
-            let c0_1 = f1_1.mul2() + *f2_1;
-            let c1_0 = c0_0 - f1_1.mul2();
-            let c1_1 = c0_1 - f2_1.mul2();
+        for (sum_sqr, XZ4neg, AXZ4neg) in eJ_precomp.iter() {
+            // (X - Z)^2 = (X + Z)^2 - 4 * X * Z
+            let c0_0 = *sum_sqr + *XZ4neg;
+            let c0_1 = *AXZ4neg - sum_sqr.mul2();
 
-            // t0 = f0 + f1 + f2 using that f0 = f2.reverse()
-            // t1 = f0 - f1 + f2 using that f0 = f2.reverse()
+            let c1_0 = *sum_sqr;
+            let c1_1 = c0_0.mul2() - *AXZ4neg;
+
+            // Each quadratic factor here is a palindrome.
+            // TODO: we could write specialised polynomial arithmetic which
+            // abuses this for faaster multiplication.
             E0J_leaves.push(P::new_from_slice(&[c0_0, c0_1, c0_0]));
             E1J_leaves.push(P::new_from_slice(&[c1_0, c1_1, c1_0]));
         }
         let E0J = P::product_tree_root(&E0J_leaves);
-
-        // TODO: use this tree to compute the resultant!
         let E1J = P::product_tree_root(&E1J_leaves);
         debug_assert!(E0J.degree().unwrap() == 2 * size_J);
         debug_assert!(E1J.degree().unwrap() == 2 * size_J);
 
-        // let e_comp = start.elapsed();
-        // println!("E comp time: {:?}", e_comp - precomp);
-
         // Compute the codomain.
         let r0 = E0J.resultant_from_roots(&hI_roots);
         let r1 = E1J.resultant_from_roots(&hI_roots);
-
-        // let two_res = start.elapsed();
-        // println!("2x resultant time: {:?}", two_res - e_comp);
-
         let (m0, m1) = Self::hK_codomain(&hK_points);
 
         // Compute (ri * mi)^8 * (A ∓ 2)^degree
@@ -543,56 +561,63 @@ impl<Fq: FqTrait> Curve<Fq> {
         A_ed *= den;
         D_ed *= num;
 
-        // let stop = start.elapsed();
-        // println!("time for all: {:?}\n", stop);
-
         // Evaluate each point through the isogeny.
-        //
-        // Here we have for each point P (X : Z) the option to compute
-        // the fi elliptic polynomials of degree 2 with scaling by (X/Z) twice per step
-        // at a cost of b * 6M or by computing PX^2, PZ^2 and PX * PZ and then scaling
-        // three times at a cost of b * (9M  + 1M + 2S).
-        //
-        // Additionally in hK_eval if we use alpha we need `stop` additional
-        // multiplications.
-        //
-        // The question is for what values of b and stop should we compute alpha = X/Z
-        // to save multiplications for the cost of about 30M for the inversion for alpha
-        //
-        // Roughly it seems that if b = 5 it seems to be worth inverting and seeing as we
-        // expect to use this for degree ~ 100 I think the inversion is always good?
-
-        // let img_start = Instant::now();
         for P in img_points.iter_mut() {
             if P.is_zero() == u32::MAX {
                 continue;
             }
-            let alpha = P.x();
-            let alpha_sqr = alpha.square();
+
+            // We use the sum and difference for the EJ leaves as well as when
+            // evaluating hK at alpha = (X / Z) and 1/alpha.
+            let XpZ = P.X + P.Z;
+            let XmZ = P.X - P.Z;
+            let XZ2 = (P.X * P.Z).mul2();
+            let X2Z2 = XpZ.square() - XZ2; // X^2 + Z^2
 
             let mut E1J_leaves: Vec<P> = Vec::with_capacity(size_J);
-            for (QX_sqr, QZ_sqr, f1_1, f2_1) in eJ_coeffs.iter() {
-                let tmp = alpha * *f1_1;
-                let c0 = alpha_sqr * *QX_sqr + tmp + *QZ_sqr;
-                let c1 = alpha_sqr * *f1_1 + alpha * *f2_1 + *f1_1;
-                let c2 = alpha_sqr * *QZ_sqr + tmp + *QX_sqr;
+            for (i, (sum_sqr, XZ4neg, AXZ4neg)) in eJ_precomp.iter().enumerate() {
+                let Pj = hJ_points[i];
+
+                // Precompute some multiplications for later.
+                let add = Pj.X + Pj.Z;
+                let sub = Pj.X - Pj.Z;
+
+                // Constant coefficient: c0 = [2 * (X * Xj - Z * Zj)]^2
+                // Quadratic coefficient: c1 = [2 * (X * Zj - Z * Xj)]^2
+                let t1 = XmZ * add;
+                let t2 = XpZ * sub;
+                let c0 = (t1 + t2).square();
+                let c2 = (t1 - t2).square();
+
+                // Linear coefficent is given by three terms
+                // - [2 * (Xj^2 + Zj^2)] * 2 X Z +
+                //   (X^2 + Z^2) * (-4 * Xj * Zj) +
+                //   (2 A X Z) * (-4 Xj * Zj).
+
+                // Note that we use: 2 * (Xj + Zj)^2 - 4 Xj Zj = 2 * (Xj^2 + Zj^2)
+                let mut c1 = -sum_sqr.mul2();
+                c1 -= *XZ4neg;
+                c1 += *AXZ4neg;
+                c1 *= XZ2;
+                c1 += X2Z2 * *XZ4neg;
+                c1.set_mul2();
+
                 E1J_leaves.push(P::new_from_slice(&[c0, c1, c2]));
             }
+
             let E1J = P::product_tree_root(&E1J_leaves);
             let E0J = E1J.reverse();
 
             let r0 = E0J.resultant_from_roots(&hI_roots);
             let r1 = E1J.resultant_from_roots(&hI_roots);
-            let (m0, m1) = Self::hK_eval(&hK_points, &alpha);
+            let (m0, m1) = Self::hK_eval(&hK_points, &XpZ, &XmZ);
 
             let r0m0 = r0 * m0;
             let r1m1 = r1 * m1;
 
-            P.X = r0m0.square() * alpha;
-            P.Z = r1m1.square();
+            P.X *= r0m0.square();
+            P.Z *= r1m1.square();
         }
-        // let img_end = img_start.elapsed();
-        // println!("time for image: {:?}\n\n", img_end);
 
         // Convert back to Montgomery (A24 : C24)
         *A24 = A_ed;
@@ -603,7 +628,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     // Internal methods for computing isogeny chains of degree ell^e
     // and generic composite orders of degree \prod ell_i^ei
 
-    fn velu_prime_power_isogeny_proj(
+    fn velu_prime_power_isogeny_proj<P: Poly<Fq>>(
         A24: &mut Fq,
         C24: &mut Fq,
         kernel: &PointX<Fq>,
@@ -663,8 +688,16 @@ impl<Fq: FqTrait> Curve<Fq> {
             // Compute the ell-isogeny
             if degree == 2 {
                 Self::velu_two_isogeny_proj(A24, C24, &ker_step, &mut stategy_points[..(k + n)]);
-            } else {
+            } else if degree < VELU_SQRT_THRESHOLD {
                 Self::velu_odd_isogeny_proj(
+                    A24,
+                    C24,
+                    &ker_step,
+                    degree,
+                    &mut stategy_points[..(k + n)],
+                );
+            } else {
+                Self::sqrt_velu_odd_isogeny_proj::<P>(
                     A24,
                     C24,
                     &ker_step,
@@ -684,7 +717,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         img_points.copy_from_slice(&stategy_points[..n]);
     }
 
-    fn velu_composite_isogeny_proj(
+    fn velu_composite_isogeny_proj<P: Poly<Fq>>(
         A24: &mut Fq,
         C24: &mut Fq,
         kernel: &PointX<Fq>,
@@ -705,7 +738,7 @@ impl<Fq: FqTrait> Curve<Fq> {
             for (p, e) in degrees.iter().skip(i + 1) {
                 ker_step = Self::xmul_proj_u64_iter_vartime(A24, C24, &ker_step, *p as u64, *e);
             }
-            Self::velu_prime_power_isogeny_proj(A24, C24, &ker_step, ell, n, &mut eval_points)
+            Self::velu_prime_power_isogeny_proj::<P>(A24, C24, &ker_step, ell, n, &mut eval_points)
         }
 
         // TODO: I don't like this copy...
@@ -716,7 +749,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     // Public functions which compute isogenies given user-friendly
     // inputs and types etc.
 
-    pub fn velu_prime_isogeny(
+    pub fn velu_prime_isogeny<P: Poly<Fq>>(
         self,
         kernel: &PointX<Fq>,
         degree: usize,
@@ -728,13 +761,15 @@ impl<Fq: FqTrait> Curve<Fq> {
         // 2-isogenies are handled with a special function
         if degree == 2 {
             Self::velu_two_isogeny_proj(&mut A24, &mut C24, kernel, img_points);
-        } else {
+        } else if degree < VELU_SQRT_THRESHOLD {
             Self::velu_odd_isogeny_proj(&mut A24, &mut C24, kernel, degree, img_points);
+        } else {
+            Self::sqrt_velu_odd_isogeny_proj::<P>(&mut A24, &mut C24, kernel, degree, img_points);
         }
         Self::curve_from_A24_proj(&A24, &C24)
     }
 
-    pub fn velu_prime_power_isogeny(
+    pub fn velu_prime_power_isogeny<P: Poly<Fq>>(
         self,
         kernel: &PointX<Fq>,
         degree: usize,
@@ -743,12 +778,14 @@ impl<Fq: FqTrait> Curve<Fq> {
     ) -> Self {
         let mut A24 = self.A + Fq::TWO;
         let mut C24 = Fq::FOUR;
-        Self::velu_prime_power_isogeny_proj(&mut A24, &mut C24, kernel, degree, len, img_points);
+        Self::velu_prime_power_isogeny_proj::<P>(
+            &mut A24, &mut C24, kernel, degree, len, img_points,
+        );
 
         Self::curve_from_A24_proj(&A24, &C24)
     }
 
-    pub fn velu_composite_isogeny(
+    pub fn velu_composite_isogeny<P: Poly<Fq>>(
         self,
         kernel: &PointX<Fq>,
         degrees: &[(usize, usize)],
@@ -757,7 +794,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         let mut A24 = self.A + Fq::TWO;
         let mut C24 = Fq::FOUR;
 
-        Self::velu_composite_isogeny_proj(&mut A24, &mut C24, kernel, degrees, img_points);
+        Self::velu_composite_isogeny_proj::<P>(&mut A24, &mut C24, kernel, degrees, img_points);
 
         Self::curve_from_A24_proj(&A24, &C24)
     }

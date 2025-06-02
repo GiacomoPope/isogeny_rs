@@ -337,6 +337,29 @@ mod benchmark_velu {
         targets = bench_velu_103, bench_velu_211, bench_velu_311, bench_velu_587,
                   bench_sqrt_velu_103, bench_sqrt_velu_211, bench_sqrt_velu_311, bench_sqrt_velu_587
     }
+
+    // fn bench_mul(c: &mut Criterion) {
+    //     let bench_id = format!("Benchmarking multiplication",);
+    //     c.bench_function(&bench_id, |b| {
+    //         b.iter(|| black_box(P211_X) * black_box(P311_X))
+    //     });
+    // }
+
+    // fn bench_sqr(c: &mut Criterion) {
+    //     let bench_id = format!("Benchmarking squaring",);
+    //     c.bench_function(&bench_id, |b| b.iter(|| black_box(P211_X).square()));
+    // }
+
+    // fn bench_inv(c: &mut Criterion) {
+    //     let bench_id = format!("Benchmarking inversion",);
+    //     c.bench_function(&bench_id, |b| b.iter(|| black_box(P211_X).invert()));
+    // }
+
+    // criterion_group! {
+    //     name = benchmark_velu;
+    //     config = Criterion::default().measurement_time(Duration::from_secs(10));
+    //     targets = bench_mul, bench_sqr, bench_inv
+    // }
 }
 
 fn main() {
