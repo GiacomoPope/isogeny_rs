@@ -179,7 +179,8 @@ impl<Fq: FqTrait> Curve<Fq> {
             return;
         }
 
-        // Compute the bitlength of the big integer
+        // Compute the bitlength of the big integer, at this point we know the
+        // bit length will be more than 64 as we have a multi-limb bn.
         let nbitlen = bn_bit_length_vartime(n);
 
         let mut X0 = Fq::ONE;
@@ -187,30 +188,20 @@ impl<Fq: FqTrait> Curve<Fq> {
         let mut X1 = P.X;
         let mut Z1 = P.Z;
         let mut cc = 0u32;
-        if nbitlen > 21 {
-            // If n is large enough then it is worthwhile to
-            // normalize the source point to affine.
-            // If P = inf, then this sets Xp to 0; thus, the
-            // output of both xdbl() and xadd_aff() has Z = 0,
-            // so we correctly get the point-at-infinity at the end.
-            let Xp = P.X / P.Z;
-            for i in (0..nbitlen).rev() {
-                let ctl = (((n[i >> 6] >> (i & 63)) as u32) & 1).wrapping_neg();
-                Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
-                Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
-                Self::xadd_aff(&Xp, &X0, &Z0, &mut X1, &mut Z1);
-                Self::xdbl_proj(A24, C24, &mut X0, &mut Z0);
-                cc = ctl;
-            }
-        } else {
-            for i in (0..nbitlen).rev() {
-                let ctl = (((n[i >> 6] >> (i & 63)) as u32) & 1).wrapping_neg();
-                Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
-                Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
-                Self::xadd(&P.X, &P.Z, &X0, &Z0, &mut X1, &mut Z1);
-                Self::xdbl_proj(A24, C24, &mut X0, &mut Z0);
-                cc = ctl;
-            }
+
+        // As n is large enough, it is worthwhile to
+        // normalize the source point to affine.
+        // If P = inf, then this sets Xp to 0; thus, the
+        // output of both xdbl() and xadd_aff() has Z = 0,
+        // so we correctly get the point-at-infinity at the end.
+        let Xp = P.X / P.Z;
+        for i in (0..nbitlen).rev() {
+            let ctl = (((n[i >> 6] >> (i & 63)) as u32) & 1).wrapping_neg();
+            Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
+            Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
+            Self::xadd_aff(&Xp, &X0, &Z0, &mut X1, &mut Z1);
+            Self::xdbl_proj(A24, C24, &mut X0, &mut Z0);
+            cc = ctl;
         }
         Fq::condswap(&mut X0, &mut X1, cc);
         Fq::condswap(&mut Z0, &mut Z1, cc);
