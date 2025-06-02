@@ -14,6 +14,8 @@ use crate::polynomial_ring::poly::Poly;
 
 use super::{curve::Curve, point::PointX};
 
+const VELU_SQRT_THRESHOLD: usize = 200;
+
 /// A structure which allows iterating over [i]P = (X : Z)
 struct PointXMultiples<Fq: FqTrait> {
     P: PointX<Fq>,
@@ -626,7 +628,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     // Internal methods for computing isogeny chains of degree ell^e
     // and generic composite orders of degree \prod ell_i^ei
 
-    fn velu_prime_power_isogeny_proj(
+    fn velu_prime_power_isogeny_proj<P: Poly<Fq>>(
         A24: &mut Fq,
         C24: &mut Fq,
         kernel: &PointX<Fq>,
@@ -686,8 +688,16 @@ impl<Fq: FqTrait> Curve<Fq> {
             // Compute the ell-isogeny
             if degree == 2 {
                 Self::velu_two_isogeny_proj(A24, C24, &ker_step, &mut stategy_points[..(k + n)]);
-            } else {
+            } else if degree < VELU_SQRT_THRESHOLD {
                 Self::velu_odd_isogeny_proj(
+                    A24,
+                    C24,
+                    &ker_step,
+                    degree,
+                    &mut stategy_points[..(k + n)],
+                );
+            } else {
+                Self::sqrt_velu_odd_isogeny_proj::<P>(
                     A24,
                     C24,
                     &ker_step,
@@ -707,7 +717,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         img_points.copy_from_slice(&stategy_points[..n]);
     }
 
-    fn velu_composite_isogeny_proj(
+    fn velu_composite_isogeny_proj<P: Poly<Fq>>(
         A24: &mut Fq,
         C24: &mut Fq,
         kernel: &PointX<Fq>,
@@ -728,7 +738,7 @@ impl<Fq: FqTrait> Curve<Fq> {
             for (p, e) in degrees.iter().skip(i + 1) {
                 ker_step = Self::xmul_proj_u64_iter_vartime(A24, C24, &ker_step, *p as u64, *e);
             }
-            Self::velu_prime_power_isogeny_proj(A24, C24, &ker_step, ell, n, &mut eval_points)
+            Self::velu_prime_power_isogeny_proj::<P>(A24, C24, &ker_step, ell, n, &mut eval_points)
         }
 
         // TODO: I don't like this copy...
@@ -739,7 +749,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     // Public functions which compute isogenies given user-friendly
     // inputs and types etc.
 
-    pub fn velu_prime_isogeny(
+    pub fn velu_prime_isogeny<P: Poly<Fq>>(
         self,
         kernel: &PointX<Fq>,
         degree: usize,
@@ -751,13 +761,15 @@ impl<Fq: FqTrait> Curve<Fq> {
         // 2-isogenies are handled with a special function
         if degree == 2 {
             Self::velu_two_isogeny_proj(&mut A24, &mut C24, kernel, img_points);
-        } else {
+        } else if degree < VELU_SQRT_THRESHOLD {
             Self::velu_odd_isogeny_proj(&mut A24, &mut C24, kernel, degree, img_points);
+        } else {
+            Self::sqrt_velu_odd_isogeny_proj::<P>(&mut A24, &mut C24, kernel, degree, img_points);
         }
         Self::curve_from_A24_proj(&A24, &C24)
     }
 
-    pub fn velu_prime_power_isogeny(
+    pub fn velu_prime_power_isogeny<P: Poly<Fq>>(
         self,
         kernel: &PointX<Fq>,
         degree: usize,
@@ -766,12 +778,14 @@ impl<Fq: FqTrait> Curve<Fq> {
     ) -> Self {
         let mut A24 = self.A + Fq::TWO;
         let mut C24 = Fq::FOUR;
-        Self::velu_prime_power_isogeny_proj(&mut A24, &mut C24, kernel, degree, len, img_points);
+        Self::velu_prime_power_isogeny_proj::<P>(
+            &mut A24, &mut C24, kernel, degree, len, img_points,
+        );
 
         Self::curve_from_A24_proj(&A24, &C24)
     }
 
-    pub fn velu_composite_isogeny(
+    pub fn velu_composite_isogeny<P: Poly<Fq>>(
         self,
         kernel: &PointX<Fq>,
         degrees: &[(usize, usize)],
@@ -780,7 +794,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         let mut A24 = self.A + Fq::TWO;
         let mut C24 = Fq::FOUR;
 
-        Self::velu_composite_isogeny_proj(&mut A24, &mut C24, kernel, degrees, img_points);
+        Self::velu_composite_isogeny_proj::<P>(&mut A24, &mut C24, kernel, degrees, img_points);
 
         Self::curve_from_A24_proj(&A24, &C24)
     }

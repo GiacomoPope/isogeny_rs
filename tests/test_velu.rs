@@ -20,6 +20,9 @@ mod velu_test {
     fp2::define_fp_tests!(Fp);
     fp2::define_fp2_tests!(Fp2, MODULUS, 10);
 
+    // We need the poly type for calling SqrtVelu
+    type P = Polynomial<Fp2>;
+
     // Kernel of order 163
     const P_X_RE_BYTES: [u8; 31] = [
         161, 11, 202, 60, 238, 183, 30, 198, 113, 154, 4, 46, 251, 33, 116, 68, 50, 187, 152, 163,
@@ -158,7 +161,7 @@ mod velu_test {
 
         let codomain_test = Curve::new(&CODOMAIN_AP);
         let mut images = [ker];
-        let codomain = E.velu_prime_isogeny(&ker, 163, &mut images);
+        let codomain = E.velu_prime_isogeny::<P>(&ker, 163, &mut images);
 
         // Ensure the codomain matches the expected result.
         assert!(codomain.A.equals(&codomain_test.A) == u32::MAX);
@@ -174,7 +177,7 @@ mod velu_test {
 
         let codomain_test = Curve::new(&CODOMAIN_A2);
         let mut images = [ker];
-        let codomain = E.velu_prime_power_isogeny(&ker, 2, 3, &mut images);
+        let codomain = E.velu_prime_power_isogeny::<P>(&ker, 2, 3, &mut images);
 
         // Ensure the codomain matches the expected result.
         assert!(codomain.j_invariant().equals(&codomain_test.j_invariant()) == u32::MAX);
@@ -190,7 +193,7 @@ mod velu_test {
 
         let codomain_test = Curve::new(&CODOMAIN_AQ);
         let mut images = [ker];
-        let codomain = E.velu_prime_power_isogeny(&ker, 163, 16, &mut images);
+        let codomain = E.velu_prime_power_isogeny::<P>(&ker, 163, 16, &mut images);
 
         // Ensure the codomain matches the expected result.
         assert!(codomain.j_invariant().equals(&codomain_test.j_invariant()) == u32::MAX);
@@ -206,7 +209,7 @@ mod velu_test {
 
         let codomain_test = Curve::new(&CODOMAIN_A_ODD);
         let mut images = [ker];
-        let codomain = E.velu_composite_isogeny(&ker, &DEGREE_FACTORS[1..], &mut images);
+        let codomain = E.velu_composite_isogeny::<P>(&ker, &DEGREE_FACTORS[1..], &mut images);
 
         // Ensure the codomain matches the expected result.
         assert!(codomain.j_invariant().equals(&codomain_test.j_invariant()) == u32::MAX);
@@ -222,7 +225,7 @@ mod velu_test {
 
         let codomain_test = Curve::new(&CODOMAIN_AK);
         let mut images = [ker];
-        let codomain = E.velu_composite_isogeny(&ker, &DEGREE_FACTORS, &mut images);
+        let codomain = E.velu_composite_isogeny::<P>(&ker, &DEGREE_FACTORS, &mut images);
 
         // Ensure the codomain matches the expected result.
         assert!(codomain.j_invariant().equals(&codomain_test.j_invariant()) == u32::MAX);
@@ -258,7 +261,6 @@ mod velu_test {
         let mut A24 = Fp2::TWO;
         let mut C24 = Fp2::FOUR;
 
-        type P = Polynomial<Fp2>;
         Curve::sqrt_velu_odd_isogeny_proj::<P>(&mut A24, &mut C24, &ker, 163, &mut images);
         let codomain = Curve::curve_from_A24_proj(&A24, &C24);
 
