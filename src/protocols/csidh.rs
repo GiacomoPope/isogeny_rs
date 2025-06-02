@@ -1,4 +1,3 @@
-use std::{iter::OnceWith, os::unix::raw::uid_t};
 
 use fp2::traits::Fp as FqTrait;
 
@@ -156,7 +155,7 @@ impl<Fp: FqTrait, const COUNT: usize> Csidh<Fp, COUNT> {
                 sk_e[i] -= 1;
 
                 // did we "exhaust" the point?
-                if P.is_zero() == u32::MAX  {
+                if P.is_zero() == u32::MAX {
                     break;
                 }
             }
