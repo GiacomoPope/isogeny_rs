@@ -1,4 +1,3 @@
-
 // CSIDH - 512
 const CSIDH_512_MODULUS: [u64; 8] = [
     0x1B81B90533C6C87B,
@@ -11,18 +10,11 @@ const CSIDH_512_MODULUS: [u64; 8] = [
     0x65B48E8F740F89BF,
 ];
 
-
-
-fp2::define_fp_core!(
-    typename = Csidh512,
-    modulus = CSIDH_512_MODULUS,
-);
+fp2::define_fp_core!(typename = Csidh512, modulus = CSIDH_512_MODULUS,);
 
 #[cfg(test)]
 mod test_csidh_512_arithmetic {
-    use super::{Csidh512};
+    use super::Csidh512;
 
     fp2::define_fp_tests!(Csidh512);
-
 }
-

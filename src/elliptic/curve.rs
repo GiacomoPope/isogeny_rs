@@ -166,20 +166,6 @@ impl<Fq: FpTrait> Curve<Fq> {
         self.set_rand_point(rng, &mut P);
         P
     }
-
-    /// Return a new random curve point.
-    pub fn rand_pointX<R: CryptoRng + RngCore>(&self, rng: &mut R) -> (PointX<Fq>, u32) {
-        let x = Fq::rand(rng);
-        let P = PointX::from_x_coord(&x);
-
-        let XZ = P.X * P.Z;
-        let V = (P.X + P.Z).square() + ((self.A - Fq::TWO) * XZ);
-        let X = XZ;
-        let Y = V * XZ;
-        let ok = Y.is_square();
-
-        (P, ok)
-    }
 }
 
 impl<Fq: FpTrait> ::std::fmt::Display for Curve<Fq> {
