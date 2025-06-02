@@ -2,7 +2,7 @@ use std::{iter::OnceWith, os::unix::raw::uid_t};
 
 use fp2::traits::Fp as FqTrait;
 
-use crate::elliptic::{curve::Curve, point::PointX};
+use crate::{elliptic::{curve::Curve, point::PointX}, polynomial_ring::poly::Polynomial};
 
 use rand_core::{CryptoRng, RngCore};
 
@@ -24,7 +24,8 @@ pub struct Csidh<Fp: FqTrait, const COUNT: usize> {
 }
 
 pub struct CsidhPrivateKey<const COUNT: usize> {
-    e : [u64; COUNT]
+    e : [u64; COUNT],       // secret degree
+    d : [bool; COUNT]       // secret direction
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -56,17 +57,22 @@ impl<Fp: FqTrait, const COUNT: usize> Csidh<Fp, COUNT> {
     fn sample_secret_key<R: CryptoRng + RngCore>(&self, rng: &mut R) -> CsidhPrivateKey<COUNT> {
 
         let mut e = [0u64; COUNT];
+        let mut d = [false; COUNT];
 
         for i in 0..COUNT {
+            // sample exponent between 0 and max_exponent
             e[i] = rng.next_u64();
-            e[i] >>= 59;
+            e[i] >>= 59;  // shift to increase probabily to hit the range
             while e[i] > self.max_exponent as u64 {
                 e[i] = rng.next_u64();
                 e[i] >>= 59;
             }
+
+            // sample direction
+            d[i] = (rng.next_u32() % 2) == 0;
         }
 
-        CsidhPrivateKey { e }
+        CsidhPrivateKey { e , d }
     }
 
     fn action<R: CryptoRng + RngCore>(
@@ -78,57 +84,70 @@ impl<Fp: FqTrait, const COUNT: usize> Csidh<Fp, COUNT> {
         
         let mut A24 = public_key.A + Fp::TWO;
         let mut C24 = Fp::FOUR;
-        let mut sk = private_key.e;
+        let mut sk_e = private_key.e;
+        let sk_d = private_key.d;
 
-        let mut done : u64 = sk.iter().sum();
+
+        let mut done : u64 = sk_e.iter().sum();
         while done != 0{
-            // get point
-            // can be optimized using projective curves
-            // to sample the point
+
+            // get a point
             let curve = Curve::curve_from_A24_proj(&A24, &C24);
-            let (mut P, mut ok) = curve.rand_pointX(rng);
-            while ok == 0 {
-                (P, ok) = curve.rand_pointX(rng);
-            }
+            let (mut P, direction) = curve.rand_pointX(rng);
+            let direction = direction == 0;
 
             // clear cofactor
             Curve::<Fp>::xdbl_proj_iter(&A24, &C24, &mut P, self.two_cofactor);
 
 
             for i in (0..self.num_primes).rev() {
-                let secret_e = sk[i];
+                let secret_e = sk_e[i];
+                let secret_d = sk_d[i];
                 let degree = self.primes[i];
 
+                // check if we need to compute the degree
                 if secret_e == 0 {
+                    continue;
+                }
+
+                // check if the sampled point is for 
+                // the correct direction
+                if secret_d != direction {
                     continue;
                 }
                    
                 // get kernel from point
+                // we do this by removing every ell, but the current degree
+                // (this can be optimized way more)
                 let mut K = P;
                 for ell in self.primes.iter() {
                     if *ell == degree { continue;}
                     K = Curve::<Fp>::xmul_proj_u64_vartime(&A24, &C24, &K, *ell);
                 }
 
-
+                // check if the kernel is of the correct degree
+                // if not we skip it and try again on an new round
                 if K.is_zero() == u32::MAX {
                     continue;
+                
                 }
 
+                // // For extra safty, assert the kernel is indeed of the correct degree
                 // let K_ = Curve::<Fp>::xmul_proj_u64_vartime(&A24, &C24, &K, degree);
                 // assert!(K_.is_zero() == u32::MAX); 
 
-                let mut image_points = [P];
-                // compute isogeny
-                Curve::<Fp>::velu_odd_isogeny_proj(&mut A24, &mut C24, &K, degree as usize, &mut image_points);
 
+                // Finally compute the isogeny and push P
+                let mut image_points = [P];
+                Curve::<Fp>::velu_odd_isogeny_proj(&mut A24, &mut C24, &K, degree as usize, &mut image_points);
                 P = image_points[0];
+
                 // mark step as done
-                sk[i] -= 1;
+                sk_e[i] -= 1;
             }
 
 
-            done = sk.iter().sum();
+            done = sk_e.iter().sum();
         }
 
     
