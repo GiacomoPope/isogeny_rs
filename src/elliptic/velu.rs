@@ -317,7 +317,9 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     // ============================================================
     // Sqrt Velu functions for large ell-isogenies
-    // WARNING: this is underperforming because of inefficienies absolutely everywhere!
+    // WARNING: this is underperforming currently due to missing optimisations in some
+    // specialised polynomial arithmetic to allow for fast scaled remainder trees and
+    // other smaller things.
 
     /// Precompute the points in the three partitions I, J and K using x-only arithmetic.
     // TODO: study Algorithm 1 of ia.cr/2024/584 and see if this still will lead to
@@ -390,7 +392,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     #[inline]
     fn precompute_eJ_values(
-        eJ_coeffs: &mut [(Fq, Fq, Fq, Fq)],
+        eJ_coeffs: &mut [(Fq, Fq, Fq)],
         hJ_points: &[PointX<Fq>],
         A24: &Fq,
         C24: &Fq,
@@ -407,29 +409,13 @@ impl<Fq: FqTrait> Curve<Fq> {
         for (i, P) in hJ_points.iter().enumerate() {
             let (X, Z) = P.coords();
             let XZ = X * Z;
-            let XZ4neg = -XZ.mul4();
 
-            let sub_sqr = (X - Z).square();
-            let add_sqr = sub_sqr - XZ4neg;
+            let add_sqr = (X + Z).square();
+            let XZ4neg = -XZ.mul4();
             let AXZ4neg = A * XZ4neg;
 
-            debug_assert!(add_sqr.equals(&(X + Z).square()) == u32::MAX);
-
-            eJ_coeffs[i] = (add_sqr, sub_sqr, XZ4neg, AXZ4neg);
+            eJ_coeffs[i] = (add_sqr, XZ4neg, AXZ4neg);
         }
-    }
-
-    /// Understanding the polynomial hK = prod(x * PZ - PX) for the set in hK, then
-    /// evaluate this polynomial at alpha = 1 and alpha = -1
-    #[inline]
-    fn hK_codomain(hK_points: &[PointX<Fq>]) -> (Fq, Fq) {
-        let mut h1 = Fq::ONE;
-        let mut h2 = Fq::ONE;
-        for P in hK_points.iter() {
-            h1 *= P.Z - P.X;
-            h2 *= -(P.Z + P.X);
-        }
-        (h1, h2)
     }
 
     /// Compute the product of an array of Fq values using a product tree.
@@ -440,6 +426,27 @@ impl<Fq: FqTrait> Curve<Fq> {
         }
         let half = v.len() >> 1;
         Self::product_tree_root_fq(&v[..half]) * Self::product_tree_root_fq(&v[half..])
+    }
+
+    /// Understanding the polynomial hK = prod(x * PZ - PX) for the set in hK, then
+    /// evaluate this polynomial at alpha = 1 and alpha = -1
+    #[inline]
+    fn hK_codomain(hK_points: &[PointX<Fq>]) -> (Fq, Fq) {
+        // We have the factorisation of hK into linear pieces, so we evaluate
+        // each factor to get an Fq element and then compute the product of these
+        // with a product tree.
+        let mut h1_linear = Vec::with_capacity(hK_points.len());
+        let mut h2_linear = Vec::with_capacity(hK_points.len());
+
+        for P in hK_points.iter() {
+            h1_linear.push(P.Z - P.X);
+            h2_linear.push(-(P.Z + P.X));
+        }
+
+        let h1 = Self::product_tree_root_fq(&h1_linear);
+        let h2 = Self::product_tree_root_fq(&h2_linear);
+
+        (h1, h2)
     }
 
     /// Understanding the polynomial hK = prod(x * PZ - PX) for the set in hK, then
@@ -507,17 +514,18 @@ impl<Fq: FqTrait> Curve<Fq> {
         let hI_roots: Vec<Fq> = hI_points.iter().map(|P| P.X).collect();
 
         // Precompute (X + Z)^2, (X - Z)^2, -4XZ and -4XZ*A
-        let mut eJ_precomp = vec![(Fq::ZERO, Fq::ZERO, Fq::ZERO, Fq::ZERO); size_J];
+        let mut eJ_precomp = vec![(Fq::ZERO, Fq::ZERO, Fq::ZERO); size_J];
         Self::precompute_eJ_values(&mut eJ_precomp, &hJ_points, A24, C24); // Cost: size_J * (1S + 2M)
 
         let mut E0J_leaves: Vec<P> = Vec::with_capacity(size_J);
         let mut E1J_leaves: Vec<P> = Vec::with_capacity(size_J);
-        for (sum_sqr, sub_sqr, _, AXZ4neg) in eJ_precomp.iter() {
-            let c0_0 = *sub_sqr;
+        for (sum_sqr, XZ4neg, AXZ4neg) in eJ_precomp.iter() {
+            // (X - Z)^2 = (X + Z)^2 - 4 * X * Z
+            let c0_0 = *sum_sqr + *XZ4neg;
             let c0_1 = *AXZ4neg - sum_sqr.mul2();
 
             let c1_0 = *sum_sqr;
-            let c1_1 = sub_sqr.mul2() - *AXZ4neg;
+            let c1_1 = c0_0.mul2() - *AXZ4neg;
 
             // Each quadratic factor here is a palindrome.
             // TODO: we could write specialised polynomial arithmetic which
@@ -565,7 +573,7 @@ impl<Fq: FqTrait> Curve<Fq> {
             let X2Z2 = XpZ.square() - XZ2; // X^2 + Z^2
 
             let mut E1J_leaves: Vec<P> = Vec::with_capacity(size_J);
-            for (i, (sum_sqr, _, XZ4neg, AXZ4neg)) in eJ_precomp.iter().enumerate() {
+            for (i, (sum_sqr, XZ4neg, AXZ4neg)) in eJ_precomp.iter().enumerate() {
                 let Pj = hJ_points[i];
 
                 // Precompute some multiplications for later.
