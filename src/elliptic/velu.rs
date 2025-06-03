@@ -803,6 +803,24 @@ impl<Fq: FqTrait> Curve<Fq> {
     // Public functions which compute isogenies given user-friendly
     // inputs and types etc.
 
+    pub fn velu_prime_isogeny_proj<P: Poly<Fq>>(
+        A24: &mut Fq,
+        C24: &mut Fq,
+        kernel: &PointX<Fq>,
+        degree: usize,
+        img_points: &mut [PointX<Fq>],
+    ) {
+        // 2-isogenies are handled with a special function
+        if degree == 2 {
+            Self::velu_two_isogeny_proj(A24, C24, kernel, img_points);
+        } else if degree < VELU_SQRT_THRESHOLD {
+            Self::velu_odd_isogeny_proj(A24, C24, kernel, degree, img_points);
+        } else {
+            Self::sqrt_velu_odd_isogeny_proj::<P>(A24, C24, kernel, degree, img_points);
+        }
+    }
+
+
     pub fn velu_prime_isogeny<P: Poly<Fq>>(
         self,
         kernel: &PointX<Fq>,

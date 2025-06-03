@@ -1,7 +1,7 @@
 
 use fp2::traits::Fp as FqTrait;
 
-use crate::elliptic::{curve::Curve, point::PointX};
+use crate::{elliptic::{curve::Curve, point::PointX}, polynomial_ring::poly::Polynomial};
 
 use rand_core::{CryptoRng, RngCore};
 
@@ -139,17 +139,13 @@ impl<Fp: FqTrait, const COUNT: usize> Csidh<Fp, COUNT> {
                 if K.is_zero() == u32::MAX {
                     continue;
                 }
-
+  
                 // Finally compute the isogeny and push P
-                let mut image_points = [P];
-                Curve::<Fp>::velu_odd_isogeny_proj(
-                    &mut A24,
-                    &mut C24,
-                    &K,
-                    degree as usize,
-                    &mut image_points,
-                );
-                P = image_points[0];
+                let mut img_points =  [P];
+                Curve::<Fp>::velu_prime_isogeny_proj::<Polynomial<Fp>>(
+                    &mut A24, &mut C24, &K, degree as usize, &mut img_points);
+                  
+                P = img_points[0];
 
                 // mark step as done
                 sk_e[i] -= 1;
@@ -159,7 +155,6 @@ impl<Fp: FqTrait, const COUNT: usize> Csidh<Fp, COUNT> {
                     break;
                 }
             }
-
             done = sk_e.iter().sum();
         }
 
