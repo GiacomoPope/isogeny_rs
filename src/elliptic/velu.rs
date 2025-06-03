@@ -10,7 +10,12 @@
 
 use fp2::traits::Fp as FqTrait;
 
-use crate::polynomial_ring::poly::Poly;
+use crate::{
+    polynomial_ring::poly::Poly,
+    utilities::bn::{
+        bn_bit_length_vartime, factorisation_to_bn_vartime, prime_power_to_bn_vartime,
+    },
+};
 
 use super::{curve::Curve, point::PointX};
 
@@ -159,11 +164,73 @@ impl<Fq: FqTrait> Curve<Fq> {
         }
     }
 
+    /// P3 <- n*P, x-only variant using (A24 : C24).
+    /// Integer n is represented as a big integer with u64 words, little endian and is assumed to be public.
+    fn set_xmul_proj_bn_vartime(
+        A24: &Fq,
+        C24: &Fq,
+        P3: &mut PointX<Fq>,
+        P: &PointX<Fq>,
+        n: &[u64],
+    ) {
+        // When n has length n, call the lower level function.
+        if n.len() == 1 {
+            Self::set_xmul_proj_u64_vartime(A24, C24, P3, P, n[0]);
+            return;
+        }
+
+        // Compute the bitlength of the big integer, at this point we know the
+        // bit length will be more than 64 as we have a multi-limb bn.
+        let nbitlen = bn_bit_length_vartime(n);
+
+        let mut X0 = Fq::ONE;
+        let mut Z0 = Fq::ZERO;
+        let mut X1 = P.X;
+        let mut Z1 = P.Z;
+        let mut cc = 0u32;
+
+        // As n is large enough, it is worthwhile to
+        // normalize the source point to affine.
+        // If P = inf, then this sets Xp to 0; thus, the
+        // output of both xdbl() and xadd_aff() has Z = 0,
+        // so we correctly get the point-at-infinity at the end.
+        let Xp = P.X / P.Z;
+        for i in (0..nbitlen).rev() {
+            let ctl = (((n[i >> 6] >> (i & 63)) as u32) & 1).wrapping_neg();
+            Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
+            Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
+            Self::xadd_aff(&Xp, &X0, &Z0, &mut X1, &mut Z1);
+            Self::xdbl_proj(A24, C24, &mut X0, &mut Z0);
+            cc = ctl;
+        }
+        Fq::condswap(&mut X0, &mut X1, cc);
+        Fq::condswap(&mut Z0, &mut Z1, cc);
+
+        // The ladder may fail if P = (0,0) (which is a point of
+        // order 2) because in that case xadd() (and xadd_aff())
+        // return Z = 0 systematically, so the result is considered
+        // to be the point-at-infinity, which is wrong is n is odd.
+        // We adjust the result in that case.
+        let spec = P.X.is_zero() & !P.Z.is_zero() & (((n[0] & 1) as u32) & 1).wrapping_neg();
+        P3.X = X0;
+        P3.Z = Z0;
+        P3.X.set_cond(&Fq::ZERO, spec);
+        P3.Z.set_cond(&Fq::ONE, spec);
+    }
+
     /// Return n*P as a new point (x-only variant) using (A24 : C24).
     /// Integer n is encoded as a u64 which is assumed to be a public value.
     pub fn xmul_proj_u64_vartime(A24: &Fq, C24: &Fq, P: &PointX<Fq>, n: u64) -> PointX<Fq> {
         let mut P3 = PointX::INFINITY;
         Self::set_xmul_proj_u64_vartime(A24, C24, &mut P3, P, n);
+        P3
+    }
+
+    /// Return n*P as a new point (x-only variant) using (A24 : C24).
+    /// Integer n is encoded as big number with little endian u64 words, which is assumed to be public.
+    pub fn xmul_proj_bn_vartime(A24: &Fq, C24: &Fq, P: &PointX<Fq>, n: &[u64]) -> PointX<Fq> {
+        let mut P3 = PointX::INFINITY;
+        Self::set_xmul_proj_bn_vartime(A24, C24, &mut P3, P, n);
         P3
     }
 
@@ -173,36 +240,12 @@ impl<Fq: FqTrait> Curve<Fq> {
         A24: &Fq,
         C24: &Fq,
         P: &PointX<Fq>,
-        n: u64,
+        x: usize,
         e: usize,
     ) -> PointX<Fq> {
-        // If n^e fits inside a u64 then we simply send this
-        let (x, overflow) = n.overflowing_pow(e as u32);
-        if !overflow {
-            return Self::xmul_proj_u64_vartime(A24, C24, P, x);
-        }
-
-        // Compute the largest power y such that n^y fits inside a u64
-        // and represent n^e = n^(k * y + r)
-        let y = (64 / (64 - n.leading_zeros())) as usize;
-        let k = e / y;
-        let r = e % y;
-        debug_assert!(y * k + r == e);
-
-        // Compute n^y and n^r for the multiplications below.
-        // TODO: this is still wasteful, we should represent
-        // the scalar as a [u64] and pass this to a single
-        // function!
-        let n_y = n.wrapping_pow(y as u32);
-        let n_r = n.wrapping_pow(r as u32);
-
-        let mut P3 = *P;
-        for _ in 0..k {
-            P3 = Self::xmul_proj_u64_vartime(A24, C24, &P3, n_y);
-        }
-        P3 = Self::xmul_proj_u64_vartime(A24, C24, &P3, n_r);
-
-        P3
+        // Convert x^e to a big integer represented as u64 words.
+        let n = prime_power_to_bn_vartime(x, e);
+        Self::xmul_proj_bn_vartime(A24, C24, P, &n)
     }
 
     // ============================================================
@@ -492,8 +535,10 @@ impl<Fq: FqTrait> Curve<Fq> {
     ) {
         // baby step, giant step values
         // TODO: better sqrt?
-        let size_J = (((degree + 1) as f64).sqrt() as usize) / 2;
-        let size_I = (degree + 1) / (4 * size_J);
+        // TODO: I need to use degree - 1 rather than degree + 1 as in
+        // the paper to avoid K < 0... Try and get to the bottom of this.
+        let size_J = (((degree - 1) as f64).sqrt() as usize) / 2;
+        let size_I = (degree - 1) / (4 * size_J);
         let size_K = (degree - 4 * size_J * size_I - 1) / 2;
 
         // Compute the points in the I, J and K partitions.
@@ -675,7 +720,7 @@ impl<Fq: FqTrait> Curve<Fq> {
                         A24,
                         C24,
                         &stategy_points[n + k],
-                        degree as u64,
+                        degree,
                         m,
                     )
                 }
@@ -735,9 +780,15 @@ impl<Fq: FqTrait> Curve<Fq> {
             // TODO: this will be slow, must be a better way to batch things into the u64
             // ker_step will be a point with order ell^n
             let mut ker_step = *eval_points.last().unwrap();
-            for (p, e) in degrees.iter().skip(i + 1) {
-                ker_step = Self::xmul_proj_u64_iter_vartime(A24, C24, &ker_step, *p as u64, *e);
+
+            // Collect the factorisation of the cofactor by skipping the ell already handled.
+            // We don't have to do anything on the last factor of the isogeny.
+            let factorisation: Vec<(usize, usize)> = degrees.iter().skip(i + 1).cloned().collect();
+            if !factorisation.is_empty() {
+                let cofactor: Vec<u64> = factorisation_to_bn_vartime(&factorisation);
+                ker_step = Self::xmul_proj_bn_vartime(A24, C24, &ker_step, &cofactor);
             }
+
             Self::velu_prime_power_isogeny_proj::<P>(A24, C24, &ker_step, ell, n, &mut eval_points)
         }
 
