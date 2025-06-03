@@ -19,10 +19,17 @@ rayon = "1.10.0"
 [features]
 kat-tests = []
 
+# [[bench]]
+# name = "bench_velu"
+# path = "benches/bench_velu.rs"
+# harness = false
+
+
 [[bench]]
-name = "bench_velu"
-path = "benches/bench_velu.rs"
+name = "bench_csidh"
+path = "benches/bench_csidh.rs"
 harness = false
+
 
 # [[bench]]
 # name = "bench_sidh"
