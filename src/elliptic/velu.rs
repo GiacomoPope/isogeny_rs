@@ -466,6 +466,9 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// Compute the product of an array of Fq values using a product tree.
     // TODO: this could be placed into the Fp2 library.
     fn product_tree_root_fq(v: &[Fq]) -> Fq {
+        if v.is_empty() {
+            return Fq::ONE;
+        }
         if v.len() == 1 {
             return v[0];
         }
@@ -619,7 +622,7 @@ impl<Fq: FqTrait> Curve<Fq> {
             let XZ2 = (P.X * P.Z).mul2();
             let X2Z2 = XpZ.square() - XZ2; // X^2 + Z^2
 
-            let mut E1J_leaves: Vec<P> = Vec::with_capacity(size_J);
+            let mut E0J_leaves: Vec<P> = Vec::with_capacity(size_J);
             for (i, (sum_sqr, XZ4neg, AXZ4neg)) in eJ_precomp.iter().enumerate() {
                 let Pj = hJ_points[i];
 
@@ -647,11 +650,11 @@ impl<Fq: FqTrait> Curve<Fq> {
                 c1 += X2Z2 * *XZ4neg;
                 c1.set_mul2();
 
-                E1J_leaves.push(P::new_from_slice(&[c0, c1, c2]));
+                E0J_leaves.push(P::new_from_slice(&[c0, c1, c2]));
             }
 
-            let E1J = P::product_tree_root(&E1J_leaves);
-            let E0J = E1J.reverse();
+            let E0J = P::product_tree_root(&E0J_leaves);
+            let E1J = E0J.reverse();
 
             let r0 = E0J.resultant_from_roots(&hI_roots);
             let r1 = E1J.resultant_from_roots(&hI_roots);
@@ -660,8 +663,8 @@ impl<Fq: FqTrait> Curve<Fq> {
             let r0m0 = r0 * m0;
             let r1m1 = r1 * m1;
 
-            P.X *= r0m0.square();
-            P.Z *= r1m1.square();
+            P.X *= r1m1.square();
+            P.Z *= r0m0.square();
         }
 
         // Convert back to Montgomery (A24 : C24)

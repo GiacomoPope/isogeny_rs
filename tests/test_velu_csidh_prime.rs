@@ -34,6 +34,12 @@ mod test_csidh_velu {
         64, 125, 18, 249, 176, 192, 106, 185, 52, 186, 120, 3, 43, 102, 34, 142, 158, 116, 209,
         128, 206, 38, 220, 39, 95,
     ];
+    const P257_X_BYTES: [u8; 64] = [
+        65, 22, 88, 238, 13, 216, 111, 197, 137, 208, 210, 169, 220, 187, 150, 46, 183, 117, 10,
+        188, 44, 129, 178, 19, 73, 175, 182, 90, 170, 24, 33, 86, 26, 152, 213, 206, 232, 4, 63,
+        190, 171, 149, 232, 55, 37, 59, 211, 241, 29, 170, 247, 18, 89, 188, 226, 133, 50, 167,
+        191, 52, 181, 138, 37, 37,
+    ];
     const P311_X_BYTES: [u8; 64] = [
         91, 231, 70, 194, 23, 155, 11, 243, 133, 79, 126, 163, 30, 195, 233, 66, 90, 73, 130, 99,
         201, 169, 156, 140, 207, 94, 104, 147, 102, 42, 34, 22, 17, 17, 125, 54, 214, 38, 252, 116,
@@ -65,6 +71,12 @@ mod test_csidh_velu {
         39, 3, 42, 145, 108, 148, 32, 164, 66, 79, 238, 83, 95, 74, 107, 129, 11, 190, 74, 178,
         175, 60, 176, 24, 64,
     ];
+    const A257_BYTES: [u8; 64] = [
+        123, 59, 201, 191, 163, 228, 141, 107, 86, 177, 72, 10, 201, 172, 152, 0, 180, 40, 83, 68,
+        25, 52, 39, 154, 78, 6, 92, 53, 59, 235, 196, 124, 117, 136, 75, 237, 223, 211, 203, 39,
+        14, 73, 141, 27, 222, 159, 23, 106, 232, 219, 182, 19, 86, 82, 179, 81, 230, 38, 83, 58,
+        111, 23, 80, 4,
+    ];
     const A311_BYTES: [u8; 64] = [
         89, 43, 146, 254, 39, 28, 73, 108, 102, 15, 144, 157, 34, 159, 168, 205, 141, 33, 0, 161,
         47, 38, 172, 204, 249, 232, 3, 79, 20, 13, 223, 160, 6, 158, 83, 181, 132, 161, 250, 131,
@@ -86,12 +98,14 @@ mod test_csidh_velu {
 
     const P103_X: Fp = Fp::const_decode_no_check(&P103_X_BYTES);
     const P211_X: Fp = Fp::const_decode_no_check(&P211_X_BYTES);
+    const P257_X: Fp = Fp::const_decode_no_check(&P257_X_BYTES);
     const P311_X: Fp = Fp::const_decode_no_check(&P311_X_BYTES);
     const P359_X: Fp = Fp::const_decode_no_check(&P359_X_BYTES);
     const P587_X: Fp = Fp::const_decode_no_check(&P587_X_BYTES);
 
     const CODOMAIN_103: Fp = Fp::const_decode_no_check(&A103_BYTES);
     const CODOMAIN_211: Fp = Fp::const_decode_no_check(&A211_BYTES);
+    const CODOMAIN_257: Fp = Fp::const_decode_no_check(&A257_BYTES);
     const CODOMAIN_311: Fp = Fp::const_decode_no_check(&A311_BYTES);
     const CODOMAIN_359: Fp = Fp::const_decode_no_check(&A359_BYTES);
     const CODOMAIN_587: Fp = Fp::const_decode_no_check(&A587_BYTES);
@@ -125,6 +139,25 @@ mod test_csidh_velu {
         let mut C24 = Fp::FOUR;
 
         Curve::sqrt_velu_odd_isogeny_proj::<P>(&mut A24, &mut C24, &ker, 211, &mut images);
+        let codomain = Curve::curve_from_A24_proj(&A24, &C24);
+
+        // Ensure the codomain matches the expected result.
+        assert!(codomain.j_invariant().equals(&codomain_test.j_invariant()) == u32::MAX);
+
+        // Pushing the kernel through should give the point at infinity.
+        assert!(images[0].Z.is_zero() == u32::MAX);
+    }
+
+    #[test]
+    fn sqrt_velu_257() {
+        let ker = PointX::new(&P257_X, &Fp::ONE);
+        let codomain_test = Curve::new(&CODOMAIN_257);
+        let mut images = [ker];
+
+        let mut A24 = Fp::TWO;
+        let mut C24 = Fp::FOUR;
+
+        Curve::sqrt_velu_odd_isogeny_proj::<P>(&mut A24, &mut C24, &ker, 257, &mut images);
         let codomain = Curve::curve_from_A24_proj(&A24, &C24);
 
         // Ensure the codomain matches the expected result.
