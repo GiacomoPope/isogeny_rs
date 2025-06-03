@@ -466,6 +466,9 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// Compute the product of an array of Fq values using a product tree.
     // TODO: this could be placed into the Fp2 library.
     fn product_tree_root_fq(v: &[Fq]) -> Fq {
+        if v.is_empty() {
+            return Fq::ONE;
+        }
         if v.len() == 1 {
             return v[0];
         }
