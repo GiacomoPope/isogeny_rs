@@ -19,7 +19,7 @@ pub fn bn_bit_length_vartime(a: &[u64]) -> usize {
     (a.len() << 6) - (bn_leading_zeros_vartime(a) as usize)
 }
 
-fn mul_bn_by_u64_vartime(a: &[u64], b: u64) -> Vec<u64> {
+pub fn mul_bn_by_u64_vartime(a: &[u64], b: u64) -> Vec<u64> {
     // If a has length 1 then we can do a single double wide multiplication.
     if a.len() == 1 {
         let (n0, n1) = umull(a[0], b);
@@ -44,6 +44,31 @@ fn mul_bn_by_u64_vartime(a: &[u64], b: u64) -> Vec<u64> {
     }
 
     res
+}
+
+pub fn div_bn_by_u64_vartime(a: &[u64], b: u64) -> Vec<u64> {
+    if b == 0 {
+        panic!("division by zero");
+    }
+
+    let mut result = vec![0u64; a.len()];
+    let mut rem: u128 = 0;
+
+    for i in (0..a.len()).rev() {
+        let dividend = (rem << 64) | a[i] as u128;
+        let q = dividend / b as u128;
+        rem = dividend % b as u128;
+        result[i] = q as u64;
+    }
+
+    // trim leading zeros
+    let mut trim_len = result.len();
+    while trim_len > 1 && result[trim_len - 1] == 0 {
+        trim_len -= 1;
+    }
+    result.truncate(trim_len);
+
+    result
 }
 
 /// Given two integers represented as u64 words (little endian) compute their
@@ -122,9 +147,12 @@ pub fn prime_power_to_bn_vartime(x: usize, e: usize) -> Vec<u64> {
     };
 
     // Remove trailing zeros: TODO better.
-    while *n.last().unwrap() == 0 {
-        n.pop();
+    // (a little better)
+    let mut trim_len = n.len();
+    while trim_len > 1 && n[trim_len - 1] == 0 {
+        trim_len -= 1;
     }
+    n.truncate(trim_len);
 
     n
 }

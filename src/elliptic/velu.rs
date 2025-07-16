@@ -83,7 +83,13 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// P3 <- n*P, x-only variant using (A24 : C24).
     /// Integer n is represented as a u64 and is assumed to be public.
-    pub fn set_xmul_proj_u64_vartime(A24: &Fq, C24: &Fq, P3: &mut PointX<Fq>, P: &PointX<Fq>, n: u64) {
+    pub fn set_xmul_proj_u64_vartime(
+        A24: &Fq,
+        C24: &Fq,
+        P3: &mut PointX<Fq>,
+        P: &PointX<Fq>,
+        n: u64,
+    ) {
         // Handle small cases.
         match n {
             0 => {
@@ -819,7 +825,6 @@ impl<Fq: FqTrait> Curve<Fq> {
             Self::sqrt_velu_odd_isogeny_proj::<P>(A24, C24, kernel, degree, img_points);
         }
     }
-
 
     pub fn velu_prime_isogeny<P: Poly<Fq>>(
         self,

@@ -12,9 +12,10 @@ mod benchmark_csidh {
         let (alice_sk, alice_pk) = CSIDH_512.keygen(&mut rng);
 
         // for simplicity, we just use alice pk and sk
-        c.bench_function(&bench_id, |b| b.iter(|| CSIDH_512.derive_shared_key(&alice_pk, &alice_sk, &mut rng)));
+        c.bench_function(&bench_id, |b| {
+            b.iter(|| CSIDH_512.derive_shared_key(&alice_pk, &alice_sk, &mut rng))
+        });
     }
-
 
     criterion_group! {
         name = csidh_benchmarks;

@@ -66,7 +66,7 @@ impl<Fq: FpTrait> PointX<Fq> {
         }
     }
 
-    /// Return a new random X only point. 
+    /// Return a new random X only point.
     pub fn rand_point<R: CryptoRng + RngCore>(rng: &mut R) -> PointX<Fq> {
         let x = Fq::rand(rng);
         PointX::from_x_coord(&x)

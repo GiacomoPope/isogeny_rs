@@ -1,27 +1,33 @@
+use std::{error::Error, usize};
+use std::fmt::Display;
 
 use fp2::traits::Fp as FqTrait;
 
-use crate::{elliptic::{curve::Curve, point::PointX}, polynomial_ring::poly::Polynomial};
+use crate::{
+    elliptic::{curve::Curve, point::PointX, projective_point::Point},
+    polynomial_ring::poly::Polynomial,
+    utilities::bn::{mul_bn_by_u64_vartime},
+};
 
 use rand_core::{CryptoRng, RngCore};
 
 #[derive(Clone, Copy, Debug)]
-pub struct CsidhParameters<const COUNT: usize> {
+pub struct CsidhParameters<const NUM_ELLS: usize> {
     pub max_exponent: usize,
     pub two_cofactor: usize,
-    pub primes: [u64; COUNT],
+    pub primes: [u64; NUM_ELLS],
 }
 
-pub struct Csidh<Fp: FqTrait, const COUNT: usize> {
+pub struct Csidh<Fp: FqTrait, const NUM_ELLS: usize> {
     max_exponent: usize,
     two_cofactor: usize,
     base: Fp,
-    primes: [u64; COUNT],
+    primes: [u64; NUM_ELLS],
 }
 
-pub struct CsidhPrivateKey<const COUNT: usize> {
-    e: [u64; COUNT],  // secret degree
-    d: [bool; COUNT], // secret direction
+pub struct CsidhPrivateKey<const NUM_ELLS: usize> {
+    e: [u64; NUM_ELLS],  // secret degree
+    d: [bool; NUM_ELLS], // secret direction
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -29,15 +35,31 @@ pub struct CsidhPublicKey<Fp: FqTrait> {
     pub A: Fp,
 }
 
+#[derive(Debug)]
+pub enum CsidhError {
+    PublicKeyVerificationError,
+}
+
+impl Display for CsidhError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            CsidhError::PublicKeyVerificationError => f.write_str(
+                "CSIDH PublicKey verfication faild (EllipticCurve is not supersingular.)",
+            ),
+        }
+    }
+}
+
+impl Error for CsidhError {}
+
 impl<Fp: FqTrait> PartialEq for CsidhPublicKey<Fp> {
     fn eq(&self, other: &Self) -> bool {
         self.A.equals(&other.A) == u32::MAX
     }
 }
 
-impl<Fp: FqTrait, const COUNT: usize> Csidh<Fp, COUNT> {
-
-    pub const fn new(params: &CsidhParameters<COUNT>) -> Self {
+impl<Fp: FqTrait, const NUM_ELLS: usize> Csidh<Fp, NUM_ELLS> {
+    pub const fn new(params: &CsidhParameters<NUM_ELLS>) -> Self {
         Self {
             max_exponent: params.max_exponent,
             two_cofactor: params.two_cofactor,
@@ -68,11 +90,11 @@ impl<Fp: FqTrait, const COUNT: usize> Csidh<Fp, COUNT> {
         (P, twist == 0)
     }
 
-    fn sample_secret_key<R: CryptoRng + RngCore>(&self, rng: &mut R) -> CsidhPrivateKey<COUNT> {
-        let mut e = [0u64; COUNT];
-        let mut d = [false; COUNT];
+    fn sample_secret_key<R: CryptoRng + RngCore>(&self, rng: &mut R) -> CsidhPrivateKey<NUM_ELLS> {
+        let mut e = [0u64; NUM_ELLS];
+        let mut d = [false; NUM_ELLS];
 
-        for i in 0..COUNT {
+        for i in 0..NUM_ELLS {
             // sample exponent between 0 and max_exponent
             e[i] = rng.next_u64();
             e[i] >>= 59; // shift to increase probabily to hit the range
@@ -91,7 +113,7 @@ impl<Fp: FqTrait, const COUNT: usize> Csidh<Fp, COUNT> {
     fn action<R: CryptoRng + RngCore>(
         &self,
         public_key: &CsidhPublicKey<Fp>,
-        private_key: &CsidhPrivateKey<COUNT>,
+        private_key: &CsidhPrivateKey<NUM_ELLS>,
         rng: &mut R,
     ) -> CsidhPublicKey<Fp> {
         let mut A24 = public_key.A + Fp::TWO;
@@ -107,7 +129,7 @@ impl<Fp: FqTrait, const COUNT: usize> Csidh<Fp, COUNT> {
             // clear 2^e cofactor
             Curve::<Fp>::xdbl_proj_iter(&A24, &C24, &mut P, self.two_cofactor);
 
-            for i in (0..COUNT).rev() {
+            for i in (0..NUM_ELLS).rev() {
                 let secret_e = sk_e[i];
                 let secret_d = sk_d[i];
                 let degree = self.primes[i];
@@ -139,12 +161,17 @@ impl<Fp: FqTrait, const COUNT: usize> Csidh<Fp, COUNT> {
                 if K.is_zero() == u32::MAX {
                     continue;
                 }
-  
+
                 // Finally compute the isogeny and push P
-                let mut img_points =  [P];
+                let mut img_points = [P];
                 Curve::<Fp>::velu_prime_isogeny_proj::<Polynomial<Fp>>(
-                    &mut A24, &mut C24, &K, degree as usize, &mut img_points);
-                  
+                    &mut A24,
+                    &mut C24,
+                    &K,
+                    degree as usize,
+                    &mut img_points,
+                );
+
                 P = img_points[0];
 
                 // mark step as done
@@ -163,10 +190,67 @@ impl<Fp: FqTrait, const COUNT: usize> Csidh<Fp, COUNT> {
         }
     }
 
+    fn cofactor_multiples(&self, P : &mut [PointX<Fp>;NUM_ELLS], A24: &Fp , C24: &Fp, lower: usize, upper: usize) {
+        if upper - lower == 1 {
+            return;
+        }
+
+        let mid = lower + (upper - lower + 1) / 2;
+
+        let mut cl = vec![1 as u64];
+        let mut cu = vec![1 as u64];
+
+        for i in lower..mid{
+            cu = mul_bn_by_u64_vartime(&cu, self.primes[i]);
+        }for i in mid..upper{
+            cl = mul_bn_by_u64_vartime(&cl, self.primes[i]);
+        }
+
+        
+        P[mid] = Curve::<Fp>::xmul_proj_bn_vartime(A24, C24, &mut P[lower], &cu[..]);
+        P[lower] = Curve::<Fp>::xmul_proj_bn_vartime(A24, C24, &mut P[lower], &cl[..]);
+
+        self.cofactor_multiples(P, A24, C24, lower, mid);
+        self.cofactor_multiples(P, A24, C24, mid, upper);
+    }
+
+    fn verify<R: CryptoRng + RngCore>(&self, public_key: &CsidhPublicKey<Fp>, rng: &mut R) -> bool {
+        // todo: move to Fp params
+        let four_sqrt_p: [u64; 8] = [
+            0x17895e71e1a20b3f,
+            0x38d0cd95f8636a56,
+            0x142b9541e59682cd,
+            0x856f1399d91d6592,
+            0x0000000000000002,
+            0x0000000000000000,
+            0x0000000000000000,
+            0x0000000000000000,
+        ];
+
+        let A24 = public_key.A + Fp::TWO;
+        let C24 = Fp::FOUR;
+
+
+        loop {
+            let mut P : [PointX<Fp>; NUM_ELLS] = [PointX::INFINITY ; NUM_ELLS];
+
+            let (tmp, _) = self.rand_point(&A24, &C24, rng);
+            P[0] = tmp;
+            
+            Curve::<Fp>::xdbl_proj_iter(&A24, &C24, &mut P[0], self.two_cofactor);
+
+            self.cofactor_multiples(&mut P, &A24, &C24, 0, NUM_ELLS);
+
+            break;
+        }
+
+        true
+    }
+
     pub fn keygen<R: CryptoRng + RngCore>(
         self,
         rng: &mut R,
-    ) -> (CsidhPrivateKey<COUNT>, CsidhPublicKey<Fp>) {
+    ) -> (CsidhPrivateKey<NUM_ELLS>, CsidhPublicKey<Fp>) {
         let sk = self.sample_secret_key(rng);
 
         let pk = self.action(&self.starting_curve(), &sk, rng);
@@ -177,11 +261,13 @@ impl<Fp: FqTrait, const COUNT: usize> Csidh<Fp, COUNT> {
     pub fn derive_shared_key<R: CryptoRng + RngCore>(
         self,
         public_key: &CsidhPublicKey<Fp>,
-        private_key: &CsidhPrivateKey<COUNT>,
+        private_key: &CsidhPrivateKey<NUM_ELLS>,
         rng: &mut R,
-    ) -> CsidhPublicKey<Fp> {
+    ) -> Result<CsidhPublicKey<Fp>, CsidhError> {
         // todo: verify
-
-        self.action(public_key, private_key, rng)
+        match self.verify(public_key, rng) {
+            true => Ok(self.action(public_key, private_key, rng)),
+            false => Err(CsidhError::PublicKeyVerificationError),
+        }
     }
 }
