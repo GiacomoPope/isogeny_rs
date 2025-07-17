@@ -14,12 +14,22 @@ mod csidh_512 {
         283, 293, 307, 311, 313, 317, 331, 337, 347, 349, 353, 359, 367, 373, 587,
     ];
 
-    pub const CSIDH_PARAMS: CsidhParameters<NUM_PRIMES> = CsidhParameters {
+    const FOUR_SQRT_P: [u64; 5] = [
+        0x17895e71e1a20b3f,
+        0x38d0cd95f8636a56,
+        0x142b9541e59682cd,
+        0x856f1399d91d6592,
+        0x0000000000000002,
+    ];
+
+
+    pub const CSIDH_PARAMS: CsidhParameters<NUM_PRIMES, 5> = CsidhParameters {
         max_exponent: MAX_EXPONENT,
         two_cofactor: COFACTOR,
         primes: PRIMES,
+        four_sqrt_p: FOUR_SQRT_P,
     };
 }
 
-pub const CSIDH_512: Csidh<Csidh512, { csidh_512::NUM_PRIMES }> =
+pub const CSIDH_512: Csidh<Csidh512, { csidh_512::NUM_PRIMES }, 5> =
     Csidh::new(&csidh_512::CSIDH_PARAMS);

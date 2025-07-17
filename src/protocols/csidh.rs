@@ -4,25 +4,27 @@ use std::fmt::Display;
 use fp2::traits::Fp as FqTrait;
 
 use crate::{
-    elliptic::{curve::Curve, point::PointX, projective_point::Point},
+    elliptic::{curve::Curve, point::PointX},
     polynomial_ring::poly::Polynomial,
-    utilities::bn::{mul_bn_by_u64_vartime},
+    utilities::bn::{mul_bn_by_u64_vartime, bn_compare_vartime},
 };
 
 use rand_core::{CryptoRng, RngCore};
 
 #[derive(Clone, Copy, Debug)]
-pub struct CsidhParameters<const NUM_ELLS: usize> {
+pub struct CsidhParameters<const NUM_ELLS: usize, const FSQRTP: usize> {
     pub max_exponent: usize,
     pub two_cofactor: usize,
     pub primes: [u64; NUM_ELLS],
+    pub four_sqrt_p: [u64; FSQRTP],
 }
 
-pub struct Csidh<Fp: FqTrait, const NUM_ELLS: usize> {
+pub struct Csidh<Fp: FqTrait, const NUM_ELLS: usize, const FSQRTP: usize> {
     max_exponent: usize,
     two_cofactor: usize,
     base: Fp,
     primes: [u64; NUM_ELLS],
+    pub four_sqrt_p: [u64; FSQRTP],
 }
 
 pub struct CsidhPrivateKey<const NUM_ELLS: usize> {
@@ -58,13 +60,14 @@ impl<Fp: FqTrait> PartialEq for CsidhPublicKey<Fp> {
     }
 }
 
-impl<Fp: FqTrait, const NUM_ELLS: usize> Csidh<Fp, NUM_ELLS> {
-    pub const fn new(params: &CsidhParameters<NUM_ELLS>) -> Self {
+impl<Fp: FqTrait + std::fmt::Debug, const NUM_ELLS: usize, const FSQRTP: usize> Csidh<Fp, NUM_ELLS, FSQRTP> {
+    pub const fn new(params: &CsidhParameters<NUM_ELLS, FSQRTP>) -> Self {
         Self {
             max_exponent: params.max_exponent,
             two_cofactor: params.two_cofactor,
             base: Fp::ZERO,
             primes: params.primes,
+            four_sqrt_p: params.four_sqrt_p,
         }
     }
 
@@ -215,21 +218,8 @@ impl<Fp: FqTrait, const NUM_ELLS: usize> Csidh<Fp, NUM_ELLS> {
     }
 
     fn verify<R: CryptoRng + RngCore>(&self, public_key: &CsidhPublicKey<Fp>, rng: &mut R) -> bool {
-        // todo: move to Fp params
-        let four_sqrt_p: [u64; 8] = [
-            0x17895e71e1a20b3f,
-            0x38d0cd95f8636a56,
-            0x142b9541e59682cd,
-            0x856f1399d91d6592,
-            0x0000000000000002,
-            0x0000000000000000,
-            0x0000000000000000,
-            0x0000000000000000,
-        ];
-
         let A24 = public_key.A + Fp::TWO;
         let C24 = Fp::FOUR;
-
 
         loop {
             let mut P : [PointX<Fp>; NUM_ELLS] = [PointX::INFINITY ; NUM_ELLS];
@@ -239,12 +229,31 @@ impl<Fp: FqTrait, const NUM_ELLS: usize> Csidh<Fp, NUM_ELLS> {
             
             Curve::<Fp>::xdbl_proj_iter(&A24, &C24, &mut P[0], self.two_cofactor);
 
+            let mut order = vec![1];
+
             self.cofactor_multiples(&mut P, &A24, &C24, 0, NUM_ELLS);
 
-            break;
-        }
+            for i in (0..NUM_ELLS).rev() {
+                if P[i].is_zero() == u32::MAX {
+                    continue;
+                }
 
-        true
+                P[i] = Curve::<Fp>::xmul_proj_u64_vartime(&A24, &C24, &P[i], self.primes[i]);
+
+                if P[i].is_zero() == 0 {
+                    return false;
+                }
+
+                order = mul_bn_by_u64_vartime(&order[..], self.primes[i]);
+
+                println!("{:#?}", order);
+
+                match bn_compare_vartime(&order[..], &self.four_sqrt_p[..]) {
+                    std::cmp::Ordering::Greater => return true,
+                    _ => {},
+                }
+            }
+        }
     }
 
     pub fn keygen<R: CryptoRng + RngCore>(
@@ -264,7 +273,6 @@ impl<Fp: FqTrait, const NUM_ELLS: usize> Csidh<Fp, NUM_ELLS> {
         private_key: &CsidhPrivateKey<NUM_ELLS>,
         rng: &mut R,
     ) -> Result<CsidhPublicKey<Fp>, CsidhError> {
-        // todo: verify
         match self.verify(public_key, rng) {
             true => Ok(self.action(public_key, private_key, rng)),
             false => Err(CsidhError::PublicKeyVerificationError),

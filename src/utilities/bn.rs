@@ -168,3 +168,27 @@ pub fn factorisation_to_bn_vartime(factorisation: &[(usize, usize)]) -> Vec<u64>
     }
     n
 }
+
+pub fn bn_compare_vartime(x: &[u64], y: &[u64]) -> std::cmp::Ordering {
+    let len1 = x.len();
+    let len2 = y.len();
+
+    // Wenn eines der Arrays länger ist, ist es sicher größer.
+    if len1 > len2 {
+        return std::cmp::Ordering::Greater;
+    } else if len1 < len2 {
+        return std::cmp::Ordering::Less;
+    }
+
+    // Wenn die Längen gleich sind, vergleiche jedes Element.
+    for i in (0..len1).rev() {
+        if x[i] > y[i] {
+            return std::cmp::Ordering::Greater;
+        } else if x[i] < y[i] {
+            return std::cmp::Ordering::Less;
+        }
+    }
+
+    // Wenn alle Elemente gleich sind, sind die Arrays gleich.
+    std::cmp::Ordering::Equal
+}
