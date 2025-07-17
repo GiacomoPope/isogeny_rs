@@ -1,5 +1,4 @@
 use fp2::traits::Fp as FpTrait;
-use rand_core::{CryptoRng, RngCore};
 
 /// Special x-only representation of a point (or a pair of points,
 /// since two Y coordinates may match a given X).
@@ -64,12 +63,6 @@ impl<Fq: FpTrait> PointX<Fq> {
             P.X *= zs[i];
             P.Z = Fq::ONE;
         }
-    }
-
-    /// Return a new random X only point.
-    pub fn rand_point<R: CryptoRng + RngCore>(rng: &mut R) -> PointX<Fq> {
-        let x = Fq::rand(rng);
-        PointX::from_x_coord(&x)
     }
 }
 

@@ -28,7 +28,7 @@ pub struct Csidh<Fp: FqTrait, const NUM_ELLS: usize, const FSQRTP: usize> {
 }
 
 pub struct CsidhPrivateKey<const NUM_ELLS: usize> {
-    e: [u64; NUM_ELLS],  // secret degree
+    e: [u32; NUM_ELLS],  // secret degree
     d: [bool; NUM_ELLS], // secret direction
 }
 
@@ -83,27 +83,35 @@ impl<Fp: FqTrait + std::fmt::Debug, const NUM_ELLS: usize, const FSQRTP: usize> 
         C24: &Fp,
         rng: &mut R,
     ) -> (PointX<Fp>, bool) {
-        let curve = Curve::<Fp>::curve_from_A24_proj(&A24, &C24);
-        let P = PointX::rand_point(rng);
+        // get a random point
+        let x = Fp::rand(rng);
+        let P = PointX::from_x_coord(&x);
 
-        // to check if the point is on the curve,
-        // or on the twist
-        let (_, twist) = curve.lift_pointx(&P);
+        // projective curve: x^3C+4Ax^2−2x^2C2+XC​
+        let tmp = (*A24*x)+(*A24*x);
+        let four_Ax = tmp+tmp;
+        let tmp = *C24*x;
+        let Cxx = tmp*x;
+        let two_Cx = tmp+tmp;
+        
+        // if RHS i a sqrt, it is on the curve
+        let RHS = (Cxx+four_Ax-two_Cx+(*C24))*x;
+        let (_, is_sqrt) = RHS.sqrt();     
 
-        (P, twist == 0)
+        (P, is_sqrt == u32::MAX)
     }
 
     fn sample_secret_key<R: CryptoRng + RngCore>(&self, rng: &mut R) -> CsidhPrivateKey<NUM_ELLS> {
-        let mut e = [0u64; NUM_ELLS];
+        let mut e = [0u32; NUM_ELLS];
         let mut d = [false; NUM_ELLS];
 
         for i in 0..NUM_ELLS {
             // sample exponent between 0 and max_exponent
-            e[i] = rng.next_u64();
-            e[i] >>= 59; // shift to increase probabily to hit the range
-            while e[i] > self.max_exponent as u64 {
-                e[i] = rng.next_u64();
-                e[i] >>= 59;
+            e[i] = rng.next_u32();
+            e[i] >>= 27; // shift to increase probabily to hit the range
+            while e[i] > self.max_exponent as u32 {
+                e[i] = rng.next_u32() ;
+                e[i] >>= 27;
             }
 
             // sample direction
@@ -112,6 +120,10 @@ impl<Fp: FqTrait + std::fmt::Debug, const NUM_ELLS: usize, const FSQRTP: usize> 
 
         CsidhPrivateKey { e, d }
     }
+
+    //
+    //      ACTION
+    //
 
     fn action<R: CryptoRng + RngCore>(
         &self,
@@ -125,7 +137,7 @@ impl<Fp: FqTrait + std::fmt::Debug, const NUM_ELLS: usize, const FSQRTP: usize> 
         let mut sk_e = private_key.e;
         let sk_d = private_key.d;
 
-        let mut done: u64 = sk_e.iter().sum();
+        let mut done: u32 = sk_e.iter().sum();
         while done != 0 {
             let (mut P, direction) = self.rand_point(&A24, &C24, rng);
 
@@ -193,6 +205,13 @@ impl<Fp: FqTrait + std::fmt::Debug, const NUM_ELLS: usize, const FSQRTP: usize> 
         }
     }
 
+
+
+    //  
+    //      VERIFICATION
+    //
+
+    /// recursily computes [p+1/l] for all l
     fn cofactor_multiples(&self, P : &mut [PointX<Fp>;NUM_ELLS], A24: &Fp , C24: &Fp, lower: usize, upper: usize) {
         if upper - lower == 1 {
             return;
@@ -238,16 +257,15 @@ impl<Fp: FqTrait + std::fmt::Debug, const NUM_ELLS: usize, const FSQRTP: usize> 
                     continue;
                 }
 
+                // P should now have order l, so we verify that by checking [l]P = 0
                 P[i] = Curve::<Fp>::xmul_proj_u64_vartime(&A24, &C24, &P[i], self.primes[i]);
 
                 if P[i].is_zero() == 0 {
                     return false;
                 }
 
+                // if the order of out starting Point is > 4sqrt(p), the curve must be supersingular
                 order = mul_bn_by_u64_vartime(&order[..], self.primes[i]);
-
-                println!("{:#?}", order);
-
                 match bn_compare_vartime(&order[..], &self.four_sqrt_p[..]) {
                     std::cmp::Ordering::Greater => return true,
                     _ => {},
