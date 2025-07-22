@@ -3,8 +3,7 @@
 #[cfg(test)]
 mod velu_test {
     use isogeny::{
-        elliptic::{curve::Curve, point::PointX},
-        polynomial_ring::poly::Polynomial,
+        elliptic::{curve::Curve, point::PointX}, fields::csidh::Bn, polynomial_ring::poly::Polynomial
     };
 
     // Toy prime, with smooth p + 1
@@ -177,7 +176,7 @@ mod velu_test {
 
         let codomain_test = Curve::new(&CODOMAIN_A2);
         let mut images = [ker];
-        let codomain = E.velu_prime_power_isogeny::<P>(&ker, 2, 3, &mut images);
+        let codomain = E.velu_prime_power_isogeny::<P, Bn>(&ker, 2, 3, &mut images);
 
         // Ensure the codomain matches the expected result.
         assert!(codomain.j_invariant().equals(&codomain_test.j_invariant()) == u32::MAX);
@@ -193,7 +192,7 @@ mod velu_test {
 
         let codomain_test = Curve::new(&CODOMAIN_AQ);
         let mut images = [ker];
-        let codomain = E.velu_prime_power_isogeny::<P>(&ker, 163, 16, &mut images);
+        let codomain = E.velu_prime_power_isogeny::<P, Bn>(&ker, 163, 16, &mut images);
 
         // Ensure the codomain matches the expected result.
         assert!(codomain.j_invariant().equals(&codomain_test.j_invariant()) == u32::MAX);
@@ -209,7 +208,7 @@ mod velu_test {
 
         let codomain_test = Curve::new(&CODOMAIN_A_ODD);
         let mut images = [ker];
-        let codomain = E.velu_composite_isogeny::<P>(&ker, &DEGREE_FACTORS[1..], &mut images);
+        let codomain = E.velu_composite_isogeny::<P, Bn>(&ker, &DEGREE_FACTORS[1..], &mut images);
 
         // Ensure the codomain matches the expected result.
         assert!(codomain.j_invariant().equals(&codomain_test.j_invariant()) == u32::MAX);
@@ -225,7 +224,7 @@ mod velu_test {
 
         let codomain_test = Curve::new(&CODOMAIN_AK);
         let mut images = [ker];
-        let codomain = E.velu_composite_isogeny::<P>(&ker, &DEGREE_FACTORS, &mut images);
+        let codomain = E.velu_composite_isogeny::<P, Bn>(&ker, &DEGREE_FACTORS, &mut images);
 
         // Ensure the codomain matches the expected result.
         assert!(codomain.j_invariant().equals(&codomain_test.j_invariant()) == u32::MAX);
