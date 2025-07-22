@@ -13,8 +13,9 @@ use fp2::traits::Fp as FqTrait;
 use crate::{
     polynomial_ring::poly::Poly,
     utilities::bn::{
-        bn_bit_length_vartime, factorisation_to_bn_vartime, prime_power_to_bn_vartime,
+        bn_bit_length_vartime,
     },
+    fields::csidh::BnTrait
 };
 
 use super::{curve::Curve, point::PointX};
@@ -83,7 +84,13 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// P3 <- n*P, x-only variant using (A24 : C24).
     /// Integer n is represented as a u64 and is assumed to be public.
-    fn set_xmul_proj_u64_vartime(A24: &Fq, C24: &Fq, P3: &mut PointX<Fq>, P: &PointX<Fq>, n: u64) {
+    pub fn set_xmul_proj_u64_vartime(
+        A24: &Fq,
+        C24: &Fq,
+        P3: &mut PointX<Fq>,
+        P: &PointX<Fq>,
+        n: u64,
+    ) {
         // Handle small cases.
         match n {
             0 => {
@@ -164,8 +171,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         }
     }
 
-    /// P3 <- n*P, x-only variant using (A24 : C24).
-    /// Integer n is represented as a big integer with u64 words, little endian and is assumed to be public.
+    // /// P3 <- n*P, x-only variant using (A24 : C24).
+    // /// Integer n is represented as a big integer with u64 words, little endian and is assumed to be public.
     fn set_xmul_proj_bn_vartime(
         A24: &Fq,
         C24: &Fq,
@@ -234,9 +241,9 @@ impl<Fq: FqTrait> Curve<Fq> {
         P3
     }
 
-    /// Return [n^e]*P as a new point (x-only variant) using (A24 : C24).
-    /// Integer n is encoded as a u64 which is assumed to be a public value.
-    fn xmul_proj_u64_iter_vartime(
+    // /// Return [n]*P as a new point (x-only variant) using (A24 : C24).
+    // /// Integer n is encoded as a u64 which is assumed to be a public value.
+    fn xmul_proj_u64_iter_vartime<Bn : BnTrait>(
         A24: &Fq,
         C24: &Fq,
         P: &PointX<Fq>,
@@ -244,8 +251,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         e: usize,
     ) -> PointX<Fq> {
         // Convert x^e to a big integer represented as u64 words.
-        let n = prime_power_to_bn_vartime(x, e);
-        Self::xmul_proj_bn_vartime(A24, C24, P, &n)
+        let n = Bn::from_primepower(x, e);
+        Self::xmul_proj_bn_vartime(A24, C24, P, n.as_ref())
     }
 
     // ============================================================
@@ -676,7 +683,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     // Internal methods for computing isogeny chains of degree ell^e
     // and generic composite orders of degree \prod ell_i^ei
 
-    fn velu_prime_power_isogeny_proj<P: Poly<Fq>>(
+    fn velu_prime_power_isogeny_proj<P: Poly<Fq>, Bn : BnTrait>(
         A24: &mut Fq,
         C24: &mut Fq,
         kernel: &PointX<Fq>,
@@ -719,7 +726,7 @@ impl<Fq: FqTrait> Curve<Fq> {
                     Self::xdbl_proj_iter(A24, C24, &mut stategy_points[n + k], m);
                 } else {
                     // Otherwise we have this janky repeated multiplication.
-                    stategy_points[n + k] = Self::xmul_proj_u64_iter_vartime(
+                    stategy_points[n + k] = Self::xmul_proj_u64_iter_vartime::<Bn>(
                         A24,
                         C24,
                         &stategy_points[n + k],
@@ -765,7 +772,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         img_points.copy_from_slice(&stategy_points[..n]);
     }
 
-    fn velu_composite_isogeny_proj<P: Poly<Fq>>(
+    fn velu_composite_isogeny_proj<P: Poly<Fq>, Bn : BnTrait>(
         A24: &mut Fq,
         C24: &mut Fq,
         kernel: &PointX<Fq>,
@@ -788,11 +795,11 @@ impl<Fq: FqTrait> Curve<Fq> {
             // We don't have to do anything on the last factor of the isogeny.
             let factorisation: Vec<(usize, usize)> = degrees.iter().skip(i + 1).cloned().collect();
             if !factorisation.is_empty() {
-                let cofactor: Vec<u64> = factorisation_to_bn_vartime(&factorisation);
-                ker_step = Self::xmul_proj_bn_vartime(A24, C24, &ker_step, &cofactor);
+                let cofactor = Bn::from_factorisation(&factorisation[..]);
+                ker_step = Self::xmul_proj_bn_vartime(A24, C24, &ker_step, cofactor.as_ref());
             }
 
-            Self::velu_prime_power_isogeny_proj::<P>(A24, C24, &ker_step, ell, n, &mut eval_points)
+            Self::velu_prime_power_isogeny_proj::<P, Bn>(A24, C24, &ker_step, ell, n, &mut eval_points)
         }
 
         // TODO: I don't like this copy...
@@ -802,6 +809,23 @@ impl<Fq: FqTrait> Curve<Fq> {
     // ============================================================
     // Public functions which compute isogenies given user-friendly
     // inputs and types etc.
+
+    pub fn velu_prime_isogeny_proj<P: Poly<Fq>>(
+        A24: &mut Fq,
+        C24: &mut Fq,
+        kernel: &PointX<Fq>,
+        degree: usize,
+        img_points: &mut [PointX<Fq>],
+    ) {
+        // 2-isogenies are handled with a special function
+        if degree == 2 {
+            Self::velu_two_isogeny_proj(A24, C24, kernel, img_points);
+        } else if degree < VELU_SQRT_THRESHOLD {
+            Self::velu_odd_isogeny_proj(A24, C24, kernel, degree, img_points);
+        } else {
+            Self::sqrt_velu_odd_isogeny_proj::<P>(A24, C24, kernel, degree, img_points);
+        }
+    }
 
     pub fn velu_prime_isogeny<P: Poly<Fq>>(
         self,
@@ -823,7 +847,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         Self::curve_from_A24_proj(&A24, &C24)
     }
 
-    pub fn velu_prime_power_isogeny<P: Poly<Fq>>(
+    pub fn velu_prime_power_isogeny<P: Poly<Fq>, Bn: BnTrait>(
         self,
         kernel: &PointX<Fq>,
         degree: usize,
@@ -832,14 +856,14 @@ impl<Fq: FqTrait> Curve<Fq> {
     ) -> Self {
         let mut A24 = self.A + Fq::TWO;
         let mut C24 = Fq::FOUR;
-        Self::velu_prime_power_isogeny_proj::<P>(
+        Self::velu_prime_power_isogeny_proj::<P, Bn>(
             &mut A24, &mut C24, kernel, degree, len, img_points,
         );
 
         Self::curve_from_A24_proj(&A24, &C24)
     }
 
-    pub fn velu_composite_isogeny<P: Poly<Fq>>(
+    pub fn velu_composite_isogeny<P: Poly<Fq>, Bn: BnTrait>(
         self,
         kernel: &PointX<Fq>,
         degrees: &[(usize, usize)],
@@ -848,7 +872,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         let mut A24 = self.A + Fq::TWO;
         let mut C24 = Fq::FOUR;
 
-        Self::velu_composite_isogeny_proj::<P>(&mut A24, &mut C24, kernel, degrees, img_points);
+        Self::velu_composite_isogeny_proj::<P, Bn>(&mut A24, &mut C24, kernel, degrees, img_points);
 
         Self::curve_from_A24_proj(&A24, &C24)
     }
