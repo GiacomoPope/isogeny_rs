@@ -1,30 +1,31 @@
 use std::{error::Error, usize};
 use std::fmt::Display;
 
+
 use fp2::traits::Fp as FqTrait;
 
 use crate::{
     elliptic::{curve::Curve, point::PointX},
     polynomial_ring::poly::Polynomial,
-    utilities::bn::{mul_bn_by_u64_vartime, bn_compare_vartime},
+    utilities::bn::{Bn, mul_bn_by_u64_vartime, bn_compare_vartime},
 };
 
 use rand_core::{CryptoRng, RngCore};
 
 #[derive(Clone, Copy, Debug)]
-pub struct CsidhParameters<const NUM_ELLS: usize, const FSQRTP: usize> {
+pub struct CsidhParameters<const NUM_ELLS: usize> {
     pub max_exponent: usize,
     pub two_cofactor: usize,
     pub primes: [u64; NUM_ELLS],
-    pub four_sqrt_p: [u64; FSQRTP],
+    pub four_sqrt_p: Bn,
 }
 
-pub struct Csidh<Fp: FqTrait, const NUM_ELLS: usize, const FSQRTP: usize> {
+pub struct Csidh<Fp: FqTrait, const NUM_ELLS: usize> {
     max_exponent: usize,
     two_cofactor: usize,
     base: Fp,
     primes: [u64; NUM_ELLS],
-    pub four_sqrt_p: [u64; FSQRTP],
+    four_sqrt_p: Bn,
 }
 
 pub struct CsidhPrivateKey<const NUM_ELLS: usize> {
@@ -60,8 +61,8 @@ impl<Fp: FqTrait> PartialEq for CsidhPublicKey<Fp> {
     }
 }
 
-impl<Fp: FqTrait + std::fmt::Debug, const NUM_ELLS: usize, const FSQRTP: usize> Csidh<Fp, NUM_ELLS, FSQRTP> {
-    pub const fn new(params: &CsidhParameters<NUM_ELLS, FSQRTP>) -> Self {
+impl<Fp: FqTrait + std::fmt::Debug, const NUM_ELLS: usize> Csidh<Fp, NUM_ELLS> {
+    pub const fn new(params: &CsidhParameters<NUM_ELLS>) -> Self {
         Self {
             max_exponent: params.max_exponent,
             two_cofactor: params.two_cofactor,
@@ -87,18 +88,16 @@ impl<Fp: FqTrait + std::fmt::Debug, const NUM_ELLS: usize, const FSQRTP: usize> 
         let x = Fp::rand(rng);
         let P = PointX::from_x_coord(&x);
 
-        // projective curve: x^3C+4Ax^2−2x^2C2+XC​
-        let tmp = (*A24*x)+(*A24*x);
-        let four_Ax = tmp+tmp;
+        // projective curve: x^3C+4Ax^2−2x^2C+XC​
+        let tmp = *A24*x;
+        let four_Ax = tmp+tmp+tmp+tmp;
         let tmp = *C24*x;
         let Cxx = tmp*x;
         let two_Cx = tmp+tmp;
         
-        // if RHS i a sqrt, it is on the curve
+        // if RHS is a sqrt, it is on the curve
         let RHS = (Cxx+four_Ax-two_Cx+(*C24))*x;
-        let (_, is_sqrt) = RHS.sqrt();     
-
-        (P, is_sqrt == u32::MAX)
+        (P, RHS.is_square() == u32::MAX)
     }
 
     fn sample_secret_key<R: CryptoRng + RngCore>(&self, rng: &mut R) -> CsidhPrivateKey<NUM_ELLS> {
@@ -123,9 +122,8 @@ impl<Fp: FqTrait + std::fmt::Debug, const NUM_ELLS: usize, const FSQRTP: usize> 
 
     //
     //      ACTION
-    //
-
-    fn action<R: CryptoRng + RngCore>(
+    // 
+    pub fn action<R: CryptoRng + RngCore>(
         &self,
         public_key: &CsidhPublicKey<Fp>,
         private_key: &CsidhPrivateKey<NUM_ELLS>,
@@ -211,7 +209,7 @@ impl<Fp: FqTrait + std::fmt::Debug, const NUM_ELLS: usize, const FSQRTP: usize> 
     //      VERIFICATION
     //
 
-    /// recursily computes [p+1/l] for all l
+    /// recursively computes [p+1/l] for all l (primes)
     fn cofactor_multiples(&self, P : &mut [PointX<Fp>;NUM_ELLS], A24: &Fp , C24: &Fp, lower: usize, upper: usize) {
         if upper - lower == 1 {
             return;
@@ -236,9 +234,12 @@ impl<Fp: FqTrait + std::fmt::Debug, const NUM_ELLS: usize, const FSQRTP: usize> 
         self.cofactor_multiples(P, A24, C24, mid, upper);
     }
 
-    fn verify<R: CryptoRng + RngCore>(&self, public_key: &CsidhPublicKey<Fp>, rng: &mut R) -> bool {
+
+    pub fn verify<R: CryptoRng + RngCore>(&self, public_key: &CsidhPublicKey<Fp>, rng: &mut R) -> bool {
         let A24 = public_key.A + Fp::TWO;
         let C24 = Fp::FOUR;
+
+        let fsqrtp = &self.four_sqrt_p.limbs[..self.four_sqrt_p.len];
 
         loop {
             let mut P : [PointX<Fp>; NUM_ELLS] = [PointX::INFINITY ; NUM_ELLS];
@@ -266,7 +267,7 @@ impl<Fp: FqTrait + std::fmt::Debug, const NUM_ELLS: usize, const FSQRTP: usize> 
 
                 // if the order of out starting Point is > 4sqrt(p), the curve must be supersingular
                 order = mul_bn_by_u64_vartime(&order[..], self.primes[i]);
-                match bn_compare_vartime(&order[..], &self.four_sqrt_p[..]) {
+                match bn_compare_vartime(&order[..], fsqrtp) {
                     std::cmp::Ordering::Greater => return true,
                     _ => {},
                 }

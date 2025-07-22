@@ -46,31 +46,6 @@ pub fn mul_bn_by_u64_vartime(a: &[u64], b: u64) -> Vec<u64> {
     res
 }
 
-pub fn div_bn_by_u64_vartime(a: &[u64], b: u64) -> Vec<u64> {
-    if b == 0 {
-        panic!("division by zero");
-    }
-
-    let mut result = vec![0u64; a.len()];
-    let mut rem: u128 = 0;
-
-    for i in (0..a.len()).rev() {
-        let dividend = (rem << 64) | a[i] as u128;
-        let q = dividend / b as u128;
-        rem = dividend % b as u128;
-        result[i] = q as u64;
-    }
-
-    // trim leading zeros
-    let mut trim_len = result.len();
-    while trim_len > 1 && result[trim_len - 1] == 0 {
-        trim_len -= 1;
-    }
-    result.truncate(trim_len);
-
-    result
-}
-
 /// Given two integers represented as u64 words (little endian) compute their
 /// product.
 fn mul_bn_vartime(a: &[u64], b: &[u64]) -> Vec<u64> {
@@ -173,14 +148,12 @@ pub fn bn_compare_vartime(x: &[u64], y: &[u64]) -> std::cmp::Ordering {
     let len1 = x.len();
     let len2 = y.len();
 
-    // Wenn eines der Arrays länger ist, ist es sicher größer.
     if len1 > len2 {
         return std::cmp::Ordering::Greater;
     } else if len1 < len2 {
         return std::cmp::Ordering::Less;
     }
 
-    // Wenn die Längen gleich sind, vergleiche jedes Element.
     for i in (0..len1).rev() {
         if x[i] > y[i] {
             return std::cmp::Ordering::Greater;
@@ -189,6 +162,16 @@ pub fn bn_compare_vartime(x: &[u64], y: &[u64]) -> std::cmp::Ordering {
         }
     }
 
-    // Wenn alle Elemente gleich sind, sind die Arrays gleich.
     std::cmp::Ordering::Equal
+}
+
+
+
+// This is a small wrapper to use a bn as constant
+const BN_MAXLIMBS : usize = 8;
+
+#[derive(Clone, Copy, Debug)]
+pub struct Bn { 
+    pub limbs : [u64; BN_MAXLIMBS],
+    pub len : usize,
 }

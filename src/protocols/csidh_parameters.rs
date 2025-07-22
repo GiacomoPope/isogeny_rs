@@ -3,6 +3,7 @@ use crate::fields::csidh::Csidh512;
 
 mod csidh_512 {
     use crate::protocols::csidh::CsidhParameters;
+    use crate::utilities::bn::Bn;
 
     pub const NUM_PRIMES: usize = 74;
     const MAX_EXPONENT: usize = 5;
@@ -15,17 +16,19 @@ mod csidh_512 {
     ];
 
     // not the best place for this...
-    pub const LEN_4SQRTP: usize = 5;
-    const FOUR_SQRT_P: [u64; LEN_4SQRTP] = [
+    const FOUR_SQRT_P: Bn = Bn { limbs : [
         0x17895e71e1a20b3f,
         0x38d0cd95f8636a56,
         0x142b9541e59682cd,
         0x856f1399d91d6592,
         0x0000000000000002,
-    ];
+        0x0000000000000000,
+        0x0000000000000000,
+        0x0000000000000000,
+    ], len : 5};
 
 
-    pub const CSIDH_PARAMS: CsidhParameters<NUM_PRIMES, LEN_4SQRTP> = CsidhParameters {
+    pub const CSIDH_PARAMS: CsidhParameters<NUM_PRIMES> = CsidhParameters {
         max_exponent: MAX_EXPONENT,
         two_cofactor: COFACTOR,
         primes: PRIMES,
@@ -33,5 +36,7 @@ mod csidh_512 {
     };
 }
 
-pub const CSIDH_512: Csidh<Csidh512, { csidh_512::NUM_PRIMES }, { csidh_512::LEN_4SQRTP}> =
+pub const CSIDH_512: Csidh<Csidh512, { csidh_512::NUM_PRIMES }> =
     Csidh::new(&csidh_512::CSIDH_PARAMS);
+
+
