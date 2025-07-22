@@ -3,7 +3,7 @@ use crate::fields::csidh::Csidh512;
 
 mod csidh_512 {
     use crate::protocols::csidh::CsidhParameters;
-    use crate::utilities::bn::Bn;
+    use crate::fields::csidh::Bn;
 
     pub const NUM_PRIMES: usize = 74;
     const MAX_EXPONENT: usize = 5;

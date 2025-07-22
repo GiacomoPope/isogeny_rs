@@ -87,6 +87,7 @@ fn mul_bn_vartime(a: &[u64], b: &[u64]) -> Vec<u64> {
     res
 }
 
+
 /// Represent an integer n = x^e as little endian u64 words. Both x and e are assumed
 /// to be public, no constant-time guarentees are made.
 pub fn prime_power_to_bn_vartime(x: usize, e: usize) -> Vec<u64> {
@@ -144,34 +145,227 @@ pub fn factorisation_to_bn_vartime(factorisation: &[(usize, usize)]) -> Vec<u64>
     n
 }
 
-pub fn bn_compare_vartime(x: &[u64], y: &[u64]) -> std::cmp::Ordering {
-    let len1 = x.len();
-    let len2 = y.len();
 
-    if len1 > len2 {
-        return std::cmp::Ordering::Greater;
-    } else if len1 < len2 {
-        return std::cmp::Ordering::Less;
-    }
-
-    for i in (0..len1).rev() {
-        if x[i] > y[i] {
-            return std::cmp::Ordering::Greater;
-        } else if x[i] < y[i] {
-            return std::cmp::Ordering::Less;
-        }
-    }
-
-    std::cmp::Ordering::Equal
+trait BnTrait {
+    // todo!
 }
-
 
 
 // This is a small wrapper to use a bn as constant
-const BN_MAXLIMBS : usize = 8;
+#[macro_export]
+macro_rules! create_bn {
 
-#[derive(Clone, Copy, Debug)]
-pub struct Bn { 
-    pub limbs : [u64; BN_MAXLIMBS],
-    pub len : usize,
+    ($typename:ident, $maxlimbs:expr) => {
+        use std::ops::Mul;
+        use std::cmp::{PartialEq, PartialOrd, Ordering};
+        use std::cmp::Ordering::{Greater, Equal, Less};
+
+        use forward_ref::forward_ref_binop;
+        
+        use fp2::utils64::{addcarry_u64, umull, umull_add};
+
+        #[derive(Clone, Copy, Debug)]
+        pub struct $typename {
+            pub limbs: [u64; $maxlimbs],
+            pub len: usize,
+        }
+
+        impl $typename {
+            pub fn new() -> Self {
+                $typename {
+                    limbs: [0u64; $maxlimbs],
+                    len: 0,
+                }
+            }
+        }
+
+        impl $typename {
+            pub const fn default() -> Self {
+                Self{ limbs: [0; $maxlimbs], len: 1}
+            }
+
+            pub const fn One() -> Self {
+                let mut one = Self::default();
+                one.limbs[0] = 1;
+
+                one
+            }
+
+            pub fn from_primepower() -> Self {
+                todo!();
+            }
+
+            pub fn from_factorisation() -> Self {
+                todo!();
+            }
+        }
+
+        impl From<u64> for $typename {  
+            fn from(x: u64) -> Self {
+                let mut new = Self::default();
+                new.limbs[0] = x;
+
+                new
+            }
+        }
+
+        impl From<&[u64]> for $typename {  
+            fn from(x: &[u64]) -> Self {
+                assert!(x.len() <= $maxlimbs);
+
+                let mut new = Self::default();
+                new.len = x.len();
+                new.limbs[..x.len()].clone_from_slice(x);
+
+                println!("{:?}", new);
+                new
+            }
+        }
+
+        impl From<(u64, u64)> for $typename {
+            fn from(x: (u64, u64)) -> Self {
+                let mut new = Self::default();
+                new.len = 2;
+                new.limbs[0] = x.0;
+                new.limbs[1] = x.1;
+
+                new
+            }
+        }
+
+
+        impl AsRef<[u64]> for $typename {
+            fn as_ref(&self) -> &[u64] {
+                &self.limbs[..self.len]
+            }
+        }
+
+        impl Mul<u64> for $typename {
+            type Output = $typename;
+
+            fn mul(self, rhs: u64) -> Self {
+                // If a has length 1 then we can do a single double wide multiplication.
+                if self.len == 1 {
+                    let (n0, n1) = umull(self.limbs[0], rhs);
+                    if n1 == 0 {
+                        return Self::from(n0);
+                    }
+                    return Self::from((n0, n1));
+                }
+
+                // Compute b * (a0 + a1 * 2^64 + a1 * 2^128 + ...)
+                let mut res = $typename::default();
+                res.len = self.len;
+                let mut carry: u64;
+                (res.limbs[0], carry) = umull(self.limbs[0], rhs);
+                for i in 1..self.len {
+                    (res.limbs[i], carry) = umull_add(self.limbs[i], rhs, carry);
+                }
+
+                // If there was a carry at the end of the multiplication, we push this carry
+                // to the end of the vector.
+                if carry != 0 {
+                    res.limbs[res.len] = carry;
+                    res.len += 1;
+                }
+
+                res
+            }
+        }
+
+        impl Mul<u64> for &$typename {
+            type Output = $typename;
+
+            fn mul(self, rhs : u64) -> $typename {
+                *self*rhs
+            }
+        }
+
+
+        impl Mul for $typename {
+            type Output = $typename;
+
+            fn mul(self, rhs: Self) -> Self {
+                assert!(self.len + rhs.len <= $maxlimbs);
+
+                // Assume that the length of b is smaller than the length of a for logic.
+                if rhs.len > self.len {
+                    return rhs * self;
+                }
+            
+                // If a has length 1 then so does b and we can do simple multiplication.
+                if self.len == 1 {
+                    let (n0, n1) = umull(self.limbs[0], rhs.limbs[0]);
+                    if n1 == 0 {
+                        return Self::from(n0);
+                    }
+                    return Self::from((n0, n1));
+                }
+            
+                // If b has length 1 then we can do a simple scalar multiplication
+                if rhs.len == 1 {
+                    return self * rhs.limbs[0];
+                }
+            
+                // General case
+                let mut res = vec![0u64; self.len + rhs.len];
+                let mut carry: u64 = 0;
+                let mut cc: u8 = 0;
+            
+                // TODO: clean up the carry here...
+                for i in 0..self.len {
+                    for j in 0..rhs.len {
+                        let (lo, hi) = umull_add(self.limbs[i], rhs.limbs[j], carry);
+                        (res[i + j], cc) = addcarry_u64(res[i + j], lo, cc);
+                        carry = hi;
+                    }
+                    res[i + rhs.len] += carry;
+                    carry = 0;
+                }
+            
+                Self::from(&res[..])
+            }
+        }
+
+        forward_ref_binop!(impl Mul, mul for $typename, $typename);
+
+        impl PartialEq for $typename {
+            fn eq(&self, other: &Self) -> bool {
+                if self.len != other.len {
+                    return false;
+                }
+
+                for i in 0..self.len {
+                    if self.limbs[i] != other.limbs[i] {
+                        return false;
+                    }
+                }
+
+                true
+            }
+        }
+
+        impl PartialOrd for $typename {
+
+            fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            
+                if self.len > other.len {
+                    return Some(Greater);
+                } else if self.len < other.len {
+                    return Some(Less);
+                }
+            
+                for i in (0..self.len).rev() {
+                    if self.limbs[i] > other.limbs[i] {
+                        return Some(Greater);
+                    } else if self.limbs[i] < other.limbs[i] {
+                        return Some(Less);
+                    }
+                }
+            
+                Some(Equal)
+            }
+        }
+    };
 }
+

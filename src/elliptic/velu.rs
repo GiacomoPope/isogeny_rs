@@ -170,8 +170,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         }
     }
 
-    /// P3 <- n*P, x-only variant using (A24 : C24).
-    /// Integer n is represented as a big integer with u64 words, little endian and is assumed to be public.
+    // /// P3 <- n*P, x-only variant using (A24 : C24).
+    // /// Integer n is represented as a big integer with u64 words, little endian and is assumed to be public.
     fn set_xmul_proj_bn_vartime(
         A24: &Fq,
         C24: &Fq,
@@ -240,8 +240,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         P3
     }
 
-    /// Return [n^e]*P as a new point (x-only variant) using (A24 : C24).
-    /// Integer n is encoded as a u64 which is assumed to be a public value.
+    // /// Return [n]*P as a new point (x-only variant) using (A24 : C24).
+    // /// Integer n is encoded as a u64 which is assumed to be a public value.
     fn xmul_proj_u64_iter_vartime(
         A24: &Fq,
         C24: &Fq,

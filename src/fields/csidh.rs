@@ -18,3 +18,5 @@ mod test_csidh_512_arithmetic {
 
     fp2::define_fp_tests!(Csidh512);
 }
+
+crate::create_bn!(Bn, 8);

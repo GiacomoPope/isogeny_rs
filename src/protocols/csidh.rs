@@ -7,7 +7,7 @@ use fp2::traits::Fp as FqTrait;
 use crate::{
     elliptic::{curve::Curve, point::PointX},
     polynomial_ring::poly::Polynomial,
-    utilities::bn::{Bn, mul_bn_by_u64_vartime, bn_compare_vartime},
+    fields::csidh::Bn,
 };
 
 use rand_core::{CryptoRng, RngCore};
@@ -217,18 +217,21 @@ impl<Fp: FqTrait + std::fmt::Debug, const NUM_ELLS: usize> Csidh<Fp, NUM_ELLS> {
 
         let mid = lower + (upper - lower + 1) / 2;
 
-        let mut cl = vec![1 as u64];
-        let mut cu = vec![1 as u64];
+        let mut cl = Bn::One();
+        let mut cu =  Bn::One();
 
         for i in lower..mid{
-            cu = mul_bn_by_u64_vartime(&cu, self.primes[i]);
-        }for i in mid..upper{
-            cl = mul_bn_by_u64_vartime(&cl, self.primes[i]);
+            cu = &cu * self.primes[i];
+        }
+        for i in mid..upper{
+            cl = &cl * self.primes[i];
         }
 
-        
-        P[mid] = Curve::<Fp>::xmul_proj_bn_vartime(A24, C24, &mut P[lower], &cu[..]);
-        P[lower] = Curve::<Fp>::xmul_proj_bn_vartime(A24, C24, &mut P[lower], &cl[..]);
+        //println!("{:?}", cu);
+        //println!("{:?}", cl);
+
+        P[mid] = Curve::<Fp>::xmul_proj_bn_vartime(A24, C24, &mut P[lower], cu.as_ref());
+        P[lower] = Curve::<Fp>::xmul_proj_bn_vartime(A24, C24, &mut P[lower], cl.as_ref());
 
         self.cofactor_multiples(P, A24, C24, lower, mid);
         self.cofactor_multiples(P, A24, C24, mid, upper);
@@ -239,8 +242,6 @@ impl<Fp: FqTrait + std::fmt::Debug, const NUM_ELLS: usize> Csidh<Fp, NUM_ELLS> {
         let A24 = public_key.A + Fp::TWO;
         let C24 = Fp::FOUR;
 
-        let fsqrtp = &self.four_sqrt_p.limbs[..self.four_sqrt_p.len];
-
         loop {
             let mut P : [PointX<Fp>; NUM_ELLS] = [PointX::INFINITY ; NUM_ELLS];
 
@@ -249,7 +250,7 @@ impl<Fp: FqTrait + std::fmt::Debug, const NUM_ELLS: usize> Csidh<Fp, NUM_ELLS> {
             
             Curve::<Fp>::xdbl_proj_iter(&A24, &C24, &mut P[0], self.two_cofactor);
 
-            let mut order = vec![1];
+            let mut order = Bn::One();
 
             self.cofactor_multiples(&mut P, &A24, &C24, 0, NUM_ELLS);
 
@@ -266,10 +267,9 @@ impl<Fp: FqTrait + std::fmt::Debug, const NUM_ELLS: usize> Csidh<Fp, NUM_ELLS> {
                 }
 
                 // if the order of out starting Point is > 4sqrt(p), the curve must be supersingular
-                order = mul_bn_by_u64_vartime(&order[..], self.primes[i]);
-                match bn_compare_vartime(&order[..], fsqrtp) {
-                    std::cmp::Ordering::Greater => return true,
-                    _ => {},
+                order = &order * self.primes[i];
+                if order > self.four_sqrt_p {
+                    return true;
                 }
             }
         }
