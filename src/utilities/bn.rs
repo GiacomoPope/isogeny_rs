@@ -113,7 +113,7 @@ pub fn prime_power_to_bn_vartime(x: usize, e: usize) -> Vec<u64> {
     let n_lo_sqr = mul_bn_vartime(&n_lo, &n_lo);
 
     // Calculate x^e based on whether e is even or odd
-    let mut n = if e % 2 == 0 {
+    let mut n = if e.is_multiple_of(2) {
         // If e is even, n = (x^(e/2))^2
         n_lo_sqr
     } else {

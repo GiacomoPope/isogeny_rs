@@ -124,7 +124,7 @@ impl<Fq: FpTrait> ::std::fmt::Display for Point<Fq> {
             write!(f, "Point: (0 : 1 : 0)")
         } else {
             let (x, y) = self.to_xy();
-            write!(f, "Point: ({} : {} : 1)", x, y)
+            write!(f, "Point: ({x} : {y} : 1)")
         }
     }
 }

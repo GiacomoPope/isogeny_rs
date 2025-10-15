@@ -722,9 +722,9 @@ impl<Fp: FpTrait> ::std::fmt::Display for Polynomial<Fp> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         for (i, c) in self.coeffs.iter().enumerate().rev() {
             if i == 0 {
-                write!(f, "({})", c)?
+                write!(f, "({c})")?
             } else {
-                write!(f, "({})*x^{} + ", c, i)?
+                write!(f, "({c})*x^{i} + ")?
             }
         }
         Ok(())
