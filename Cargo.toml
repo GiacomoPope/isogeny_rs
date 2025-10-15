@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-fp2 = "0.2.0"
+fp2 = "0.3.0"
 rand = "0.9"
-rand_core = "0.6"
+rand_core = "0.9"
 sha3 = "0.10.8"
 
 [dev-dependencies]
