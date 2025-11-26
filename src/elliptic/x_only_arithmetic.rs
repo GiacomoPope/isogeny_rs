@@ -1,5 +1,9 @@
 use fp2::traits::Fp as FpTrait;
 
+use crate::utilities::bn::{
+    bn_div4_vartime, bn_from_le_bytes, bn_is_zero_vartime, bn_lt_vartime, bn_set_div2_vartime,
+    bn_sub_into_vartime,
+};
 use crate::utilities::le_bytes::encode_to_odd_binary;
 
 use super::{basis::BasisX, curve::Curve, point::PointX};
@@ -109,7 +113,7 @@ impl<Fq: FpTrait> Curve<Fq> {
 
     /// Return x(P + Q) given x(P), x(Q) and x(P - Q) as `PointX<Fq>`.
     #[inline]
-    fn xdiff_add_add(xP: &PointX<Fq>, xQ: &PointX<Fq>, xPmQ: &Fq) -> PointX<Fq> {
+    fn xdiff_aff_add(xP: &PointX<Fq>, xQ: &PointX<Fq>, xPmQ: &Fq) -> PointX<Fq> {
         let mut R = PointX::INFINITY;
         Self::xadd_aff_add_into(&mut R, xP, xQ, xPmQ);
         R
@@ -374,7 +378,7 @@ impl<Fq: FpTrait> Curve<Fq> {
         b_bitlen: usize,
     ) -> (usize, usize, Vec<u8>) {
         // Compute the max bit-length of a and b to set the length of r
-        let k = usize::max(a_bitlen, b_bitlen);
+        let k = a_bitlen.max(b_bitlen);
 
         // First we derive the bit s0 and s1, which are set from
         // if a is even and b is odd then s0, s1 = (1, 0) otherwise (0, 1)
@@ -471,8 +475,8 @@ impl<Fq: FpTrait> Curve<Fq> {
             T[1] = R[r2];
             T[2] = R[r2 + 1];
             Fq::condswap(&mut xD1, &mut xD2, (r2 as u32).wrapping_neg());
-            T[1] = Self::xdiff_add_add(&T[1], &T[2], &xD1);
-            T[2] = Self::xdiff_add_add(&R[0], &R[2], &xF1);
+            T[1] = Self::xdiff_aff_add(&T[1], &T[2], &xD1);
+            T[2] = Self::xdiff_aff_add(&R[0], &R[2], &xF1);
             Fq::condswap(&mut xF1, &mut xF2, ((h & 1) as u32).wrapping_neg());
 
             // Update R values from T values.
@@ -483,5 +487,102 @@ impl<Fq: FpTrait> Curve<Fq> {
         // we want R[2], otherwise we want R[1]
         let index = ((a[0] & 1) + (b[0] & 1)) as usize;
         R[index]
+    }
+
+    /// Variable time computation of [a]P + [b]Q given the x-only basis x(P), x(Q), x(P - Q)
+    /// Based off Euclid2D: Algorithm 9 of https://eprint.iacr.org/2017/212.pdf
+    pub fn ladder_biscalar_vartime(
+        &self,
+        B: &BasisX<Fq>,
+        a: &[u8],
+        b: &[u8],
+        a_bitlen: usize,
+        b_bitlen: usize,
+    ) -> PointX<Fq> {
+        // Convert from le bytes to le u64 big numbers
+        let mut s0 = bn_from_le_bytes(a, a_bitlen);
+        let mut s1 = bn_from_le_bytes(b, b_bitlen);
+
+        // Ensure s0, s1 have the same length for the arithmetic logic
+        let s_len = s0.len().max(s1.len());
+        s0.resize(s_len, 0);
+        s1.resize(s_len, 0);
+        let mut bn_tmp: Vec<u64> = vec![0; s_len];
+
+        // Define points we need for arithmetic
+        let (mut x0, mut x1, mut xd) = (B.P, B.Q, B.PQ);
+        let mut r0: PointX<Fq>;
+        let mut r1: PointX<Fq>;
+
+        // Euclidian loop, at the end s0 = 0, s1 = gcd(a, b) and x1 = [a/gcd(a, b) * P + b/gcd(a, b) * Q]
+        while !bn_is_zero_vartime(&s0) {
+            // Swap to ensure s1 >= s0
+            if bn_lt_vartime(&s1, &s0) {
+                (s0, s1) = (s1, s0);
+                (x0, x1) = (x1, x0);
+
+                // s1 >= s0. If the leading term of s1 is zero, remove it
+                if s1[s1.len() - 1] == 0 {
+                    s0.pop();
+                    s1.pop();
+                    bn_tmp.pop();
+                }
+            }
+
+            // s1 <= 4 * s0
+            bn_div4_vartime(&mut bn_tmp, &s1);
+            if bn_lt_vartime(&bn_tmp, &s0) {
+                // s0, s1 = s0, s1 - s0
+                bn_sub_into_vartime(&mut s1, &s0);
+
+                r0 = Self::xdiff_add(&x1, &x0, &xd);
+                (x0, xd) = (r0, x0);
+
+            // s0 % 2 == s1 % 2:
+            } else if s0[0] & 1 == s1[0] & 1 {
+                // s0, s1 = s0, (s1 - s0) // 2
+                bn_sub_into_vartime(&mut s1, &s0);
+                bn_set_div2_vartime(&mut s1);
+
+                r0 = self.xdouble(&x1);
+                r1 = Self::xdiff_add(&x1, &x0, &xd);
+                (x0, x1) = (r1, r0)
+
+            // s1 % 2 == 0:
+            } else if s1[0] & 1 == 0 {
+                // s0, s1 = s0, s1 // 2
+                bn_set_div2_vartime(&mut s1);
+
+                r0 = self.xdouble(&x1);
+                r1 = Self::xdiff_add(&x1, &xd, &x0);
+                (x1, xd) = (r0, r1)
+            } else {
+                // s0, s1 = s0 // 2, s1
+                bn_set_div2_vartime(&mut s0);
+
+                r0 = self.xdouble(&x0);
+                r1 = Self::xdiff_add(&x0, &xd, &x1);
+                (x0, xd) = (r0, r1)
+            }
+        }
+
+        // TODO, this is bad as it assume gcd(a, b) fits inside a u64. This is
+        // fine for random inputs but it needs to be made more general
+        while s1.len() != 1 {
+            let z = s1.pop().unwrap();
+            debug_assert_eq!(z, 0);
+        }
+
+        // Final ladder we multiply x1 by gcd(a, b)
+        let mut n = s1[0];
+        while n & 1 == 0 {
+            n >>= 1;
+            x1 = self.xdouble(&x1);
+        }
+        if n > 1 {
+            x1 = self.xmul_u64_vartime(&x1, n);
+        }
+
+        x1
     }
 }

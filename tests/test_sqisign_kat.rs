@@ -5,7 +5,7 @@
 mod test_helpers {
     use std::path::Path;
 
-    use fp2::fq::Fq as FqTrait;
+    use fp2::traits::Fp2 as FqTrait;
 
     use isogeny::protocols::sqisign::Sqisign;
 

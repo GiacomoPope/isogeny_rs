@@ -18,8 +18,8 @@ mod benchmark_biscalar {
         let A = Fp2::from_i32(6);
         let E = Curve::new(&A);
 
-        let mut a: [u8; 32] = [0; 32];
-        let mut b: [u8; 32] = [0; 32];
+        let mut a: [u8; 16] = [0; 16];
+        let mut b: [u8; 16] = [0; 16];
         rng.fill_bytes(&mut a);
         rng.fill_bytes(&mut b);
 
@@ -28,8 +28,8 @@ mod benchmark_biscalar {
         let Q = E.rand_point(&mut rng);
         let PQ = E.sub(&P, &Q);
 
-        let aP = E.mul(&P, &a, 32 << 3);
-        let bQ = E.mul(&Q, &b, 32 << 3);
+        let aP = E.mul(&P, &a, 16 << 3);
+        let bQ = E.mul(&Q, &b, 16 << 3);
         let aPbQ = E.add(&aP, &bQ);
 
         // Compute  [a]P + [b]Q with x-only points
@@ -37,7 +37,7 @@ mod benchmark_biscalar {
         let xQ = Q.to_pointx();
         let xPQ = PQ.to_pointx();
         let basis = BasisX::from_points(&xP, &xQ, &xPQ);
-        let xaPbQ = E.ladder_biscalar(&basis, &a, &b, 32 << 3, 32 << 3);
+        let xaPbQ = E.ladder_biscalar(&basis, &a, &b, 16 << 3, 16 << 3);
 
         // Ensure they're the same.
         assert!(xaPbQ.equals(&aPbQ.to_pointx()) == u32::MAX);
@@ -49,8 +49,52 @@ mod benchmark_biscalar {
                     &black_box(basis),
                     &black_box(a),
                     &black_box(b),
-                    black_box(32 << 3),
-                    black_box(32 << 3),
+                    black_box(16 << 3),
+                    black_box(16 << 3),
+                )
+            })
+        });
+    }
+
+    fn benchmark_ladder_biscalar_vartime(c: &mut Criterion) {
+        let mut rng = DRNG::from_seed("test_biscalar_ladder".as_bytes());
+
+        let A = Fp2::from_i32(6);
+        let E = Curve::new(&A);
+
+        let mut a: [u8; 16] = [0; 16];
+        let mut b: [u8; 16] = [0; 16];
+        rng.fill_bytes(&mut a);
+        rng.fill_bytes(&mut b);
+
+        // Compute [a]P + [b]Q with projective points
+        let P = E.rand_point(&mut rng);
+        let Q = E.rand_point(&mut rng);
+        let PQ = E.sub(&P, &Q);
+
+        let aP = E.mul(&P, &a, 16 << 3);
+        let bQ = E.mul(&Q, &b, 16 << 3);
+        let aPbQ = E.add(&aP, &bQ);
+
+        // Compute  [a]P + [b]Q with x-only points
+        let xP = P.to_pointx();
+        let xQ = Q.to_pointx();
+        let xPQ = PQ.to_pointx();
+        let basis = BasisX::from_points(&xP, &xQ, &xPQ);
+        let xaPbQ = E.ladder_biscalar_vartime(&basis, &a, &b, 16 << 3, 16 << 3);
+
+        // Ensure they're the same.
+        assert!(xaPbQ.equals(&aPbQ.to_pointx()) == u32::MAX);
+
+        let bench_id = format!("Benchmarking biscalar ladder with 128 bit scalar (vartime)",);
+        c.bench_function(&bench_id, |bb| {
+            bb.iter(|| {
+                black_box(E).ladder_biscalar_vartime(
+                    &black_box(basis),
+                    &black_box(a),
+                    &black_box(b),
+                    black_box(16 << 3),
+                    black_box(16 << 3),
                 )
             })
         });
@@ -59,7 +103,7 @@ mod benchmark_biscalar {
     criterion_group! {
         name = benchmark_biscalar;
         config = Criterion::default().measurement_time(Duration::from_secs(10));
-        targets = benchmark_ladder_biscalar,
+        targets = benchmark_ladder_biscalar, benchmark_ladder_biscalar_vartime
     }
 }
 

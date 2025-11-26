@@ -96,4 +96,39 @@ mod test_ladders {
             assert!(xaPbQ.equals(&aPbQ.to_pointx()) == u32::MAX);
         }
     }
+
+    #[test]
+    fn test_ladder_biscalar_vartime() {
+        let mut rng = DRNG::from_seed("test_biscalar_ladder_vartime".as_bytes());
+
+        let A = Fp2::from_i32(6);
+        let E = Curve::new(&A);
+
+        // Try truncating the scalar by a few bits by setting the bit length.
+        for i in 0..20 {
+            let mut a: [u8; 16] = [0; 16];
+            let mut b: [u8; 16] = [0; 16];
+            rng.fill_bytes(&mut a);
+            rng.fill_bytes(&mut b);
+
+            // Compute [a]P + [b]Q with projective points
+            let P = E.rand_point(&mut rng);
+            let Q = E.rand_point(&mut rng);
+            let PQ = E.sub(&P, &Q);
+
+            let aP = E.mul(&P, &a, (16 << 3) - i);
+            let bQ = E.mul(&Q, &b, (16 << 3) - 2 * i);
+            let aPbQ = E.add(&aP, &bQ);
+
+            // Compute  [a]P + [b]Q with x-only points
+            let xP = P.to_pointx();
+            let xQ = Q.to_pointx();
+            let xPQ = PQ.to_pointx();
+            let basis = BasisX::from_points(&xP, &xQ, &xPQ);
+            let xaPbQ = E.ladder_biscalar_vartime(&basis, &a, &b, (16 << 3) - i, (16 << 3) - 2 * i);
+
+            // Ensure they're the same.
+            assert!(xaPbQ.equals(&aPbQ.to_pointx()) == u32::MAX);
+        }
+    }
 }
