@@ -19,7 +19,7 @@ pub fn bn_bit_length_vartime(a: &[u64]) -> usize {
     (a.len() << 6) - (bn_leading_zeros_vartime(a) as usize)
 }
 
-fn mul_bn_by_u64_vartime(a: &[u64], b: u64) -> Vec<u64> {
+fn bn_mul_by_u64_vartime(a: &[u64], b: u64) -> Vec<u64> {
     // If a has length 1 then we can do a single double wide multiplication.
     if a.len() == 1 {
         let (n0, n1) = umull(a[0], b);
@@ -48,10 +48,10 @@ fn mul_bn_by_u64_vartime(a: &[u64], b: u64) -> Vec<u64> {
 
 /// Given two integers represented as u64 words (little endian) compute their
 /// product.
-fn mul_bn_vartime(a: &[u64], b: &[u64]) -> Vec<u64> {
+fn bn_mul_vartime(a: &[u64], b: &[u64]) -> Vec<u64> {
     // Assume that the length of b is smaller than the length of a for logic.
     if b.len() > a.len() {
-        return mul_bn_vartime(b, a);
+        return bn_mul_vartime(b, a);
     }
 
     // If a has length 1 then so does b and we can do simple multiplication.
@@ -65,7 +65,7 @@ fn mul_bn_vartime(a: &[u64], b: &[u64]) -> Vec<u64> {
 
     // If b has length 1 then we can do a simple scalar multiplication
     if b.len() == 1 {
-        return mul_bn_by_u64_vartime(a, b[0]);
+        return bn_mul_by_u64_vartime(a, b[0]);
     }
 
     // General case
@@ -110,7 +110,7 @@ pub fn prime_power_to_bn_vartime(x: usize, e: usize) -> Vec<u64> {
     // even and n = x * (x^(e / 2))^2 when e is odd.
     let e_half = e / 2;
     let n_lo = prime_power_to_bn_vartime(x, e_half);
-    let n_lo_sqr = mul_bn_vartime(&n_lo, &n_lo);
+    let n_lo_sqr = bn_mul_vartime(&n_lo, &n_lo);
 
     // Calculate x^e based on whether e is even or odd
     let mut n = if e.is_multiple_of(2) {
@@ -118,7 +118,7 @@ pub fn prime_power_to_bn_vartime(x: usize, e: usize) -> Vec<u64> {
         n_lo_sqr
     } else {
         // If e is odd, n = x * (x^(e/2))^2
-        mul_bn_by_u64_vartime(&n_lo_sqr, x as u64)
+        bn_mul_by_u64_vartime(&n_lo_sqr, x as u64)
     };
 
     // Remove trailing zeros: TODO better.
@@ -136,7 +136,85 @@ pub fn factorisation_to_bn_vartime(factorisation: &[(usize, usize)]) -> Vec<u64>
     let mut n: Vec<u64> = prime_power_to_bn_vartime(p0, e0);
     for (pi, ei) in factorisation.iter().skip(1) {
         let ni = prime_power_to_bn_vartime(*pi, *ei);
-        n = mul_bn_vartime(&n, &ni);
+        n = bn_mul_vartime(&n, &ni);
     }
     n
+}
+
+/// Given an integer `a` represented as little endian bytes, compute an integer represented
+/// as little endian u64 words
+pub fn bn_from_le_bytes(a: &[u8], bit_len: usize) -> Vec<u64> {
+    // For a 2^bit_len number we need n_words for our vector
+    let n_words = bit_len.div_ceil(64);
+    let mut n: Vec<u64> = vec![0; n_words];
+
+    // Take 8 bytes at a time from the array to make u64 words
+    // We read only (bit_len + 7) // 8 bits to get the words we
+    // need for a bit_len number
+    let n_bytes = bit_len.div_ceil(8);
+    for (i, chunk) in a[..n_bytes].chunks(8).enumerate() {
+        let mut word = 0u64;
+        for (j, &b) in chunk.iter().enumerate() {
+            word |= (b as u64) << (j * 8)
+        }
+        n[i] = word;
+    }
+
+    // Mask off the top word to ensure n has exactly bit_len bits
+    n[n_words - 1] &= u64::MAX >> ((64 - (bit_len & 63)) & 63);
+
+    n
+}
+
+#[inline(always)]
+pub fn bn_is_zero_vartime(a: &[u64]) -> bool {
+    a.iter().all(|&x| x == 0)
+}
+
+#[inline]
+pub fn bn_lt_vartime(a: &[u64], b: &[u64]) -> bool {
+    debug_assert_eq!(a.len(), b.len());
+
+    for (ai, bi) in a.iter().zip(b.iter()).rev() {
+        if ai < bi {
+            return true;
+        } else if bi < ai {
+            return false;
+        }
+    }
+
+    false
+}
+
+#[inline]
+pub fn bn_sub_into_vartime(a: &mut [u64], b: &[u64]) {
+    debug_assert_eq!(a.len(), b.len());
+
+    let mut borrow: u64 = 0;
+    for (ai, &bi) in a.iter_mut().zip(b.iter()) {
+        let (d, c1) = ai.overflowing_sub(bi);
+        let (d, c2) = d.overflowing_sub(borrow);
+        *ai = d;
+        borrow = (c1 | c2) as u64;
+    }
+}
+
+#[inline]
+pub fn bn_set_div2_vartime(n: &mut [u64]) {
+    for i in 0..n.len() - 1 {
+        n[i] >>= 1;
+        n[i] |= (n[i + 1] & 1) << 63
+    }
+    n[n.len() - 1] >>= 1;
+}
+
+#[inline]
+pub fn bn_div4_vartime(a: &mut [u64], b: &[u64]) {
+    debug_assert_eq!(a.len(), b.len());
+
+    for i in 0..b.len() - 1 {
+        a[i] = b[i] >> 2;
+        a[i] |= (b[i + 1] & 3) << 62;
+    }
+    a[b.len() - 1] = b[b.len() - 1] >> 2;
 }
