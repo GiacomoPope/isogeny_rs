@@ -29,17 +29,17 @@ harness = false
 # path = "benches/bench_sidh.rs"
 # harness = false
 
-# [[bench]]
-# name = "bench_sqisign_verification"
-# path = "benches/bench_sqisign_verification.rs"
-# harness = false
+[[bench]]
+name = "bench_sqisign_verification"
+path = "benches/bench_sqisign_verification.rs"
+harness = false
 
 # [[bench]]
 # name = "bench_product_isogeny"
 # path = "benches/bench_product_isogeny.rs"
 # harness = false
 
-# [[bench]]
-# name = "bench_biscalar_ladder"
-# path = "benches/bench_biscalar_ladder.rs"
-# harness = false
+[[bench]]
+name = "bench_biscalar_ladder"
+path = "benches/bench_biscalar_ladder.rs"
+harness = false

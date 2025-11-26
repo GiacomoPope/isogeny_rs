@@ -291,8 +291,8 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         bitlen: usize,
     ) -> BasisX<Fq> {
         // Compute R = [a00] P + [a10] Q and S = [a01] P + [a11] Q
-        let R = E.ladder_biscalar(B, aij[0], aij[2], bitlen, bitlen);
-        let S = E.ladder_biscalar(B, aij[1], aij[3], bitlen, bitlen);
+        let R = E.ladder_biscalar_vartime(B, aij[0], aij[2], bitlen, bitlen);
+        let S = E.ladder_biscalar_vartime(B, aij[1], aij[3], bitlen, bitlen);
 
         // Compute a00 - a01 and a10 - a11 modulo 2^bitlen
         let mut diff_a = aij[0].to_vec();
@@ -302,7 +302,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         byte_slice_difference_into(&mut diff_b, aij[3]);
 
         // Compute R - S = [a00 - a01] P + [a10 - a11] Q
-        let RS = E.ladder_biscalar(B, &diff_a, &diff_b, bitlen, bitlen);
+        let RS = E.ladder_biscalar_vartime(B, &diff_a, &diff_b, bitlen, bitlen);
 
         BasisX::from_points(&R, &S, &RS)
     }
