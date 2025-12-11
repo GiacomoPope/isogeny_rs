@@ -70,25 +70,25 @@ fn bn_mul_vartime(a: &[u64], b: &[u64]) -> Vec<u64> {
 
     // General case
     let mut res = vec![0u64; a.len() + b.len()];
-    let mut carry: u64 = 0;
-    let mut cc: u8 = 0;
+    let mut carry: u64;
+    let mut cc: u8;
 
-    // TODO: clean up the carry here...
     for i in 0..a.len() {
+        carry = 0;
+        cc = 0;
         for j in 0..b.len() {
             let (lo, hi) = umull_add(a[i], b[j], carry);
             (res[i + j], cc) = addcarry_u64(res[i + j], lo, cc);
             carry = hi;
         }
-        res[i + b.len()] += carry;
-        carry = 0;
+        res[i + b.len()] += carry + cc as u64;
     }
 
     res
 }
 
 /// Represent an integer n = x^e as little endian u64 words. Both x and e are assumed
-/// to be public, no constant-time guarentees are made.
+/// to be public, no constant-time guarantees are made.
 pub fn prime_power_to_bn_vartime(x: usize, e: usize) -> Vec<u64> {
     // If x^e fits inside a word, then we can just finish here.
     let n_bitlength = ((usize::BITS - x.leading_zeros()) as usize) * e;
@@ -217,4 +217,32 @@ pub fn bn_div4_vartime(a: &mut [u64], b: &[u64]) {
         a[i] |= (b[i + 1] & 3) << 62;
     }
     a[b.len() - 1] = b[b.len() - 1] >> 2;
+}
+
+// TODO: I need to have a proper suite of tests for these functions...
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Fix bug reported to me by Jacob
+    #[test]
+    fn test_prime_power_to_bn_vartime() {
+        let expected = vec![
+            13403493667807115355,
+            7004228914580677085,
+            16396955376544232085,
+            12999100768498526733,
+            18169755250398266179,
+            3925880612639868733,
+            2,
+        ];
+
+        let result = prime_power_to_bn_vartime(3, 243);
+
+        assert_eq!(
+            result, expected,
+            "The result of prime_power_to_bn_vartime(3, 243) does not match the expected value."
+        );
+    }
 }
