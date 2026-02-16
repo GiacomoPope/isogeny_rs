@@ -11,5 +11,6 @@ pub mod elliptic;
 pub mod fields;
 pub mod polynomial_ring;
 pub mod protocols;
+pub mod rings;
 pub mod theta;
 pub mod utilities;
