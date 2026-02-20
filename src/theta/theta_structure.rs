@@ -1,5 +1,5 @@
 use crate::theta::theta_point::ThetaPoint;
-use crate::theta::theta_util::{to_hadamard, to_squared_coords};
+use crate::theta::theta_util::{to_hadamard, to_square};
 use fp2::traits::Fp2 as FqTrait;
 // ========================================================
 // Functions for working with ThetaStructures
@@ -44,7 +44,7 @@ impl<Fq: FqTrait> ThetaStructure<Fq> {
     #[inline]
     pub fn precomputation(O0: &ThetaPoint<Fq>) -> [Fq; 8] {
         let (a, b, c, d) = O0.coords();
-        let (aa, bb, cc, dd) = to_squared_coords(&a, &b, &c, &d);
+        let (aa, bb, cc, dd) = to_square(&a, &b, &c, &d);
 
         // Compute projectively a/b = a^2*c*d, etc.
         let t1 = a * b;
@@ -67,18 +67,20 @@ impl<Fq: FqTrait> ThetaStructure<Fq> {
     }
 
     /// Given a point P, compute it's double [2]P in place.
-    /// Cost 8S + 8M
+    /// Cost 8S + 8M + 16a
     #[inline(always)]
     pub fn set_double_self(&self, P: &mut ThetaPoint<Fq>) {
-        let (mut xp, mut yp, mut zp, mut tp) = P.squared_theta();
+        // Compute S(H(S(P))), 8S 8a
+        let (mut xp, mut yp, mut zp, mut tp) = P.hadamard_square();
+        (xp, yp, zp, tp) = to_square(&xp, &yp, &zp, &tp);
 
-        // Compute temp. coordinates, 8S and 3M
-        xp = self.arithmetic_precom[4] * xp.square();
-        yp = self.arithmetic_precom[5] * yp.square();
-        zp = self.arithmetic_precom[6] * zp.square();
-        tp = self.arithmetic_precom[7] * tp.square();
+        // Scale by precomputed constants, 4M
+        xp *= self.arithmetic_precom[4];
+        yp *= self.arithmetic_precom[5];
+        zp *= self.arithmetic_precom[6];
+        tp *= self.arithmetic_precom[7];
 
-        // Compute the final coordinates, 3M
+        // Compute the final coordinates, 4M 8a
         let (mut X, mut Y, mut Z, mut T) = to_hadamard(&xp, &yp, &zp, &tp);
         X *= self.arithmetic_precom[0];
         Y *= self.arithmetic_precom[1];

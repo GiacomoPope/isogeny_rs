@@ -459,7 +459,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         // because of linear alegbra choices.
         // If check is zero then an error was detected at some point in the (2, 2) isogeny and the signature
         // is rejected.
-        let (E3E4, _, check) = E1E2.elliptic_product_isogeny(&P1P2, &Q1Q2, e_rsp_prime, &[]);
+        let (E3E4, _, check) = E1E2.elliptic_product_isogeny(&P1P2, &Q1Q2, e_rsp_prime, &[], true);
         if check == 0 {
             return false;
         }
