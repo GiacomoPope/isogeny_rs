@@ -235,7 +235,7 @@ impl<Fq: FqTrait> Curve<Fq> {
             (A24, C24, c0, c1, c2) = Self::four_isogeny_codomain(&ker_step);
 
             // Push through the kernel points and reduce the stored order
-            for i in 0..space {
+            for i in 0..k {
                 Self::four_isogeny_eval(&c0, &c1, &c2, &mut stategy_points[i]);
                 orders[i] = orders[i].saturating_sub(2);
             }

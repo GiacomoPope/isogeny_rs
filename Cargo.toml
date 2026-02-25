@@ -20,26 +20,31 @@ rayon = "1.10.0"
 kat-tests = []
 
 [[bench]]
-name = "bench_velu"
-path = "benches/bench_velu.rs"
+name = "bench_scholten"
+path = "benches/bench_scholten.rs"
 harness = false
+
+# [[bench]]
+# name = "bench_velu"
+# path = "benches/bench_velu.rs"
+# harness = false
 
 # [[bench]]
 # name = "bench_sidh"
 # path = "benches/bench_sidh.rs"
 # harness = false
 
-[[bench]]
-name = "bench_sqisign_verification"
-path = "benches/bench_sqisign_verification.rs"
-harness = false
+# [[bench]]
+# name = "bench_sqisign_verification"
+# path = "benches/bench_sqisign_verification.rs"
+# harness = false
 
 # [[bench]]
 # name = "bench_product_isogeny"
 # path = "benches/bench_product_isogeny.rs"
 # harness = false
 
-[[bench]]
-name = "bench_biscalar_ladder"
-path = "benches/bench_biscalar_ladder.rs"
-harness = false
+# [[bench]]
+# name = "bench_biscalar_ladder"
+# path = "benches/bench_biscalar_ladder.rs"
+# harness = false

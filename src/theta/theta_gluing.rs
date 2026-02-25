@@ -17,6 +17,31 @@ use crate::elliptic::projective_point::Point;
 
 use fp2::traits::Fp2 as FqTrait;
 
+struct GluingInverses<Fq: FqTrait> {
+    A_inv: Fq,
+    B_inv: Fq,
+    C_inv: Fq,
+}
+
+impl<Fq: FqTrait> GluingInverses<Fq> {
+    /// Apply the precomputed inverses to recover (x, y, z, t) for the
+    /// gluing image, using `Ay` as a projective factor to handle the
+    /// case where `t` could be zero.
+    fn apply(&self, Ax: Fq, By: Fq, Cz: Fq, Ay: Fq, Ct: Fq) -> (Fq, Fq, Fq, Fq) {
+        let mut x = Ax * self.A_inv;
+        let mut y = By * self.B_inv;
+        let mut z = Cz * self.C_inv;
+        let t = y * Ct * self.C_inv;
+
+        let lam = Ay * self.A_inv;
+        x *= lam;
+        y *= lam;
+        z *= lam;
+
+        (x, y, z, t)
+    }
+}
+
 impl<Fq: FqTrait> EllipticProduct<Fq> {
     /// Given a point in the four torsion, compute the 2x2 matrix needed
     /// for the basis change
@@ -205,52 +230,32 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         let Y = X1 * Z2;
         let Z = Z1 * X2;
         let T = Z1 * Z2;
-        let mut P = ThetaPoint::from_coords(&X, &Y, &Z, &T);
+        let mut P = ThetaPoint::from((X, Y, Z, T));
 
         // Finally apply the base change on the point
         apply_base_change(&mut P, M);
         P
     }
 
-    /// For a theta point which is on an elliptic product,
-    /// one of the dual coordinates will be zero. We need
-    /// to identify the index of this zero element for the
-    /// gluing isogeny codomain and evaluation functions
-    fn zero_index(dual_coords: &[Fq; 4]) -> usize {
-        let mut z_idx = 0;
-        for (i, el) in dual_coords.iter().enumerate() {
-            // When el is zero, the result is 0xFF...FF
-            // and zero otherwise, so we can use this as
-            // a mask for each step.
-            let el_is_zero = el.is_zero();
-            z_idx |= i as u32 & el_is_zero;
-        }
-        z_idx as usize
-    }
-
     /// Given the 8-torsion above the kernel of order 2, computes the
     /// codomain ThetaStructure (2,2)-isogenous from a product of elliptic
     /// curves
-    ///
-    /// NOTE: this function is a little fussy as we need to avoid the
-    /// zero-dual coordinate. There's a chance refactoring this could make
-    /// it appear more friendly
     ///
     /// Cost: 8S 4M
     fn gluing_codomain(
         T1_8: &ThetaPoint<Fq>,
         T2_8: &ThetaPoint<Fq>,
-    ) -> (ThetaStructure<Fq>, Fq, Fq, Fq) {
+    ) -> (ThetaStructure<Fq>, GluingInverses<Fq>) {
         // First construct the dual coordinates of the kernel and look
         // for the element which is zero
         // For convenience we pack this as an array instead of a tuple:
-        let (xA, xB, yC, yD) = T1_8.squared_theta();
-        let (zA, _, zC, _) = T2_8.squared_theta();
+        let (xA, xB, _, yD) = T1_8.hadamard_square();
+        let (zA, _, zC, _) = T2_8.hadamard_square();
 
         // One element for each array above will be zero. Due to the method we
         // use for gluing, this index is always 3, allowing a simplification of
         // the below code.
-        assert!(Self::zero_index(&[xA, xB, yC, yD]) == 3);
+        debug_assert_eq!(yD.is_zero(), u32::MAX);
 
         // Codomain coefficients are (x * z * A) \star (A : B : C : 0)
         let mut A = xA * zA;
@@ -260,14 +265,17 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
 
         // We also want to have (A^-1 : B^-1 : C^-1 : -) projectively for inverses.
         // as (x * z * A * B * C) \star (A^-1 : B^-1 : C^-1 : -)
-        let A_inv = xB * zC;
-        let B_inv = C;
-        let C_inv = B;
+        let inverses = GluingInverses {
+            A_inv: xB * zC,
+            B_inv: C,
+            C_inv: B,
+        };
 
+        // Final hadamard transformation
         (A, B, C, D) = to_hadamard(&A, &B, &C, &D);
         let codomain = ThetaStructure::new_from_coords(&A, &B, &C, &D);
 
-        (codomain, A_inv, B_inv, C_inv)
+        (codomain, inverses)
     }
 
     /// Given a point and it's shifted value, compute the image of this
@@ -281,51 +289,34 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
     fn gluing_theta_image(
         T: &ThetaPoint<Fq>,
         T_shift: &ThetaPoint<Fq>,
-        A_inv: &Fq,
-        B_inv: &Fq,
-        C_inv: &Fq,
+        gluing_inverses: &GluingInverses<Fq>,
     ) -> ThetaPoint<Fq> {
         // Find dual coordinates of point to push through
-        let (Ax, By, Cz, Dt) = T.squared_theta();
+        let (Ax, By, Cz, Dt) = T.hadamard_square();
 
         // We are in the case where at most one of A, B, C, D is
-        // zero, so we need to account for this
+        // zero, so we need to account for this.
+
         // To recover values, we use the translated point to get
-        let (Ay, _, Ct, Dz) = T_shift.squared_theta();
+        let (Ay, _, Ct, Dz) = T_shift.hadamard_square();
 
         // In the general case, we can always directly compute three elements
-        // but the fourth requires scalaing by something non-zero and in
+        // but the fourth requires scaling by something non-zero and in
         // the original (2,2) paper this was kep general.
         //
         // However, because of the way we perform gluing, the zero index is
         // always three, and so we know where the zero is for (A : B : C : 0).
-        assert!(Dt.is_zero() == u32::MAX);
-        assert!(Dz.is_zero() == u32::MAX);
+        debug_assert_ne!(Ay.is_zero(), u32::MAX);
+        debug_assert_eq!(Dt.is_zero(), u32::MAX);
+        debug_assert_eq!(Dz.is_zero(), u32::MAX);
 
-        // Despite this, we still need to handle the case where `t` itself
-        // could be zero. We  first compute x, y, z from the precomputations
-        // during codomain directly.
-        let mut x = Ax * (*A_inv);
-        let mut y = By * (*B_inv);
-        let mut z = Cz * (*C_inv);
-
-        // Now to compute `t` we need to compute a projective factor using that
-        // Ay will not be zero for our implementation:
-        assert!(Ay.is_zero() != u32::MAX);
-
-        // Compute t with y as a projective factor
-        let mut t = y * Ct * (*C_inv);
-
-        // Scale x, y and z to ensure projective factors for t match.
-        let lam = Ay * (*A_inv);
-        x *= lam;
-        y *= lam;
-        z *= lam;
+        // Multiply by A_inv, B_inv and C_inv projectively
+        let (mut x, mut y, mut z, mut t) = gluing_inverses.apply(Ax, By, Cz, Ay, Ct);
 
         // Perform the final Hadamard
         (x, y, z, t) = to_hadamard(&x, &y, &z, &t);
 
-        ThetaPoint::from_coords(&x, &y, &z, &t)
+        ThetaPoint::from((x, y, z, t))
     }
 
     /// Compute the image of a ProductPoint through a gluing isogeny given
@@ -343,9 +334,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         P: &ProductPoint<Fq>,
         K4: &ProductPoint<Fq>,
         M: &[Fq; 16],
-        A_inv: &Fq,
-        B_inv: &Fq,
-        C_inv: &Fq,
+        inverses: &GluingInverses<Fq>,
     ) -> ThetaPoint<Fq> {
         // Need affine coordinates here to do an add, if we didn't we
         // could use faster x-only... Something to think about but no
@@ -360,7 +349,7 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
 
         // With a point and the shift value from the kernel, we can find
         // the image
-        Self::gluing_theta_image(&T, &T_shift, A_inv, B_inv, C_inv)
+        Self::gluing_theta_image(&T, &T_shift, inverses)
     }
 
     /// Compute the gluing (2,2)-isogeny from a ThetaStructure computed
@@ -400,12 +389,12 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
         // We save the zero index, as we use it for the images, and we also
         // can precompute a few inverses to save time for evaluation.
         // Cost: 8S + 4M
-        let (codomain, A_inv, B_inv, C_inv) = Self::gluing_codomain(&T1_8, &T2_8);
+        let (codomain, inverses) = Self::gluing_codomain(&T1_8, &T2_8);
 
         // Push points through the gluing isogeny.
         // Cost: 81M + 18S per ProductPoint evaluated.
         for (i, P) in eval_points.iter().enumerate() {
-            image_points[i] = self.gluing_eval(P, &P1P2_4, &M, &A_inv, &B_inv, &C_inv);
+            image_points[i] = self.gluing_eval(P, &P1P2_4, &M, &inverses);
         }
 
         codomain

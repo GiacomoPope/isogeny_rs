@@ -89,7 +89,8 @@ mod test_product_isogeny {
         let n = 126;
 
         // Compute chain
-        let (E3E4, images, ok) = E1E2.elliptic_product_isogeny(&P1P2, &Q1Q2, n, &image_points);
+        let (E3E4, images, ok) =
+            E1E2.elliptic_product_isogeny(&P1P2, &Q1Q2, n, &image_points, true);
         assert!(ok == u32::MAX);
 
         let (_, E4) = E3E4.curves();

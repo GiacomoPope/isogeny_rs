@@ -61,7 +61,7 @@ mod benchmark_product {
         let n = 126;
 
         // Compute chain
-        let (E3E4, _, ok) = E1E2.elliptic_product_isogeny(&P1P2, &Q1Q2, n, &[]);
+        let (E3E4, _, ok) = E1E2.elliptic_product_isogeny(&P1P2, &Q1Q2, n, &[], true);
         assert!(ok == u32::MAX);
 
         let (_, E4) = E3E4.curves();
@@ -75,6 +75,7 @@ mod benchmark_product {
                     &black_box(Q1Q2),
                     black_box(n),
                     &[],
+                    false,
                 )
             })
         });
