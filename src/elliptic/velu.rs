@@ -1,10 +1,14 @@
 // TODO:
 //
-// Optimise Sqrt Velu, current implementation is very slow!
+// Optimise Sqrt Velu, current implementation is still quite slow 
 //
-// Cofactor clearing. At the moment clearing the cofactor means multiplying by each ell_i e_i times,
-// which seems silly. I think we should probably have some function which converts the prime factorisation into &[u64; ...]
-// and then we use these limbs to do var time point multiplication.
+// The main missing part is a reusable remainder-tree / multipoint-evaluation 
+// path in 'Poly' so that resultants against the fixed 'hI' roots can be 
+// amortised across all image points 
+//
+// Composite cofactor clearing is already batched through 
+// 'factorisation_to_bn_vartime()' + 'xmul_proj_bn_vartime()'
+// it's mostly about allocation and constant factor tuning 
 
 // use std::time::Instant;
 
@@ -243,9 +247,20 @@ impl<Fq: FqTrait> Curve<Fq> {
         x: usize,
         e: usize,
     ) -> PointX<Fq> {
-        // Convert x^e to a big integer represented as u64 words.
-        let n = prime_power_to_bn_vartime(x, e);
-        Self::xmul_proj_bn_vartime(A24, C24, P, &n)
+       // Convert x^e to big integer represented as u64 
+       // to fall back into u64 ladder path 
+       let mut n64 = 1u64; 
+       for _ in 0..e {
+            match n64.checked_mul(x as u64) {
+                Some(v) => n64 = v, 
+                None => {
+                    let n = prime_power_to_bn_vartime(x, e);
+                    return Self::xmul_proj_bn_vartime(A24, C24, P, &n)
+                }
+            } 
+        }
+
+        Self::xmul_proj_u64_vartime(A24, C24, P, n64) 
     }
 
     // ============================================================
@@ -463,37 +478,18 @@ impl<Fq: FqTrait> Curve<Fq> {
         }
     }
 
-    /// Compute the product of an array of Fq values using a product tree.
-    // TODO: this could be placed into the Fp2 library.
-    fn product_tree_root_fq(v: &[Fq]) -> Fq {
-        if v.is_empty() {
-            return Fq::ONE;
-        }
-        if v.len() == 1 {
-            return v[0];
-        }
-        let half = v.len() >> 1;
-        Self::product_tree_root_fq(&v[..half]) * Self::product_tree_root_fq(&v[half..])
-    }
-
     /// Understanding the polynomial hK = prod(x * PZ - PX) for the set in hK, then
     /// evaluate this polynomial at alpha = 1 and alpha = -1
     #[inline]
     fn hK_codomain(hK_points: &[PointX<Fq>]) -> (Fq, Fq) {
-        // We have the factorisation of hK into linear pieces, so we evaluate
-        // each factor to get an Fq element and then compute the product of these
-        // with a product tree.
-        let mut h1_linear = Vec::with_capacity(hK_points.len());
-        let mut h2_linear = Vec::with_capacity(hK_points.len());
-
+        // We already have the factorisation into linear pieces, so there is no
+        // need to materialise the factors or use a product tree here.
+        let mut h1 = Fq::ONE;
+        let mut h2 = Fq::ONE;
         for P in hK_points.iter() {
-            h1_linear.push(P.Z - P.X);
-            h2_linear.push(-(P.Z + P.X));
+            h1 *= P.Z - P.X;
+            h2 *= -(P.Z + P.X);
         }
-
-        let h1 = Self::product_tree_root_fq(&h1_linear);
-        let h2 = Self::product_tree_root_fq(&h2_linear);
-
         (h1, h2)
     }
 
@@ -502,28 +498,18 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// alpha = (X : Z) and we take as input X + Z and X - Z.
     #[inline]
     fn hK_eval(hK_points: &[PointX<Fq>], XpZ: &Fq, XmZ: &Fq) -> (Fq, Fq) {
-        // We have the factorisation of hK into linear pieces, so we evaluate
-        // each factor to get an Fq element and then compute the product of these
-        // with a product tree.
-        let mut h1_linear = Vec::with_capacity(hK_points.len());
-        let mut h2_linear = Vec::with_capacity(hK_points.len());
-
-        let mut t1;
-        let mut t2;
+        let mut h1 = Fq::ONE;
+        let mut h2 = Fq::ONE;
         for P in hK_points.iter() {
-            t1 = P.X + P.Z;
+            let mut t1 = P.X + P.Z;
             t1 *= *XmZ;
 
-            t2 = P.X - P.Z;
+            let mut t2 = P.X - P.Z;
             t2 *= *XpZ;
 
-            h1_linear.push(t1 - t2);
-            h2_linear.push(t1 + t2);
+            h1 *= t1 - t2;
+            h2 *= t1 + t2;
         }
-
-        let h1 = Self::product_tree_root_fq(&h1_linear);
-        let h2 = Self::product_tree_root_fq(&h2_linear);
-
         (h1, h2)
     }
 
@@ -566,6 +552,11 @@ impl<Fq: FqTrait> Curve<Fq> {
         // Precompute (X + Z)^2, (X - Z)^2, -4XZ and -4XZ*A
         let mut eJ_precomp = vec![(Fq::ZERO, Fq::ZERO, Fq::ZERO); size_J];
         Self::precompute_eJ_values(&mut eJ_precomp, &hJ_points, A24, C24); // Cost: size_J * (1S + 2M)
+
+        // Also cache (X + Z) and (X - Z) for the J partition since these are 
+        // reused for every evaluated image point 
+        let hJ_sum_diff: Vec<(Fq, Fq)> = 
+            hJ_points.iter().map(|Q| (Q.X + Q.Z, Q.X - Q.Z)).collect(); 
 
         let mut E0J_leaves: Vec<P> = Vec::with_capacity(size_J);
         let mut E1J_leaves: Vec<P> = Vec::with_capacity(size_J);
@@ -610,25 +601,22 @@ impl<Fq: FqTrait> Curve<Fq> {
         D_ed *= num;
 
         // Evaluate each point through the isogeny.
-        for P in img_points.iter_mut() {
-            if P.is_zero() == u32::MAX {
+        let mut E0J_eval_leaves: Vec<P> = Vec::with_capacity(size_J); 
+        for img in img_points.iter_mut() {
+            if img.is_zero() == u32::MAX {
                 continue;
             }
 
             // We use the sum and difference for the EJ leaves as well as when
             // evaluating hK at alpha = (X / Z) and 1/alpha.
-            let XpZ = P.X + P.Z;
-            let XmZ = P.X - P.Z;
-            let XZ2 = (P.X * P.Z).mul2();
+            let XpZ = img.X + img.Z; 
+            let XmZ = img.X - img.Z; 
+            let XZ2 = (img.X * img.Z).mul2(); 
             let X2Z2 = XpZ.square() - XZ2; // X^2 + Z^2
 
-            let mut E0J_leaves: Vec<P> = Vec::with_capacity(size_J);
+            E0J_eval_leaves.clear(); 
             for (i, (sum_sqr, XZ4neg, AXZ4neg)) in eJ_precomp.iter().enumerate() {
-                let Pj = hJ_points[i];
-
-                // Precompute some multiplications for later.
-                let add = Pj.X + Pj.Z;
-                let sub = Pj.X - Pj.Z;
+                let (add, sub) = hJ_sum_diff[i]; 
 
                 // Constant coefficient: c0 = [2 * (X * Xj - Z * Zj)]^2
                 // Quadratic coefficient: c1 = [2 * (X * Zj - Z * Xj)]^2
@@ -650,10 +638,10 @@ impl<Fq: FqTrait> Curve<Fq> {
                 c1 += X2Z2 * *XZ4neg;
                 c1.set_mul2();
 
-                E0J_leaves.push(P::new_from_slice(&[c0, c1, c2]));
+                E0J_eval_leaves.push(P::new_from_slice(&[c0, c1, c2])); 
             }
 
-            let E0J = P::product_tree_root(&E0J_leaves);
+            let E0J = P::product_tree_root(&E0J_eval_leaves);
             let E1J = E0J.reverse();
 
             let r0 = E0J.resultant_from_roots(&hI_roots);
@@ -663,8 +651,8 @@ impl<Fq: FqTrait> Curve<Fq> {
             let r0m0 = r0 * m0;
             let r1m1 = r1 * m1;
 
-            P.X *= r1m1.square();
-            P.Z *= r0m0.square();
+            img.X *= r1m1.square();
+            img.Z *= r0m0.square();
         }
 
         // Convert back to Montgomery (A24 : C24)
@@ -708,7 +696,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         // Compute the isogeny chain with a naive balanced strategy.
         let mut k = 0;
         for _ in 0..len {
-            // Get the next point of order 2
+            // Get the next point of order ell 
             while orders[k] != 1 {
                 k += 1;
                 let m = orders[k - 1] / 2;
@@ -779,16 +767,15 @@ impl<Fq: FqTrait> Curve<Fq> {
             // At each step we will compute a degree^len isogeny
             let (ell, n) = degrees[i];
 
-            // Clear the cofactor
-            // TODO: this will be slow, must be a better way to batch things into the u64
+            // Clear the cofactor in one public scalar multiplication
             // ker_step will be a point with order ell^n
             let mut ker_step = *eval_points.last().unwrap();
 
             // Collect the factorisation of the cofactor by skipping the ell already handled.
             // We don't have to do anything on the last factor of the isogeny.
-            let factorisation: Vec<(usize, usize)> = degrees.iter().skip(i + 1).cloned().collect();
+            let factorisation = &degrees[(i + 1)..]; 
             if !factorisation.is_empty() {
-                let cofactor: Vec<u64> = factorisation_to_bn_vartime(&factorisation);
+                let cofactor: Vec<u64> = factorisation_to_bn_vartime(factorisation);
                 ker_step = Self::xmul_proj_bn_vartime(A24, C24, &ker_step, &cofactor);
             }
 
