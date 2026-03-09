@@ -75,13 +75,17 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         while i > 0 && self.coeffs[i].is_zero() == u32::MAX {
             i -= 1;
         }
-        self.coeffs.truncate(i);
+        self.coeffs.truncate(i + 1);
     }
 
     /// Return the degree of the polynomial.
     // TODO: should we trim trailing zeros and mutate while computing the degree or do the following
     // and allow trailing zeros to remain.
     pub fn degree(&self) -> Option<usize> {
+        if self.coeffs.is_empty() {
+            return None;
+        }
+
         let mut i = self.len() - 1;
         while i > 0 && self.coeffs[i].is_zero() == u32::MAX {
             i -= 1;
@@ -212,6 +216,50 @@ impl<Fp: FpTrait> Polynomial<Fp> {
             return;
         }
 
+        // Special low-degree kernels translated from the SQIsign implementation.
+        if f.len() == 3 {
+            if g.len() == 2 {
+                let t0 = f[0] * g[0];
+                let t2 = f[1] * g[1];
+                let mut t1 = (f[0] + f[1]) * (g[0] + g[1]);
+                t1 -= t2;
+                t1 -= t0;
+                let t3 = f[2] * g[1];
+
+                fg[0] = t0;
+                fg[1] = t1;
+                fg[2] = f[2] * g[0] + t2;
+                fg[3] = t3;
+                return;
+            }
+
+            if g.len() == 3 {
+                let fg_high0 = f[1] * g[1];
+                let fg_high2 = f[2] * g[2];
+                let mut fg_high1 = (f[1] + f[2]) * (g[1] + g[2]);
+                fg_high1 -= fg_high0;
+                fg_high1 -= fg_high2;
+
+                let h0 = f[0] * g[0];
+
+                let mut t1 = (f[0] + f[1]) * (g[0] + g[1]);
+                t1 -= h0;
+                t1 -= fg_high0;
+
+                let mut t2 = (f[0] + f[2]) * (g[0] + g[2]);
+                t2 -= h0;
+                t2 -= fg_high2;
+                t2 += fg_high0;
+
+                fg[0] = h0;
+                fg[1] = t1;
+                fg[2] = t2;
+                fg[3] = fg_high1;
+                fg[4] = fg_high2;
+                return;
+            }
+        }
+
         // For small degree f, g we use basic multiplication strategies with
         // O(n^2) operations. TODO: set the right bound for when to fall back
         // to this.
@@ -222,7 +270,7 @@ impl<Fp: FpTrait> Polynomial<Fp> {
 
         // We are now at the point where f.len() >= 4 and we will split f into
         // a high and low part at floor(f.len() / 2) to perform a divide and
-        // conquer strategy by Karastuba.
+        // conquer strategy by Karatsuba.
         let nf = f.len() / 2;
         let mf = f.len() - nf;
 
@@ -259,7 +307,7 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         // - fg_hi  = f_hi * g_hi
         //
         // Which means we need to compute only three multiplications: f_lo * g_lo,
-        // f_hi * g_hi and (f_lo + f_hi) * (f_lo + f_hi).
+        // f_hi * g_hi and (f_lo + f_hi) * (g_lo + g_hi).
         //
         // - fg_lo will have length 2*fn - 1 and fill the bottom of fg[..2*fn - 1].
         // - fg_hi will have length fm + gm - 1 and fill the top (without overlap)
@@ -277,7 +325,6 @@ impl<Fp: FpTrait> Polynomial<Fp> {
 
         // As nf is floor(len(f) / 2) then mf will either be nf or nf + 1, so we
         // can fit the sum into mf space and then add nf elements to it.
-        // TODO: work with less allocations?
         let mut f_mid = f[nf..].to_vec();
         Self::add_into(&mut f_mid[..nf], &f[..nf]);
 
@@ -296,7 +343,7 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         let mut fg_mid = vec![Fp::ZERO; mf + nf.max(mg) - 1];
         Self::karatsuba_multiplication(&mut fg_mid, &f_mid, &g_mid);
 
-        // We then compute (f_lo + f_hi) * (f_lo + f_hi) - f_lo * g_lo - f_hi * g_hi
+        // We then compute (f_lo + f_hi) * (g_lo + g_hi) - f_lo * g_lo - f_hi * g_hi
         // with two subtractions.
         Self::sub_into(&mut fg_mid[..nf + nf - 1], &fg[..nf + nf - 1]);
         Self::sub_into(&mut fg_mid[..mf + mg - 1], &fg[nf + nf..]);
@@ -390,6 +437,9 @@ impl<Fp: FpTrait> Polynomial<Fp> {
 
     /// Computes the root of a product tree given a slice of the leaves.
     pub fn product_tree_root(v: &[Self]) -> Self {
+        if v.is_empty() {
+            return Self::new_from_ele(&Fp::ONE);
+        }
         if v.len() == 1 {
             return v[0].clone();
         }
@@ -403,6 +453,10 @@ impl<Fp: FpTrait> Polynomial<Fp> {
     pub fn product_tree_quadratic_leaves(leaves: &[[Fp; 3]]) -> Vec<Vec<Fp>> {
         // Number of leaves and depth for the tree.
         let n = leaves.len();
+        if n == 0 {
+            return vec![vec![Fp::ONE]];
+        }
+
         let log_n = usize::BITS - (2 * n - 1).leading_zeros();
 
         // Each layer of the tree is a vector of Fp elements, the leaves are n
@@ -481,7 +535,15 @@ impl<Fp: FpTrait> Polynomial<Fp> {
     /// Computes the polynomial product(leaves) assuming a tree given by
     /// product_tree_quadratic_leaves.
     pub fn product_from_tree(tree: &[Vec<Fp>]) -> Self {
+        if tree.is_empty() {
+            return Self::new_from_ele(&Fp::ONE);
+        }
+
         let n = tree[0].len() / 3;
+        if n == 0 {
+            return Self::new_from_ele(&Fp::ONE);
+        }
+
         let root = tree.last().unwrap();
         Self {
             coeffs: root[..2 * n + 1].to_vec(),

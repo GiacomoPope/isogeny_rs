@@ -198,7 +198,7 @@ impl<Fq: FpTrait> Curve<Fq> {
             }
             2 => *P3 = self.xdouble(P),
             _ => {
-                let nbitlen = 63 - n.leading_ones();
+                let nbitlen = (64 - n.leading_zeros()) as usize;
 
                 let mut X0 = Fq::ONE;
                 let mut Z0 = Fq::ZERO;
@@ -313,33 +313,20 @@ impl<Fq: FpTrait> Curve<Fq> {
     /// Sets P = [2]P and Q = P + Q in place
     #[inline(always)]
     fn xdbladd(&self, XP: &mut Fq, ZP: &mut Fq, XQ: &mut Fq, ZQ: &mut Fq, XQP: &Fq, ZQP: &Fq) {
-        // TODO: I think I could just replace P, Q in-place rather than
-        // define new mutable elements of Fp2
-        let mut t0 = *XP + *ZP;
-        let mut t1 = *XP - *ZP;
-        let mut X2P = t0.square();
-        let mut t2 = *XQ - *ZQ;
-        let mut XPQ = *XQ + *ZQ;
-        t0 *= t2;
-        let mut Z2P = t1.square();
-        t1 *= XPQ;
-        t2 = X2P - Z2P;
-        X2P *= Z2P;
-        XPQ = self.A24 * t2;
-        let mut ZPQ = t0 - t1;
-        Z2P = XPQ + Z2P;
-        XPQ = t0 + t1;
-        Z2P *= t2;
-        ZPQ = ZPQ.square();
-        XPQ = XPQ.square();
-        ZPQ *= *XQP;
-        XPQ *= *ZQP;
+        let t0 = *XP + *ZP;
+        let t1 = *XP - *ZP;
+        let X2P_sq = t0.square();
+        let Z2P_sq = t1.square();
 
-        // Modify in place
-        *XP = X2P;
-        *ZP = Z2P;
-        *XQ = XPQ;
-        *ZQ = ZPQ;
+        let t2 = X2P_sq - Z2P_sq;
+        *XP = X2P_sq * Z2P_sq;
+        *ZP = t2 * (Z2P_sq + self.A24 * t2);
+
+        let t0_Q = t0 * (*XQ - *ZQ);
+        let t1_Q = t1 * (*XQ + *ZQ);
+
+        *XQ = *ZQP * (t0_Q + t1_Q).square();
+        *ZQ = *XQP * (t0_Q - t1_Q).square();
     }
 
     /// Return P + n*Q, x-only variant given the x-only basis x(P), x(Q) and x(P - Q).
@@ -469,14 +456,13 @@ impl<Fq: FpTrait> Curve<Fq> {
             let h = r1 + r2;
 
             // Compute new T values and swap differential points conditionally.
-            T[0] = R[h & 1];
-            T[1] = R[2];
-            T[0] = self.xdouble(&T[h >> 1]);
-            T[1] = R[r2];
-            T[2] = R[r2 + 1];
-            Fq::condswap(&mut xD1, &mut xD2, (r2 as u32).wrapping_neg());
-            T[1] = Self::xdiff_aff_add(&T[1], &T[2], &xD1);
-            T[2] = Self::xdiff_aff_add(&R[0], &R[2], &xF1);
+            let to_double = if (h >> 1) == 0 { R[h & 1] } else { R[2] }; 
+            T[0] = self.xdouble(&to_double); 
+
+            Fq::condswap(&mut xD1, &mut xD2, (r2 as u32).wrapping_neg()); 
+            T[1] = Self::xdiff_aff_add(&R[r2], &R[r2 + 1], &xD1);
+
+            T[2] = Self::xdiff_aff_add(&R[0], &R[2], &xF1); 
             Fq::condswap(&mut xF1, &mut xF2, ((h & 1) as u32).wrapping_neg());
 
             // Update R values from T values.
@@ -568,19 +554,35 @@ impl<Fq: FpTrait> Curve<Fq> {
 
         // TODO, this is bad as it assume gcd(a, b) fits inside a u64. This is
         // fine for random inputs but it needs to be made more general
-        while s1.len() != 1 {
-            let z = s1.pop().unwrap();
-            debug_assert_eq!(z, 0);
+        while s1.len() > 1 && s1.last() == Some(&0) { 
+            s1.pop(); 
         }
 
-        // Final ladder we multiply x1 by gcd(a, b)
-        let mut n = s1[0];
-        while n & 1 == 0 {
-            n >>= 1;
-            x1 = self.xdouble(&x1);
+        if s1.is_empty() {
+            return PointX::INFINITY; 
         }
-        if n > 1 {
-            x1 = self.xmul_u64_vartime(&x1, n);
+
+        // Finalize by multiplying against the GCD eval 
+        if s1.len() == 1 {
+            let mut n = s1[0]; 
+            while n & 1 == 0 && n > 0 {
+                n >>= 1; 
+                x1 = self.xdouble(&x1); 
+            }
+            if n > 1 {
+                x1 = self.xmul_u64_vartime(&x1, n);
+            }
+        } else {
+            // Generalize properly if GCD escapes typical 64-bit threshold limits
+            let num_bytes = s1.len() * 8;
+            let mut gcd_bytes = Vec::with_capacity(num_bytes);
+            
+            for w in s1 {
+                gcd_bytes.extend_from_slice(&w.to_le_bytes());
+            }
+            
+            let bit_len = num_bytes * 8;
+            x1 = self.xmul(&x1, &gcd_bytes, bit_len);
         }
 
         x1

@@ -29,21 +29,42 @@ impl<Fq: FqTrait> Curve<Fq> {
     }
 
     /// Compute the codomain of the 2-isogeny E -> E/<ker> for ker == (0 : 1)
-    fn two_isogeny_codomain_singular(A24: &mut Fq, C24: &mut Fq) -> (Fq, Fq) {
-        let mut t0 = A24.mul2();
-        t0 -= *C24;
-        t0.set_mul2();
-        t0 /= *C24;
-        let c0 = t0;
-        *A24 = t0.mul2();
-        t0.set_square();
-        t0 -= Fq::FOUR;
-        let r = t0.set_sqrt();
-        assert!(r == u32::MAX); // TODO
-        let c1 = -t0;
-        *C24 = t0.mul2();
-        *A24 += *C24;
-        C24.set_mul2();
+    fn two_isogeny_codomain_singular(a24: &mut Fq, c24: &mut Fq) -> (Fq, Fq) {
+        // Recover the standard Montgomery A curve constant: 
+        // A = (4 * A24 - 2 * C24) / C24
+        let mut a = a24.mul2();
+        a -= *c24;
+        a.set_mul2();
+        a /= *c24;
+
+        let c0 = a;
+        let mut a24_new = a.mul2(); // 2*A
+
+        // Calculate A^2 - 4
+        let mut a_sq_minus_4 = a.square();
+        a_sq_minus_4 -= Fq::FOUR;
+
+        // Take the square root. If u32::MAX (0xFFFFFFFF) is returned, the operation 
+        // succeeded. If not, A^2 - 4 is not a quadratic residue over the field,
+        // and a valid 2-isogeny cannot be computed.
+        let is_residue = a_sq_minus_4.set_sqrt();
+        assert_eq!(
+            is_residue, 
+            u32::MAX, 
+            "A^2 - 4 is not a quadratic residue; singular 2-isogeny codomain does not exist."
+        );
+
+        // a_sq_minus_4 now holds sqrt(A^2 - 4)
+        let sqrt_val = a_sq_minus_4;
+        let c1 = -sqrt_val;
+
+        let mut c24_new = sqrt_val.mul2(); // 2 * sqrt(A^2 - 4)
+        a24_new += c24_new;                // 2*A + 2*sqrt(A^2 - 4)
+        c24_new.set_mul2();                // 4 * sqrt(A^2 - 4)
+
+        // Modify in place
+        *a24 = a24_new;
+        *c24 = c24_new;
 
         (c0, c1)
     }
