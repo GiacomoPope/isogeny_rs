@@ -16,7 +16,7 @@ impl<Fq: FpTrait> Curve<Fq> {
     /// P <- [2]*P (x-only variant) in place.
     /// Cost: 2S + 3M.
     #[inline(always)]
-    pub fn set_xdbl(&self, P: &mut PointX<Fq>) {
+    pub fn xdbl_into(&self, P: &mut PointX<Fq>) {
         let mut V1 = (P.X + P.Z).square();
         let V2 = (P.X - P.Z).square();
         P.X = V1 * V2;
@@ -31,15 +31,15 @@ impl<Fq: FpTrait> Curve<Fq> {
     /// Cost: 2S + 3M.
     pub fn xdbl(&self, P: &PointX<Fq>) -> PointX<Fq> {
         let mut Q = *P;
-        self.set_xdbl(&mut Q);
+        self.xdbl_into(&mut Q);
         Q
     }
 
     /// P <- [2^n]*P (x-only variant) in place.
     /// Cost: n * (2S + 3M).
-    pub fn set_xdbl_iter(&self, P: &mut PointX<Fq>, n: usize) {
+    pub fn xdbl_iter_into(&self, P: &mut PointX<Fq>, n: usize) {
         for _ in 0..n {
-            self.set_xdbl(P);
+            self.xdbl_into(P);
         }
     }
 
@@ -47,14 +47,14 @@ impl<Fq: FpTrait> Curve<Fq> {
     /// Cost: n * (2S + 3M).
     pub fn xdbl_iter(&self, P: &PointX<Fq>, n: usize) -> PointX<Fq> {
         let mut Q = *P;
-        self.set_xdbl_iter(&mut Q, n);
+        self.xdbl_iter_into(&mut Q, n);
         Q
     }
 
     /// P <- [2]*P (x-only variant) in place using projective curve constant (A+2)/4 = (A24 : C24).
     /// Cost: 2S + 4M.
     #[inline(always)]
-    pub fn set_xdbl_proj(P: &mut PointX<Fq>, A24: &Fq, C24: &Fq) {
+    pub fn xdbl_proj_into(P: &mut PointX<Fq>, A24: &Fq, C24: &Fq) {
         let mut t0 = P.X + P.Z;
         t0.set_square();
         let mut t1 = P.X - P.Z;
@@ -70,9 +70,9 @@ impl<Fq: FpTrait> Curve<Fq> {
     /// P <- [2^n]*P (x-only variant) in place using projective curve constant (A+2)/4 = (A24 : C24).
     /// Cost: n * (2S + 4M).
     #[inline]
-    pub fn set_xdbl_proj_iter(P: &mut PointX<Fq>, A24: &Fq, C24: &Fq, n: usize) {
+    pub fn xdbl_proj_iter_into(P: &mut PointX<Fq>, A24: &Fq, C24: &Fq, n: usize) {
         for _ in 0..n {
-            Self::set_xdbl_proj(P, A24, C24);
+            Self::xdbl_proj_into(P, A24, C24);
         }
     }
 
@@ -238,7 +238,7 @@ impl<Fq: FpTrait> Curve<Fq> {
 
     /// P3 <- [n]*P (x-only variant) in place.
     /// The scalar n is a u64 and is assumed to be a public value (variable-time).
-    pub fn set_xmul_u64_vartime(&self, P3: &mut PointX<Fq>, P: &PointX<Fq>, n: u64) {
+    pub fn xmul_u64_vartime_into(&self, P3: &mut PointX<Fq>, P: &PointX<Fq>, n: u64) {
         // Handle small cases.
         match n {
             0 => {
@@ -293,7 +293,7 @@ impl<Fq: FpTrait> Curve<Fq> {
     /// The scalar n is a u64 and is assumed to be a public value (variable-time).
     pub fn xmul_u64_vartime(&self, P: &PointX<Fq>, n: u64) -> PointX<Fq> {
         let mut P3 = PointX::INFINITY;
-        self.set_xmul_u64_vartime(&mut P3, P, n);
+        self.xmul_u64_vartime_into(&mut P3, P, n);
         P3
     }
 
@@ -534,7 +534,7 @@ impl<Fq: FpTrait> Curve<Fq> {
             let mut n = s1[0];
             while n & 1 == 0 && n > 0 {
                 n >>= 1;
-                self.set_xdbl(&mut x1);
+                self.xdbl_into(&mut x1);
             }
             if n > 1 {
                 x1 = self.xmul_u64_vartime(&x1, n);

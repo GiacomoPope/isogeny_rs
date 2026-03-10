@@ -35,7 +35,7 @@ impl<Fq: FqTrait> PointXMultiples<Fq> {
     pub fn new(A24: &Fq, C24: &Fq, P: &PointX<Fq>) -> Self {
         // precompute [2]P for the second output of multiplies
         let mut P2 = *P;
-        Curve::set_xdbl_proj(&mut P2, A24, C24);
+        Curve::xdbl_proj_into(&mut P2, A24, C24);
 
         Self {
             P: *P,
@@ -85,7 +85,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
     /// P3 <- n*P, x-only variant using (A24 : C24).
     /// Integer n is represented as a u64 and is assumed to be public.
-    fn set_xmul_proj_u64_vartime(A24: &Fq, C24: &Fq, P3: &mut PointX<Fq>, P: &PointX<Fq>, n: u64) {
+    fn xmul_proj_u64_vartime_into(A24: &Fq, C24: &Fq, P3: &mut PointX<Fq>, P: &PointX<Fq>, n: u64) {
         // Handle small cases.
         match n {
             0 => {
@@ -96,22 +96,22 @@ impl<Fq: FqTrait> Curve<Fq> {
             }
             2 => {
                 *P3 = *P;
-                Self::set_xdbl_proj(P3, A24, C24);
+                Self::xdbl_proj_into(P3, A24, C24);
             }
             3 => {
                 *P3 = *P;
-                Self::set_xdbl_proj(P3, A24, C24);
+                Self::xdbl_proj_into(P3, A24, C24);
                 Self::xdiff_add_into(P, P3, P);
             }
             4 => {
                 *P3 = *P;
-                Self::set_xdbl_proj(P3, A24, C24);
-                Self::set_xdbl_proj(P3, A24, C24);
+                Self::xdbl_proj_into(P3, A24, C24);
+                Self::xdbl_proj_into(P3, A24, C24);
             }
             5 => {
                 let mut P2 = *P;
                 *P3 = *P;
-                Self::set_xdbl_proj(&mut P2, A24, C24);
+                Self::xdbl_proj_into(&mut P2, A24, C24);
                 Self::xdiff_add_into(&P2, P3, P);
                 Self::xdiff_add_into(&P2, P3, P);
             }
@@ -133,7 +133,7 @@ impl<Fq: FqTrait> Curve<Fq> {
                         let ctl = (((n >> i) as u32) & 1).wrapping_neg();
                         PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
                         Self::xdiff_add_aff_into(&X0, &mut X1, &Xp);
-                        Self::set_xdbl_proj(&mut X0, A24, C24);
+                        Self::xdbl_proj_into(&mut X0, A24, C24);
                         cc = ctl;
                     }
                 } else {
@@ -141,7 +141,7 @@ impl<Fq: FqTrait> Curve<Fq> {
                         let ctl = (((n >> i) as u32) & 1).wrapping_neg();
                         PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
                         Self::xdiff_add_into(&X0, &mut X1, P);
-                        Self::set_xdbl_proj(&mut X0, A24, C24);
+                        Self::xdbl_proj_into(&mut X0, A24, C24);
                         cc = ctl;
                     }
                 }
@@ -170,7 +170,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     ) {
         // When n has length n, call the lower level function.
         if n.len() == 1 {
-            Self::set_xmul_proj_u64_vartime(A24, C24, P3, P, n[0]);
+            Self::xmul_proj_u64_vartime_into(A24, C24, P3, P, n[0]);
             return;
         }
 
@@ -193,7 +193,7 @@ impl<Fq: FqTrait> Curve<Fq> {
             PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
             // TODO: xdbladd_proj_aff_into?
             Self::xdiff_add_aff_into(&X0, &mut X1, &Xp);
-            Self::set_xdbl_proj(&mut X0, A24, C24);
+            Self::xdbl_proj_into(&mut X0, A24, C24);
             cc = ctl;
         }
         PointX::condswap(&mut X0, &mut X1, cc);
@@ -212,7 +212,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// Integer n is encoded as a u64 which is assumed to be a public value.
     pub fn xmul_proj_u64_vartime(A24: &Fq, C24: &Fq, P: &PointX<Fq>, n: u64) -> PointX<Fq> {
         let mut P3 = PointX::INFINITY;
-        Self::set_xmul_proj_u64_vartime(A24, C24, &mut P3, P, n);
+        Self::xmul_proj_u64_vartime_into(A24, C24, &mut P3, P, n);
         P3
     }
 
@@ -386,7 +386,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         debug_assert!(size_J > 1);
 
         let mut P2 = *P;
-        Self::set_xdbl_proj(&mut P2, A24, C24);
+        Self::xdbl_proj_into(&mut P2, A24, C24);
 
         // First we compute [j]P for j in {1, 3, ... 2*size_J - 1}
         xJ[0] = *P;
@@ -397,7 +397,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
         // Next we want to compute x([i]P) for i in {2*size_J * (2i + 1)}
         let mut P4 = P2;
-        Self::set_xdbl_proj(&mut P4, A24, C24);
+        Self::xdbl_proj_into(&mut P4, A24, C24);
 
         // First we compute [2*size_J]P which we can do efficiently from the computation
         // of xJ above. We assume the degree of the isogeny is known (and so size_J is also
@@ -412,7 +412,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
         // We need [2]Q as a step-size to generate xI
         let mut Q2 = Q;
-        Self::set_xdbl_proj(&mut Q2, A24, C24);
+        Self::xdbl_proj_into(&mut Q2, A24, C24);
 
         xI[0] = Q;
         xI[1] = Self::xdiff_add(&xI[0], &Q2, &xI[0]);
@@ -695,7 +695,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
                 // when ell = 2 we can do repeated doubling
                 if degree == 2 {
-                    Self::set_xdbl_proj_iter(&mut stategy_points[n + k], A24, C24, m);
+                    Self::xdbl_proj_iter_into(&mut stategy_points[n + k], A24, C24, m);
                 } else {
                     // Otherwise we have this janky repeated multiplication.
                     stategy_points[n + k] = Self::xmul_proj_u64_iter_vartime(
