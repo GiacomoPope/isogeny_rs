@@ -13,7 +13,8 @@ impl<Fq: FpTrait> Curve<Fq> {
     // x-only doubling methods
     // ============================================================================
 
-    /// P <- [2]*P (x-only variant) in place
+    /// P <- [2]*P (x-only variant) in place.
+    /// Cost: 2S + 3M.
     #[inline(always)]
     pub fn set_xdbl(&self, P: &mut PointX<Fq>) {
         let mut V1 = (P.X + P.Z).square();
@@ -27,28 +28,31 @@ impl<Fq: FpTrait> Curve<Fq> {
     }
 
     /// Return [2]*P (x-only variant).
+    /// Cost: 2S + 3M.
     pub fn xdbl(&self, P: &PointX<Fq>) -> PointX<Fq> {
         let mut Q = *P;
         self.set_xdbl(&mut Q);
         Q
     }
 
-    /// P <- (2^e)*P (x-only variant)
+    /// P <- [2^n]*P (x-only variant) in place.
+    /// Cost: n * (2S + 3M).
     pub fn set_xdbl_iter(&self, P: &mut PointX<Fq>, n: usize) {
         for _ in 0..n {
             self.set_xdbl(P);
         }
     }
 
-    /// Return (2^e)*P (x-only variant).
+    /// Return [2^n]*P (x-only variant).
+    /// Cost: n * (2S + 3M).
     pub fn xdbl_iter(&self, P: &PointX<Fq>, n: usize) -> PointX<Fq> {
         let mut Q = *P;
         self.set_xdbl_iter(&mut Q, n);
         Q
     }
 
-    /// Compute [2]P in place using projective (A + 2) / 4 = (A24 : C24)
-    /// Cost: 2S + 4M
+    /// P <- [2]*P (x-only variant) in place using projective curve constant (A+2)/4 = (A24 : C24).
+    /// Cost: 2S + 4M.
     #[inline(always)]
     pub fn set_xdbl_proj(P: &mut PointX<Fq>, A24: &Fq, C24: &Fq) {
         let mut t0 = P.X + P.Z;
@@ -63,8 +67,8 @@ impl<Fq: FpTrait> Curve<Fq> {
         P.Z = t0 * t2;
     }
 
-    /// Compute \[2^n\]P in place using projective (A + 2) / 4 = (A24 : C24).
-    /// Cost: n * (2S + 4M)
+    /// P <- [2^n]*P (x-only variant) in place using projective curve constant (A+2)/4 = (A24 : C24).
+    /// Cost: n * (2S + 4M).
     #[inline]
     pub fn set_xdbl_proj_iter(P: &mut PointX<Fq>, A24: &Fq, C24: &Fq, n: usize) {
         for _ in 0..n {
@@ -76,6 +80,8 @@ impl<Fq: FpTrait> Curve<Fq> {
     // x-only differential addition methods
     // ============================================================================
 
+    /// Q <- x(P + Q) in place, given x(P), x(Q) and x(P - Q) as projective points.
+    /// Cost: 2S + 4M.
     #[inline(always)]
     pub fn xdiff_add_into(P: &PointX<Fq>, Q: &mut PointX<Fq>, PmQ: &PointX<Fq>) {
         let V1 = (P.X - P.Z) * (Q.X + Q.Z);
@@ -84,13 +90,16 @@ impl<Fq: FpTrait> Curve<Fq> {
         Q.Z = PmQ.X * (V1 - V2).square();
     }
 
+    /// Return x(P + Q) given x(P), x(Q) and x(P - Q) as projective points.
+    /// Cost: 2S + 4M.
     pub fn xdiff_add(P: &PointX<Fq>, Q: &PointX<Fq>, PmQ: &PointX<Fq>) -> PointX<Fq> {
         let mut R = *Q;
         Self::xdiff_add_into(P, &mut R, PmQ);
         R
     }
 
-    /// x-only differential formula
+    /// Q <- x(P + Q) in place, given x(P), x(Q) and the affine x-coordinate x(P - Q).
+    /// Cost: 2S + 3M.
     #[inline(always)]
     pub fn xdiff_add_aff_into(P: &PointX<Fq>, Q: &mut PointX<Fq>, xPmQ: &Fq) {
         let V1 = (P.X - P.Z) * (Q.X + Q.Z);
@@ -99,7 +108,8 @@ impl<Fq: FpTrait> Curve<Fq> {
         Q.Z = *xPmQ * (V1 - V2).square();
     }
 
-    /// Return x(P + Q) given x(P), x(Q) and x(P - Q) as `PointX<Fq>`.
+    /// Return x(P + Q) given x(P), x(Q) and the affine x-coordinate x(P - Q).
+    /// Cost: 2S + 3M.
     #[inline]
     pub fn xdiff_add_aff(P: &PointX<Fq>, Q: &PointX<Fq>, xPmQ: &Fq) -> PointX<Fq> {
         let mut R = *Q;
@@ -111,10 +121,8 @@ impl<Fq: FpTrait> Curve<Fq> {
     // x-only double and add methods
     // ============================================================================
 
-    /// x-only doubling and differential addition formula
-    /// Note: order of arguments:
-    /// (XP : ZP), (XQ : ZQ), (XPQ: ZPQ) For PQ = P - Q
-    /// Sets P = [2]P and Q = P + Q in place
+    /// P <- [2]*P, Q <- x(P + Q) in place, given x(P), x(Q) and x(P - Q) as projective points.
+    /// Cost: 4S + 7M.
     #[inline(always)]
     pub fn xdbladd_into(&self, P: &mut PointX<Fq>, Q: &mut PointX<Fq>, PmQ: &PointX<Fq>) {
         let t0 = P.X + P.Z;
@@ -133,6 +141,8 @@ impl<Fq: FpTrait> Curve<Fq> {
         Q.Z = PmQ.X * (t0_Q - t1_Q).square();
     }
 
+    /// P <- [2]*P, Q <- x(P + Q) in place, given x(P), x(Q) and the affine x-coordinate x(P - Q).
+    /// Cost: 4S + 6M.
     #[inline(always)]
     pub fn xdbladd_aff_into(&self, P: &mut PointX<Fq>, Q: &mut PointX<Fq>, xPmQ: &Fq) {
         let t0 = P.X + P.Z;
@@ -151,7 +161,8 @@ impl<Fq: FpTrait> Curve<Fq> {
         Q.Z = *xPmQ * (t0_Q - t1_Q).square();
     }
 
-    /// Return x(P + Q) given x(P), x(Q) and x(P - Q) as `PointX<Fq>`.
+    /// Return ([2]*P, x(P + Q)) given x(P), x(Q) and x(P - Q) as projective points.
+    /// Cost: 4S + 7M.
     #[inline]
     pub fn xdbladd(
         &self,
@@ -169,9 +180,9 @@ impl<Fq: FpTrait> Curve<Fq> {
     // x-only Montgomery ladder for scalar multiplication
     // ============================================================================
 
-    /// P3 <- n*P, x-only variant.
-    /// Integer n is encoded as unsigned little-endian, with length
-    /// nbitlen bits. Bits beyond that length are ignored.
+    /// P3 <- [n]*P (x-only variant) in place.
+    /// Integer n is encoded as unsigned little-endian with length nbitlen bits.
+    /// Bits beyond nbitlen are ignored.
     pub fn xmul_into(&self, P3: &mut PointX<Fq>, P: &PointX<Fq>, n: &[u8], nbitlen: usize) {
         // Montgomery ladder: see https://eprint.iacr.org/2017/212
         if nbitlen == 0 {
@@ -216,18 +227,17 @@ impl<Fq: FpTrait> Curve<Fq> {
         P3.set_cond(&PointX::INFINITY, spec);
     }
 
-    /// Return n*P as a new point (x-only variant).
-    /// Integer n is encoded as unsigned little-endian, with length
-    /// nbitlen bits. Bits beyond that length are ignored.
+    /// Return [n]*P (x-only variant).
+    /// Integer n is encoded as unsigned little-endian with length nbitlen bits.
+    /// Bits beyond nbitlen are ignored.
     pub fn xmul(&self, P: &PointX<Fq>, n: &[u8], nbitlen: usize) -> PointX<Fq> {
         let mut P3 = PointX::INFINITY;
         self.xmul_into(&mut P3, P, n, nbitlen);
         P3
     }
 
-    /// P3 <- n*P, x-only variant.
-    /// Integer n is represented as a u64 and the scalar n is assumed to be public
-    /// nbitlen bits. Bits beyond that length are ignored.
+    /// P3 <- [n]*P (x-only variant) in place.
+    /// The scalar n is a u64 and is assumed to be a public value (variable-time).
     pub fn set_xmul_u64_vartime(&self, P3: &mut PointX<Fq>, P: &PointX<Fq>, n: u64) {
         // Handle small cases.
         match n {
@@ -279,16 +289,18 @@ impl<Fq: FpTrait> Curve<Fq> {
         }
     }
 
-    /// Return n*P as a new point (x-only variant).
-    /// Integer n is encoded as a u64 which is assumed to be a public value.
+    /// Return [n]*P (x-only variant).
+    /// The scalar n is a u64 and is assumed to be a public value (variable-time).
     pub fn xmul_u64_vartime(&self, P: &PointX<Fq>, n: u64) -> PointX<Fq> {
         let mut P3 = PointX::INFINITY;
         self.set_xmul_u64_vartime(&mut P3, P, n);
         P3
     }
 
-    /// Return (2^e)*R for R in [P, Q, P - Q] (x-only variant).
+    /// Return ([2^e]*P, [2^e]*Q, [2^e]*(P - Q)) for the x-only basis B = (P, Q, P - Q).
     pub fn basis_double_iter(&self, B: &BasisX<Fq>, e: usize) -> BasisX<Fq> {
+        // TODO: if we unrolled these xdbl_iter we might save some cycles but the
+        // self.xdbl_triple_iter method would be pretty ugly!
         let P = self.xdbl_iter(&B.P, e);
         let Q = self.xdbl_iter(&B.Q, e);
         let PQ = self.xdbl_iter(&B.PQ, e);
@@ -299,9 +311,9 @@ impl<Fq: FpTrait> Curve<Fq> {
     // x-only specialised ladders
     // ============================================================================
 
-    /// Return P + n*Q, x-only variant given the x-only basis x(P), x(Q) and x(P - Q).
-    /// Integer `n` is encoded as unsigned little-endian, with length `nbitlen` bits.
-    /// Bits beyond that length are ignored.
+    /// Return x(P + [n]*Q) given the x-only basis B = (x(P), x(Q), x(P - Q)).
+    /// Integer n is encoded as unsigned little-endian with length nbitlen bits.
+    /// Bits beyond nbitlen are ignored.
     pub fn three_point_ladder(&self, B: &BasisX<Fq>, n: &[u8], nbitlen: usize) -> PointX<Fq> {
         if nbitlen == 0 {
             return B.P;
@@ -374,8 +386,8 @@ impl<Fq: FpTrait> Curve<Fq> {
         ((s0 & 1) as usize, (s1 & 1) as usize, r)
     }
 
-    /// Return [a]P + [b]*Q, x-only variant given the x-only basis x(P), x(Q) and x(P - Q).
-    /// The integers `a` and `b` are encoded as unsigned little-endian.
+    /// Return x([a]*P + [b]*Q) given the x-only basis B = (x(P), x(Q), x(P - Q)).
+    /// The integers a and b are encoded as unsigned little-endian.
     pub fn ladder_biscalar(
         &self,
         B: &BasisX<Fq>,
@@ -442,8 +454,10 @@ impl<Fq: FpTrait> Curve<Fq> {
         R[index]
     }
 
-    /// Variable time computation of [a]P + [b]Q given the x-only basis x(P), x(Q), x(P - Q)
-    /// Based off Euclid2D: Algorithm 9 of https://eprint.iacr.org/2017/212.pdf
+    /// Return x([a]*P + [b]*Q) given the x-only basis B = (x(P), x(Q), x(P - Q)).
+    /// The integers a and b are encoded as unsigned little-endian.
+    /// This function is variable-time and assumes a and b are public values.
+    /// Based on Euclid2D: Algorithm 9 of https://eprint.iacr.org/2017/212.pdf
     pub fn ladder_biscalar_vartime(
         &self,
         B: &BasisX<Fq>,
