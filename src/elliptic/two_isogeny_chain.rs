@@ -118,7 +118,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         for i in 0..n {
             // Double the kernel to get a point of order 2
             ker_step = ker;
-            Self::xdbl_proj_iter(&A24, &C24, &mut ker_step, n - i - 1);
+            Self::xdbl_proj_iter_into(&mut ker_step, &A24, &C24, n - i - 1);
 
             // For the first step, we check the kernel has exactly order 2^n
             // we also allow the first step to be the singular isogeny with
@@ -126,7 +126,7 @@ impl<Fq: FqTrait> Curve<Fq> {
             if i == 0 {
                 // First check if the kernel has the correct order.
                 let mut inf = ker_step;
-                Self::xdbl_proj(&A24, &C24, &mut inf.X, &mut inf.Z);
+                Self::xdbl_proj_into(&mut inf, &A24, &C24);
                 if (!ker_step.Z.is_zero() & inf.Z.is_zero()) != u32::MAX {
                     return (*self, 0);
                 }
@@ -209,7 +209,7 @@ impl<Fq: FqTrait> Curve<Fq> {
                 k += 1;
                 let m = 2 * (orders[k - 1] / 4) + (orders[k - 1] & 1);
                 stategy_points[k] = stategy_points[k - 1];
-                Self::xdbl_proj_iter(&A24, &C24, &mut stategy_points[k], m);
+                Self::xdbl_proj_iter_into(&mut stategy_points[k], &A24, &C24, m);
                 orders[k] = orders[k - 1] - m;
             }
             // Point of order four to compute isogeny with
@@ -221,13 +221,13 @@ impl<Fq: FqTrait> Curve<Fq> {
                 let mut tmp = ker_step;
 
                 // Ensure that the [2]ker is not (0 : 1)
-                Self::xdbl_proj(&A24, &C24, &mut tmp.X, &mut tmp.Z);
+                Self::xdbl_proj_into(&mut tmp, &A24, &C24);
                 ok &= !tmp.X.is_zero();
 
                 // Ensure that the kernel has exact order
                 // [2]ker != 0 and [4]ker = 0
                 ok &= !tmp.Z.is_zero();
-                Self::xdbl_proj(&A24, &C24, &mut tmp.X, &mut tmp.Z);
+                Self::xdbl_proj_into(&mut tmp, &A24, &C24);
                 ok &= tmp.Z.is_zero();
             }
 
@@ -258,7 +258,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
             // Ensure the point has order exactly 2
             let mut tmp = ker_step;
-            Self::xdbl_proj(&A24, &C24, &mut tmp.X, &mut tmp.Z);
+            Self::xdbl_proj_into(&mut tmp, &A24, &C24);
             ok &= tmp.Z.is_zero();
 
             // Compute the codomain from ker_step

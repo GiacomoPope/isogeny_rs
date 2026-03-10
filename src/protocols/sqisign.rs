@@ -220,7 +220,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         let mut chl_kernel =
             pk.curve
                 .three_point_ladder(&pk_basis, sig.chl_scalar, self.security_bits);
-        chl_kernel = pk.curve.xdouble_iter(&chl_kernel, sig.backtracking);
+        chl_kernel = pk.curve.xdbl_iter(&chl_kernel, sig.backtracking);
 
         // Compute the isogeny chain, a failure u32 is returned for the case of
         // bad input.
@@ -357,9 +357,9 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         // depending on aij values
         let mut basis_img = B.to_array();
         let kernel = if sig.aij[0][0] & 1 == 0 && sig.aij[2][0] & 1 == 0 {
-            E.xdouble_iter(&B.Q, e_rsp_prime + 2)
+            E.xdbl_iter(&B.Q, e_rsp_prime + 2)
         } else {
-            E.xdouble_iter(&B.P, e_rsp_prime + 2)
+            E.xdbl_iter(&B.P, e_rsp_prime + 2)
         };
 
         // Compute the two isogeny and push the challenge basis through

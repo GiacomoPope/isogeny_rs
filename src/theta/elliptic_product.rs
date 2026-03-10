@@ -1,6 +1,6 @@
 use fp2::traits::Fp2 as FqTrait;
 
-use crate::elliptic::{curve::Curve, projective_point::Point};
+use crate::elliptic::{curve::Curve, point::PointX, projective_point::Point};
 
 #[derive(Clone, Copy, Debug)]
 pub struct ProductPoint<Fq: FqTrait> {
@@ -23,6 +23,11 @@ impl<Fq: FqTrait> ProductPoint<Fq> {
     /// Return the points P1, P2
     pub fn points(&self) -> (Point<Fq>, Point<Fq>) {
         (self.P1, self.P2)
+    }
+
+    /// Return the points as x-only points xP1, xP2
+    pub fn to_pointx(&self) -> (PointX<Fq>, PointX<Fq>) {
+        (self.P1.to_pointx(), self.P2.to_pointx())
     }
 }
 
