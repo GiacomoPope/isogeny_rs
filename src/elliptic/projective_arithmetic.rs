@@ -1,5 +1,7 @@
 use fp2::traits::Fp as FpTrait;
 
+use crate::elliptic::point::PointX;
+
 use super::{curve::Curve, projective_point::Point};
 
 impl<Fq: FpTrait> Curve<Fq> {
@@ -184,11 +186,10 @@ impl<Fq: FpTrait> Curve<Fq> {
 
         // We will need the complete 2*P at the end, to handle some
         // special cases of the formulas.
+        let xP = P.to_pointx();
         let dP = self.double(P);
-        let mut X0 = Fq::ONE;
-        let mut Z0 = Fq::ZERO;
-        let mut X1 = P.X;
-        let mut Z1 = P.Z;
+        let mut X0 = PointX::INFINITY;
+        let mut X1 = xP;
         let mut cc = 0u32;
         if nbitlen > 21 {
             // If n is large enough then it is worthwhile to
@@ -198,47 +199,42 @@ impl<Fq: FpTrait> Curve<Fq> {
             let Xp = P.X / P.Z;
             for i in (0..nbitlen).rev() {
                 let ctl = (((n[i >> 3] >> (i & 7)) as u32) & 1).wrapping_neg();
-                Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
-                Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
-                Self::xadd_aff(&Xp, &X0, &Z0, &mut X1, &mut Z1);
-                self.xdbl(&mut X0, &mut Z0);
+                PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
+                self.xdbladd_aff_into(&mut X0, &mut X1, &Xp);
                 cc = ctl;
             }
         } else {
             for i in (0..nbitlen).rev() {
                 let ctl = (((n[i >> 3] >> (i & 7)) as u32) & 1).wrapping_neg();
-                Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
-                Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
-                Self::xadd(&P.X, &P.Z, &X0, &Z0, &mut X1, &mut Z1);
-                self.xdbl(&mut X0, &mut Z0);
+                PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
+                self.xdbladd_into(&mut X0, &mut X1, &xP);
                 cc = ctl;
             }
         }
-        Fq::condswap(&mut X0, &mut X1, cc);
-        Fq::condswap(&mut Z0, &mut Z1, cc);
+        PointX::condswap(&mut X0, &mut X1, cc);
 
         // Special cases:
         //  - ladder fails if P = (0,0) (a point of order 2)
         //  - y is not reconstructed correctly if P has order 2,
         //    or if (n+1)*P = P, -P or infinity.
-        let z0z = Z0.is_zero();
-        let z1z = Z1.is_zero();
-        let x1ex = (X1 * P.Z).equals(&(P.X * Z1));
+        let z0z = X0.Z.is_zero();
+        let z1z = X1.Z.is_zero();
+        let x1ex = (X1.X * P.Z).equals(&(P.X * X1.Z));
 
         // (X0/Z0) is the X coordinate of P0 = n*P
         // (X1/Z1) is the X coordinate of P1 = (n + 1)*P
         // We recompute the Y coordinate of n*P (formulas from
         // Okeya and Sakurai).
-        let xxzz = (P.X * X0) + (P.Z * Z0);
-        let xpz0 = P.X * Z0;
-        let x0zp = X0 * P.Z;
-        let zz = P.Z * Z0;
+        let xxzz = (P.X * X0.X) + (P.Z * X0.Z);
+        let xpz0 = P.X * X0.Z;
+        let x0zp = X0.X * P.Z;
+        let zz = P.Z * X0.Z;
         let zzdA = self.A.mul2() * zz;
         let u = (xxzz * (xpz0 + x0zp + zzdA)) - (zzdA * zz);
-        let v = P.Y.mul2() * zz * Z1;
-        P3.X = X0 * v;
-        P3.Y = (u * Z1) - ((xpz0 - x0zp).square() * X1);
-        P3.Z = Z0 * v;
+        let v = P.Y.mul2() * zz * X1.Z;
+        P3.X = X0.X * v;
+        P3.Y = (u * X1.Z) - ((xpz0 - x0zp).square() * X1.X);
+        P3.Z = X0.Z * v;
 
         // Fix result for the special cases.
         //  P = inf                          -> inf

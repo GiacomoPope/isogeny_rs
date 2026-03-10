@@ -2,9 +2,9 @@
 //
 // Optimise Sqrt Velu, current implementation is very slow!
 //
-// Cofactor clearing. At the current moment clearing the cofactor means 
+// Cofactor clearing. At the current moment clearing the cofactor means
 // multiplying by each ell_i e_i times,
-// which seems silly. I think we should probably have some function which converts 
+// which seems silly. I think we should probably have some function which converts
 // the prime factorization into &[u64; ...]
 // and then we use these limbs to do var time point multiplication
 
@@ -35,7 +35,7 @@ impl<Fq: FqTrait> PointXMultiples<Fq> {
     pub fn new(A24: &Fq, C24: &Fq, P: &PointX<Fq>) -> Self {
         // precompute [2]P for the second output of multiplies
         let mut P2 = *P;
-        Curve::xdbl_proj(A24, C24, &mut P2.X, &mut P2.Z);
+        Curve::set_xdbl_proj(&mut P2, A24, C24);
 
         Self {
             P: *P,
@@ -96,33 +96,31 @@ impl<Fq: FqTrait> Curve<Fq> {
             }
             2 => {
                 *P3 = *P;
-                Self::xdbl_proj(A24, C24, &mut P3.X, &mut P3.Z);
+                Self::set_xdbl_proj(P3, A24, C24);
             }
             3 => {
                 *P3 = *P;
-                Self::xdbl_proj(A24, C24, &mut P3.X, &mut P3.Z);
-                Self::xadd(&P.X, &P.Z, &P.X, &P.Z, &mut P3.X, &mut P3.Z);
+                Self::set_xdbl_proj(P3, A24, C24);
+                Self::xdiff_add_into(P, P3, P);
             }
             4 => {
                 *P3 = *P;
-                Self::xdbl_proj(A24, C24, &mut P3.X, &mut P3.Z);
-                Self::xdbl_proj(A24, C24, &mut P3.X, &mut P3.Z);
+                Self::set_xdbl_proj(P3, A24, C24);
+                Self::set_xdbl_proj(P3, A24, C24);
             }
             5 => {
                 let mut P2 = *P;
                 *P3 = *P;
-                Self::xdbl_proj(A24, C24, &mut P2.X, &mut P2.Z);
-                Self::xadd(&P.X, &P.Z, &P2.X, &P2.Z, &mut P3.X, &mut P3.Z);
-                Self::xadd(&P.X, &P.Z, &P2.X, &P2.Z, &mut P3.X, &mut P3.Z);
+                Self::set_xdbl_proj(&mut P2, A24, C24);
+                Self::xdiff_add_into(&P2, P3, P);
+                Self::xdiff_add_into(&P2, P3, P);
             }
 
             _ => {
                 let nbitlen = u64::BITS - n.leading_zeros();
 
-                let mut X0 = Fq::ONE;
-                let mut Z0 = Fq::ZERO;
-                let mut X1 = P.X;
-                let mut Z1 = P.Z;
+                let mut X0 = PointX::INFINITY;
+                let mut X1 = *P;
                 let mut cc = 0u32;
                 if nbitlen > 21 {
                     // If n is large enough then it is worthwhile to
@@ -133,24 +131,21 @@ impl<Fq: FqTrait> Curve<Fq> {
                     let Xp = P.X / P.Z;
                     for i in (0..nbitlen).rev() {
                         let ctl = (((n >> i) as u32) & 1).wrapping_neg();
-                        Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
-                        Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
-                        Self::xadd_aff(&Xp, &X0, &Z0, &mut X1, &mut Z1);
-                        Self::xdbl_proj(A24, C24, &mut X0, &mut Z0);
+                        PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
+                        Self::xdiff_add_aff_into(&X0, &mut X1, &Xp);
+                        Self::set_xdbl_proj(&mut X0, A24, C24);
                         cc = ctl;
                     }
                 } else {
                     for i in (0..nbitlen).rev() {
                         let ctl = (((n >> i) as u32) & 1).wrapping_neg();
-                        Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
-                        Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
-                        Self::xadd(&P.X, &P.Z, &X0, &Z0, &mut X1, &mut Z1);
-                        Self::xdbl_proj(A24, C24, &mut X0, &mut Z0);
+                        PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
+                        Self::xdiff_add_into(&X0, &mut X1, P);
+                        Self::set_xdbl_proj(&mut X0, A24, C24);
                         cc = ctl;
                     }
                 }
-                Fq::condswap(&mut X0, &mut X1, cc);
-                Fq::condswap(&mut Z0, &mut Z1, cc);
+                PointX::condswap(&mut X0, &mut X1, cc);
 
                 // The ladder may fail if P = (0,0) (which is a point of
                 // order 2) because in that case xadd() (and xadd_aff())
@@ -158,10 +153,8 @@ impl<Fq: FqTrait> Curve<Fq> {
                 // to be the point-at-infinity, which is wrong is n is odd.
                 // We adjust the result in that case.
                 let spec = P.X.is_zero() & !P.Z.is_zero() & (((n & 1) as u32) & 1).wrapping_neg();
-                P3.X = X0;
-                P3.Z = Z0;
-                P3.X.set_cond(&Fq::ZERO, spec);
-                P3.Z.set_cond(&Fq::ONE, spec);
+                *P3 = X0;
+                P3.set_cond(&PointX::INFINITY, spec);
             }
         }
     }
@@ -185,10 +178,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         // bit length will be more than 64 as we have a multi-limb bn.
         let nbitlen = bn_bit_length_vartime(n);
 
-        let mut X0 = Fq::ONE;
-        let mut Z0 = Fq::ZERO;
-        let mut X1 = P.X;
-        let mut Z1 = P.Z;
+        let mut X0 = PointX::INFINITY;
+        let mut X1 = *P;
         let mut cc = 0u32;
 
         // As n is large enough, it is worthwhile to
@@ -199,14 +190,13 @@ impl<Fq: FqTrait> Curve<Fq> {
         let Xp = P.X / P.Z;
         for i in (0..nbitlen).rev() {
             let ctl = (((n[i >> 6] >> (i & 63)) as u32) & 1).wrapping_neg();
-            Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
-            Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
-            Self::xadd_aff(&Xp, &X0, &Z0, &mut X1, &mut Z1);
-            Self::xdbl_proj(A24, C24, &mut X0, &mut Z0);
+            PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
+            // TODO: xdbladd_proj_aff_into?
+            Self::xdiff_add_aff_into(&X0, &mut X1, &Xp);
+            Self::set_xdbl_proj(&mut X0, A24, C24);
             cc = ctl;
         }
-        Fq::condswap(&mut X0, &mut X1, cc);
-        Fq::condswap(&mut Z0, &mut Z1, cc);
+        PointX::condswap(&mut X0, &mut X1, cc);
 
         // The ladder may fail if P = (0,0) (which is a point of
         // order 2) because in that case xadd() (and xadd_aff())
@@ -214,10 +204,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         // to be the point-at-infinity, which is wrong is n is odd.
         // We adjust the result in that case.
         let spec = P.X.is_zero() & !P.Z.is_zero() & (((n[0] & 1) as u32) & 1).wrapping_neg();
-        P3.X = X0;
-        P3.Z = Z0;
-        P3.X.set_cond(&Fq::ZERO, spec);
-        P3.Z.set_cond(&Fq::ONE, spec);
+        *P3 = X0;
+        P3.set_cond(&PointX::INFINITY, spec);
     }
 
     /// Return n*P as a new point (x-only variant) using (A24 : C24).
@@ -245,20 +233,20 @@ impl<Fq: FqTrait> Curve<Fq> {
         x: usize,
         e: usize,
     ) -> PointX<Fq> {
-       // Convert x^e to big integer represented as u64 
-       // to fall back into u64 ladder path 
-       let mut n64 = 1u64; 
-       for _ in 0..e {
+        // Convert x^e to big integer represented as u64
+        // to fall back into u64 ladder path
+        let mut n64 = 1u64;
+        for _ in 0..e {
             match n64.checked_mul(x as u64) {
-                Some(v) => n64 = v, 
+                Some(v) => n64 = v,
                 None => {
                     let n = prime_power_to_bn_vartime(x, e);
                     return Self::xmul_proj_bn_vartime(A24, C24, P, &n);
                 }
-            } 
+            }
         }
 
-        Self::xmul_proj_u64_vartime(A24, C24, P, n64) 
+        Self::xmul_proj_u64_vartime(A24, C24, P, n64)
     }
 
     // ============================================================
@@ -398,7 +386,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         debug_assert!(size_J > 1);
 
         let mut P2 = *P;
-        Self::xdbl_proj(A24, C24, &mut P2.X, &mut P2.Z);
+        Self::set_xdbl_proj(&mut P2, A24, C24);
 
         // First we compute [j]P for j in {1, 3, ... 2*size_J - 1}
         xJ[0] = *P;
@@ -409,7 +397,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
         // Next we want to compute x([i]P) for i in {2*size_J * (2i + 1)}
         let mut P4 = P2;
-        Self::xdbl_proj(A24, C24, &mut P4.X, &mut P4.Z);
+        Self::set_xdbl_proj(&mut P4, A24, C24);
 
         // First we compute [2*size_J]P which we can do efficiently from the computation
         // of xJ above. We assume the degree of the isogeny is known (and so size_J is also
@@ -424,7 +412,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
         // We need [2]Q as a step-size to generate xI
         let mut Q2 = Q;
-        Self::xdbl_proj(A24, C24, &mut Q2.X, &mut Q2.Z);
+        Self::set_xdbl_proj(&mut Q2, A24, C24);
 
         xI[0] = Q;
         xI[1] = Self::xdiff_add(&xI[0], &Q2, &xI[0]);
@@ -481,7 +469,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         let tree = P::product_tree_quadratic_leaves(leaves);
         P::product_from_tree(&tree)
     }
-    
+
     /// Understanding the polynomial hK = prod(x * PZ - PX) for the set in hK, then
     /// evaluate this polynomial at alpha = 1 and alpha = -1
     #[inline]
@@ -557,10 +545,9 @@ impl<Fq: FqTrait> Curve<Fq> {
         let mut eJ_precomp = vec![(Fq::ZERO, Fq::ZERO, Fq::ZERO); size_J];
         Self::precompute_eJ_values(&mut eJ_precomp, &hJ_points, A24, C24); // Cost: size_J * (1S + 2M)
 
-        // Also cache (X + Z) and (X - Z) for the J partition since these are 
-        // reused for every evaluated image point 
-        let hJ_sum_diff: Vec<(Fq, Fq)> = 
-            hJ_points.iter().map(|Q| (Q.X + Q.Z, Q.X - Q.Z)).collect(); 
+        // Also cache (X + Z) and (X - Z) for the J partition since these are
+        // reused for every evaluated image point
+        let hJ_sum_diff: Vec<(Fq, Fq)> = hJ_points.iter().map(|Q| (Q.X + Q.Z, Q.X - Q.Z)).collect();
 
         let mut E0j_codomain_leaves: Vec<[Fq; 3]> = Vec::with_capacity(size_J);
         let mut E1j_codomain_leaves: Vec<[Fq; 3]> = Vec::with_capacity(size_J);
@@ -605,7 +592,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         D_ed *= num;
 
         // Evaluate each point through the isogeny.
-        let mut E0J_eval_leaves: Vec<P> = Vec::with_capacity(size_J); 
+        let mut E0J_eval_leaves: Vec<P> = Vec::with_capacity(size_J);
         for img in img_points.iter_mut() {
             if img.is_zero() == u32::MAX {
                 continue;
@@ -613,14 +600,14 @@ impl<Fq: FqTrait> Curve<Fq> {
 
             // We use the sum and difference for the EJ leaves as well as when
             // evaluating hK at alpha = (X / Z) and 1/alpha.
-            let XpZ = img.X + img.Z; 
-            let XmZ = img.X - img.Z; 
-            let XZ2 = (img.X * img.Z).mul2(); 
+            let XpZ = img.X + img.Z;
+            let XmZ = img.X - img.Z;
+            let XZ2 = (img.X * img.Z).mul2();
             let X2Z2 = XpZ.square() - XZ2; // X^2 + Z^2
 
-            E0J_eval_leaves.clear(); 
+            E0J_eval_leaves.clear();
             for (i, (sum_sqr, XZ4neg, AXZ4neg)) in eJ_precomp.iter().enumerate() {
-                let (add, sub) = hJ_sum_diff[i]; 
+                let (add, sub) = hJ_sum_diff[i];
 
                 // Constant coefficient: c0 = [2 * (X * Xj - Z * Zj)]^2
                 // Quadratic coefficient: c1 = [2 * (X * Zj - Z * Xj)]^2
@@ -642,7 +629,7 @@ impl<Fq: FqTrait> Curve<Fq> {
                 c1 += X2Z2 * *XZ4neg;
                 c1.set_mul2();
 
-                E0J_eval_leaves.push(P::new_from_slice(&[c0, c1, c2])); 
+                E0J_eval_leaves.push(P::new_from_slice(&[c0, c1, c2]));
             }
 
             let E0J = P::product_tree_root(&E0J_eval_leaves);
@@ -700,7 +687,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         // Compute the isogeny chain with a naive balanced strategy.
         let mut k = 0;
         for _ in 0..len {
-            // Get the next point of order ell 
+            // Get the next point of order ell
             while orders[k] != 1 {
                 k += 1;
                 let m = orders[k - 1] / 2;
@@ -708,7 +695,7 @@ impl<Fq: FqTrait> Curve<Fq> {
 
                 // when ell = 2 we can do repeated doubling
                 if degree == 2 {
-                    Self::xdbl_proj_iter(A24, C24, &mut stategy_points[n + k], m);
+                    Self::set_xdbl_proj_iter(&mut stategy_points[n + k], A24, C24, m);
                 } else {
                     // Otherwise we have this janky repeated multiplication.
                     stategy_points[n + k] = Self::xmul_proj_u64_iter_vartime(

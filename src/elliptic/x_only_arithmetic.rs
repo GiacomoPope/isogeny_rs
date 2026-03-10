@@ -9,115 +9,189 @@ use crate::utilities::le_bytes::encode_to_odd_binary;
 use super::{basis::BasisX, curve::Curve, point::PointX};
 
 impl<Fq: FpTrait> Curve<Fq> {
-    /// Compute the x-only double of a given point and return
-    /// the X-coords
-    #[inline(always)]
-    pub fn xdbl_coords(&self, X: &Fq, Z: &Fq) -> (Fq, Fq) {
-        let mut V1 = (*X + *Z).square();
-        let V2 = (*X - *Z).square();
-        let X_new = V1 * V2;
-        V1 -= V2;
-        let mut Z_new = V1;
-        Z_new *= self.A24;
-        Z_new += V2;
-        Z_new *= V1;
+    // ============================================================================
+    // x-only doubling methods
+    // ============================================================================
 
-        (X_new, Z_new)
+    /// P <- [2]*P (x-only variant) in place
+    #[inline]
+    pub fn set_xdbl(&self, P: &mut PointX<Fq>) {
+        let mut V1 = (P.X + P.Z).square();
+        let V2 = (P.X - P.Z).square();
+        P.X = V1 * V2;
+        V1 -= V2;
+        P.Z = V1;
+        P.Z *= self.A24;
+        P.Z += V2;
+        P.Z *= V1;
     }
 
-    /// x-only doubling formula
-    #[inline(always)]
-    pub fn xdbl(&self, X: &mut Fq, Z: &mut Fq) {
-        let mut V1 = (*X + *Z).square();
-        let V2 = (*X - *Z).square();
-        *X = V1 * V2;
+    /// P2 <- [2]*P (x-only variant)
+    #[inline]
+    pub fn xdbl_into(&self, P2: &mut PointX<Fq>, P: &PointX<Fq>) {
+        let mut V1 = (P.X + P.Z).square();
+        let V2 = (P.X - P.Z).square();
+        P2.X = V1 * V2;
         V1 -= V2;
-        *Z = V1;
-        *Z *= self.A24;
-        *Z += V2;
-        *Z *= V1;
+        P2.Z = V1;
+        P2.Z *= self.A24;
+        P2.Z += V2;
+        P2.Z *= V1;
+    }
+
+    /// Return [2]*P (x-only variant).
+    pub fn xdbl(&self, P: &PointX<Fq>) -> PointX<Fq> {
+        let mut Q = PointX::INFINITY;
+        self.xdbl_into(&mut Q, P);
+        Q
+    }
+
+    /// P2 <- (2^e)*P (x-only variant)
+    fn xdbl_iter_into(&self, P2: &mut PointX<Fq>, P: &PointX<Fq>, e: usize) {
+        let mut X = P.X;
+        let mut Z = P.Z;
+        for _ in 0..e {
+            let mut V1 = (X + Z).square();
+            let V2 = (X - Z).square();
+            X = V1 * V2;
+            V1 -= V2;
+            Z = V1;
+            Z *= self.A24;
+            Z += V2;
+            Z *= V1;
+        }
+        P2.X = X;
+        P2.Z = Z;
+    }
+
+    /// Return (2^e)*P (x-only variant).
+    pub fn xdbl_iter(&self, P: &PointX<Fq>, e: usize) -> PointX<Fq> {
+        let mut Q = PointX::INFINITY;
+        self.xdbl_iter_into(&mut Q, P, e);
+        Q
     }
 
     /// Compute [2]P in place using projective (A + 2) / 4 = (A24 : C24)
     /// Cost: 2S + 4M
     #[inline(always)]
-    pub fn xdbl_proj(A24: &Fq, C24: &Fq, X: &mut Fq, Z: &mut Fq) {
-        let mut t0 = *X + *Z;
+    pub fn set_xdbl_proj(P: &mut PointX<Fq>, A24: &Fq, C24: &Fq) {
+        let mut t0 = P.X + P.Z;
         t0.set_square();
-        let mut t1 = *X - *Z;
+        let mut t1 = P.X - P.Z;
         t1.set_square();
         let t2 = t0 - t1;
         t1 *= *C24;
-        *X = t0 * t1;
+        P.X = t0 * t1;
         t0 = t2 * (*A24);
         t0 += t1;
-        *Z = t0 * t2;
+        P.Z = t0 * t2;
     }
 
     /// Compute \[2^n\]P in place using projective (A + 2) / 4 = (A24 : C24).
     /// Cost: n * (2S + 4M)
     #[inline]
-    pub fn xdbl_proj_iter(A24: &Fq, C24: &Fq, P: &mut PointX<Fq>, n: usize) {
+    pub fn set_xdbl_proj_iter(P: &mut PointX<Fq>, A24: &Fq, C24: &Fq, n: usize) {
         for _ in 0..n {
-            Self::xdbl_proj(A24, C24, &mut P.X, &mut P.Z);
+            Self::set_xdbl_proj(P, A24, C24);
         }
     }
 
-    /// x-only differential formula Note: order of arguments:
-    /// (XPQ : ZPQ), (XP : ZP), (XQ : ZQ) For PQ = P - Q
-    /// Sets Q  = P + Q in place
+    // ============================================================================
+    // x-only differential addition methods
+    // ============================================================================
+
     #[inline(always)]
-    pub fn xadd(XPQ: &Fq, ZPQ: &Fq, XP: &Fq, ZP: &Fq, XQ: &mut Fq, ZQ: &mut Fq) {
-        let V1 = (*XP - *ZP) * (*XQ + *ZQ);
-        let V2 = (*XP + *ZP) * (*XQ - *ZQ);
-        *XQ = *ZPQ * (V1 + V2).square();
-        *ZQ = *XPQ * (V1 - V2).square();
+    pub fn xdiff_add_into(P: &PointX<Fq>, Q: &mut PointX<Fq>, PmQ: &PointX<Fq>) {
+        let V1 = (P.X - P.Z) * (Q.X + Q.Z);
+        let V2 = (P.X + P.Z) * (Q.X - Q.Z);
+        Q.X = PmQ.Z * (V1 + V2).square();
+        Q.Z = PmQ.X * (V1 - V2).square();
     }
 
-    /// x-only differential addition with PointX type, sets `R` to x(P + Q) given x(P)
-    /// x(Q) and x(P - Q) as `PointX<Fq>`.
-    #[inline]
-    fn xdiff_add_into(R: &mut PointX<Fq>, xP: &PointX<Fq>, xQ: &PointX<Fq>, xPmQ: &PointX<Fq>) {
-        R.X = xQ.X;
-        R.Z = xQ.Z;
-        Self::xadd(&xPmQ.X, &xPmQ.Z, &xP.X, &xP.Z, &mut R.X, &mut R.Z);
+    pub fn xdiff_add(P: &PointX<Fq>, Q: &PointX<Fq>, PmQ: &PointX<Fq>) -> PointX<Fq> {
+        let mut R = *Q;
+        Self::xdiff_add_into(P, &mut R, PmQ);
+        R
+    }
+
+    /// x-only differential formula
+    #[inline(always)]
+    pub fn xdiff_add_aff_into(P: &PointX<Fq>, Q: &mut PointX<Fq>, xPmQ: &Fq) {
+        let V1 = (P.X - P.Z) * (Q.X + Q.Z);
+        let V2 = (P.X + P.Z) * (Q.X - Q.Z);
+        Q.X = (V1 + V2).square();
+        Q.Z = *xPmQ * (V1 - V2).square();
     }
 
     /// Return x(P + Q) given x(P), x(Q) and x(P - Q) as `PointX<Fq>`.
     #[inline]
-    pub fn xdiff_add(xP: &PointX<Fq>, xQ: &PointX<Fq>, xPmQ: &PointX<Fq>) -> PointX<Fq> {
-        let mut R = PointX::INFINITY;
-        Self::xdiff_add_into(&mut R, xP, xQ, xPmQ);
+    pub fn xdiff_add_aff(P: &PointX<Fq>, Q: &PointX<Fq>, xPmQ: &Fq) -> PointX<Fq> {
+        let mut R = *Q;
+        Self::xdiff_add_aff_into(P, &mut R, xPmQ);
         R
     }
 
-    /// x-only differential formula Note: order of arguments:
-    /// (XPQ : 1), (XP : ZP), (XQ : ZQ) For PQ = P - Q
-    /// Sets Q  = P + Q in place
+    // ============================================================================
+    // x-only double and add methods
+    // ============================================================================
+
+    /// x-only doubling and differential addition formula
+    /// Note: order of arguments:
+    /// (XP : ZP), (XQ : ZQ), (XPQ: ZPQ) For PQ = P - Q
+    /// Sets P = [2]P and Q = P + Q in place
     #[inline(always)]
-    pub fn xadd_aff(XPQ: &Fq, XP: &Fq, ZP: &Fq, XQ: &mut Fq, ZQ: &mut Fq) {
-        let V1 = (*XP - *ZP) * (*XQ + *ZQ);
-        let V2 = (*XP + *ZP) * (*XQ - *ZQ);
-        *XQ = (V1 + V2).square();
-        *ZQ = *XPQ * (V1 - V2).square();
+    pub fn xdbladd_into(&self, P: &mut PointX<Fq>, Q: &mut PointX<Fq>, PmQ: &PointX<Fq>) {
+        let t0 = P.X + P.Z;
+        let t1 = P.X - P.Z;
+        let X2P_sq = t0.square();
+        let Z2P_sq = t1.square();
+
+        let t2 = X2P_sq - Z2P_sq;
+        P.X = X2P_sq * Z2P_sq;
+        P.Z = t2 * (Z2P_sq + self.A24 * t2);
+
+        let t0_Q = t0 * (Q.X - Q.Z);
+        let t1_Q = t1 * (Q.X + Q.Z);
+
+        Q.X = PmQ.Z * (t0_Q + t1_Q).square();
+        Q.Z = PmQ.X * (t0_Q - t1_Q).square();
     }
 
-    /// x-only differential addition with PointX type, sets `R` to x(P + Q) given x(P)
-    /// x(Q) and x(P - Q) as `PointX<Fq>`.
-    #[inline]
-    fn xadd_aff_add_into(R: &mut PointX<Fq>, xP: &PointX<Fq>, xQ: &PointX<Fq>, xPmQ: &Fq) {
-        R.X = xQ.X;
-        R.Z = xQ.Z;
-        Self::xadd_aff(xPmQ, &xP.X, &xP.Z, &mut R.X, &mut R.Z);
+    #[inline(always)]
+    pub fn xdbladd_aff_into(&self, P: &mut PointX<Fq>, Q: &mut PointX<Fq>, xPmQ: &Fq) {
+        let t0 = P.X + P.Z;
+        let t1 = P.X - P.Z;
+        let X2P_sq = t0.square();
+        let Z2P_sq = t1.square();
+
+        let t2 = X2P_sq - Z2P_sq;
+        P.X = X2P_sq * Z2P_sq;
+        P.Z = t2 * (Z2P_sq + self.A24 * t2);
+
+        let t0_Q = t0 * (Q.X - Q.Z);
+        let t1_Q = t1 * (Q.X + Q.Z);
+
+        Q.X = (t0_Q + t1_Q).square();
+        Q.Z = *xPmQ * (t0_Q - t1_Q).square();
     }
 
     /// Return x(P + Q) given x(P), x(Q) and x(P - Q) as `PointX<Fq>`.
     #[inline]
-    fn xdiff_aff_add(xP: &PointX<Fq>, xQ: &PointX<Fq>, xPmQ: &Fq) -> PointX<Fq> {
-        let mut R = PointX::INFINITY;
-        Self::xadd_aff_add_into(&mut R, xP, xQ, xPmQ);
-        R
+    pub fn xdbladd(
+        &self,
+        P: &PointX<Fq>,
+        Q: &PointX<Fq>,
+        PmQ: &PointX<Fq>,
+    ) -> (PointX<Fq>, PointX<Fq>) {
+        let mut R = *P;
+        let mut S = *Q;
+        self.xdbladd_into(&mut R, &mut S, PmQ);
+        (R, S)
     }
+
+    // ============================================================================
+    // x-only Montgomery ladder for scalar multiplication
+    // ============================================================================
 
     /// P3 <- n*P, x-only variant.
     /// Integer n is encoded as unsigned little-endian, with length
@@ -130,10 +204,8 @@ impl<Fq: FpTrait> Curve<Fq> {
             return;
         }
 
-        let mut X0 = Fq::ONE;
-        let mut Z0 = Fq::ZERO;
-        let mut X1 = P.X;
-        let mut Z1 = P.Z;
+        let mut X0 = PointX::INFINITY;
+        let mut X1 = *P;
         let mut cc = 0u32;
         if nbitlen > 21 {
             // If n is large enough then it is worthwhile to
@@ -144,24 +216,19 @@ impl<Fq: FpTrait> Curve<Fq> {
             let Xp = P.X / P.Z;
             for i in (0..nbitlen).rev() {
                 let ctl = (((n[i >> 3] >> (i & 7)) as u32) & 1).wrapping_neg();
-                Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
-                Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
-                Self::xadd_aff(&Xp, &X0, &Z0, &mut X1, &mut Z1);
-                self.xdbl(&mut X0, &mut Z0);
+                PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
+                self.xdbladd_aff_into(&mut X0, &mut X1, &Xp);
                 cc = ctl;
             }
         } else {
             for i in (0..nbitlen).rev() {
                 let ctl = (((n[i >> 3] >> (i & 7)) as u32) & 1).wrapping_neg();
-                Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
-                Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
-                Self::xadd(&P.X, &P.Z, &X0, &Z0, &mut X1, &mut Z1);
-                self.xdbl(&mut X0, &mut Z0);
+                PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
+                self.xdbladd_into(&mut X0, &mut X1, P);
                 cc = ctl;
             }
         }
-        Fq::condswap(&mut X0, &mut X1, cc);
-        Fq::condswap(&mut Z0, &mut Z1, cc);
+        PointX::condswap(&mut X0, &mut X1, cc);
 
         // The ladder may fail if P = (0,0) (which is a point of
         // order 2) because in that case xadd() (and xadd_aff())
@@ -169,10 +236,8 @@ impl<Fq: FpTrait> Curve<Fq> {
         // to be the point-at-infinity, which is wrong is n is odd.
         // We adjust the result in that case.
         let spec = P.X.is_zero() & !P.Z.is_zero() & ((n[0] as u32) & 1).wrapping_neg();
-        P3.X = X0;
-        P3.Z = Z0;
-        P3.X.set_cond(&Fq::ZERO, spec);
-        P3.Z.set_cond(&Fq::ONE, spec);
+        *P3 = X0;
+        P3.set_cond(&PointX::INFINITY, spec);
     }
 
     /// Return n*P as a new point (x-only variant).
@@ -196,14 +261,12 @@ impl<Fq: FpTrait> Curve<Fq> {
             1 => {
                 *P3 = *P;
             }
-            2 => *P3 = self.xdouble(P),
+            2 => *P3 = self.xdbl(P),
             _ => {
                 let nbitlen = (64 - n.leading_zeros()) as usize;
 
-                let mut X0 = Fq::ONE;
-                let mut Z0 = Fq::ZERO;
-                let mut X1 = P.X;
-                let mut Z1 = P.Z;
+                let mut X0 = PointX::INFINITY;
+                let mut X1 = *P;
                 let mut cc = 0u32;
                 if nbitlen > 21 {
                     // If n is large enough then it is worthwhile to
@@ -214,24 +277,19 @@ impl<Fq: FpTrait> Curve<Fq> {
                     let Xp = P.X / P.Z;
                     for i in (0..nbitlen).rev() {
                         let ctl = (((n >> i) as u32) & 1).wrapping_neg();
-                        Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
-                        Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
-                        Self::xadd_aff(&Xp, &X0, &Z0, &mut X1, &mut Z1);
-                        self.xdbl(&mut X0, &mut Z0);
+                        PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
+                        self.xdbladd_aff_into(&mut X0, &mut X1, &Xp);
                         cc = ctl;
                     }
                 } else {
                     for i in (0..nbitlen).rev() {
                         let ctl = (((n >> i) as u32) & 1).wrapping_neg();
-                        Fq::condswap(&mut X0, &mut X1, ctl ^ cc);
-                        Fq::condswap(&mut Z0, &mut Z1, ctl ^ cc);
-                        Self::xadd(&P.X, &P.Z, &X0, &Z0, &mut X1, &mut Z1);
-                        self.xdbl(&mut X0, &mut Z0);
+                        PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
+                        self.xdbladd_into(&mut X0, &mut X1, P);
                         cc = ctl;
                     }
                 }
-                Fq::condswap(&mut X0, &mut X1, cc);
-                Fq::condswap(&mut Z0, &mut Z1, cc);
+                PointX::condswap(&mut X0, &mut X1, cc);
 
                 // The ladder may fail if P = (0,0) (which is a point of
                 // order 2) because in that case xadd() (and xadd_aff())
@@ -239,10 +297,8 @@ impl<Fq: FpTrait> Curve<Fq> {
                 // to be the point-at-infinity, which is wrong is n is odd.
                 // We adjust the result in that case.
                 let spec = P.X.is_zero() & !P.Z.is_zero() & (((n & 1) as u32) & 1).wrapping_neg();
-                P3.X = X0;
-                P3.Z = Z0;
-                P3.X.set_cond(&Fq::ZERO, spec);
-                P3.Z.set_cond(&Fq::ONE, spec);
+                *P3 = X0;
+                P3.set_cond(&PointX::INFINITY, spec);
             }
         }
     }
@@ -255,79 +311,17 @@ impl<Fq: FpTrait> Curve<Fq> {
         P3
     }
 
-    /// P3 <- [2]*P (x-only variant)
-    fn xdouble_into(&self, P3: &mut PointX<Fq>, P: &PointX<Fq>) {
-        let mut V1 = (P.X + P.Z).square();
-        let V2 = (P.X - P.Z).square();
-        P3.X = V1 * V2;
-        V1 -= V2;
-        P3.Z = V1;
-        P3.Z *= self.A24;
-        P3.Z += V2;
-        P3.Z *= V1;
-    }
-
-    /// Return [2]*P (x-only variant).
-    pub fn xdouble(&self, P: &PointX<Fq>) -> PointX<Fq> {
-        let mut Q = PointX::INFINITY;
-        self.xdouble_into(&mut Q, P);
-        Q
-    }
-
-    /// P3 <- (2^e)*P (x-only variant)
-    fn xdouble_iter_into(&self, P3: &mut PointX<Fq>, P: &PointX<Fq>, e: usize) {
-        let mut X = P.X;
-        let mut Z = P.Z;
-        for _ in 0..e {
-            let mut V1 = (X + Z).square();
-            let V2 = (X - Z).square();
-            X = V1 * V2;
-            V1 -= V2;
-            Z = V1;
-            Z *= self.A24;
-            Z += V2;
-            Z *= V1;
-        }
-        P3.X = X;
-        P3.Z = Z;
-    }
-
-    /// Return (2^e)*P (x-only variant).
-    pub fn xdouble_iter(&self, P: &PointX<Fq>, e: usize) -> PointX<Fq> {
-        let mut Q = PointX::INFINITY;
-        self.xdouble_iter_into(&mut Q, P, e);
-        Q
-    }
-
     /// Return (2^e)*R for R in [P, Q, P - Q] (x-only variant).
     pub fn basis_double_iter(&self, B: &BasisX<Fq>, e: usize) -> BasisX<Fq> {
-        let P = self.xdouble_iter(&B.P, e);
-        let Q = self.xdouble_iter(&B.Q, e);
-        let PQ = self.xdouble_iter(&B.PQ, e);
+        let P = self.xdbl_iter(&B.P, e);
+        let Q = self.xdbl_iter(&B.Q, e);
+        let PQ = self.xdbl_iter(&B.PQ, e);
         BasisX::from_points(&P, &Q, &PQ)
     }
 
-    /// x-only doubling and differential addition formula
-    /// Note: order of arguments:
-    /// (XP : ZP), (XQ : ZQ), (XPQ: ZPQ) For PQ = P - Q
-    /// Sets P = [2]P and Q = P + Q in place
-    #[inline(always)]
-    fn xdbladd(&self, XP: &mut Fq, ZP: &mut Fq, XQ: &mut Fq, ZQ: &mut Fq, XQP: &Fq, ZQP: &Fq) {
-        let t0 = *XP + *ZP;
-        let t1 = *XP - *ZP;
-        let X2P_sq = t0.square();
-        let Z2P_sq = t1.square();
-
-        let t2 = X2P_sq - Z2P_sq;
-        *XP = X2P_sq * Z2P_sq;
-        *ZP = t2 * (Z2P_sq + self.A24 * t2);
-
-        let t0_Q = t0 * (*XQ - *ZQ);
-        let t1_Q = t1 * (*XQ + *ZQ);
-
-        *XQ = *ZQP * (t0_Q + t1_Q).square();
-        *ZQ = *XQP * (t0_Q - t1_Q).square();
-    }
+    // ============================================================================
+    // x-only specialised ladders
+    // ============================================================================
 
     /// Return P + n*Q, x-only variant given the x-only basis x(P), x(Q) and x(P - Q).
     /// Integer `n` is encoded as unsigned little-endian, with length `nbitlen` bits.
@@ -338,22 +332,19 @@ impl<Fq: FpTrait> Curve<Fq> {
         }
 
         // Extract out the coordinates from the basis
-        let (mut X0, mut Z0) = B.Q.coords();
-        let (mut X1, mut Z1) = B.P.coords();
-        let (mut X2, mut Z2) = B.PQ.coords();
+        let mut X0 = B.Q;
+        let mut X1 = B.P;
+        let mut X2 = B.PQ;
 
         let mut cc = 0u32;
         for i in 0..nbitlen {
             let ctl = (((n[i >> 3] >> (i & 7)) as u32) & 1).wrapping_neg();
-            Fq::condswap(&mut X1, &mut X2, ctl ^ cc);
-            Fq::condswap(&mut Z1, &mut Z2, ctl ^ cc);
-            self.xdbladd(&mut X0, &mut Z0, &mut X2, &mut Z2, &X1, &Z1);
+            PointX::condswap(&mut X1, &mut X2, ctl ^ cc);
+            self.xdbladd_into(&mut X0, &mut X2, &X1);
             cc = ctl;
         }
-        Fq::condswap(&mut X1, &mut X2, cc);
-        Fq::condswap(&mut Z1, &mut Z2, cc);
-
-        PointX::new(&X1, &Z1)
+        PointX::condswap(&mut X1, &mut X2, cc);
+        X1
     }
 
     /// Helper function for `ladder_biscalar` which re-encodes the scalars `a` and `b` into
@@ -457,12 +448,12 @@ impl<Fq: FpTrait> Curve<Fq> {
 
             // Compute new T values and swap differential points conditionally.
             let to_double = if (h >> 1) == 0 { R[h & 1] } else { R[2] };
-            T[0] = self.xdouble(&to_double);
+            T[0] = self.xdbl(&to_double);
 
             Fq::condswap(&mut xD1, &mut xD2, (r2 as u32).wrapping_neg());
-            T[1] = Self::xdiff_aff_add(&R[r2], &R[r2 + 1], &xD1);
+            T[1] = Self::xdiff_add_aff(&R[r2], &R[r2 + 1], &xD1);
 
-            T[2] = Self::xdiff_aff_add(&R[0], &R[2], &xF1);
+            T[2] = Self::xdiff_add_aff(&R[0], &R[2], &xF1);
             Fq::condswap(&mut xF1, &mut xF2, ((h & 1) as u32).wrapping_neg());
 
             // Update R values from T values.
@@ -497,8 +488,6 @@ impl<Fq: FpTrait> Curve<Fq> {
 
         // Define points we need for arithmetic
         let (mut x0, mut x1, mut xd) = (B.P, B.Q, B.PQ);
-        let mut r0: PointX<Fq>;
-        let mut r1: PointX<Fq>;
 
         // Euclidian loop, at the end s0 = 0, s1 = gcd(a, b) and x1 = [a/gcd(a, b) * P + b/gcd(a, b) * Q]
         while !bn_is_zero_vartime(&s0) {
@@ -520,39 +509,28 @@ impl<Fq: FpTrait> Curve<Fq> {
             if bn_lt_vartime(&bn_tmp, &s0) {
                 // s0, s1 = s0, s1 - s0
                 bn_sub_into_vartime(&mut s1, &s0);
-
-                r0 = Self::xdiff_add(&x1, &x0, &xd);
-                (x0, xd) = (r0, x0);
+                (x0, xd) = (Self::xdiff_add(&x1, &x0, &xd), x0);
 
             // s0 % 2 == s1 % 2:
             } else if s0[0] & 1 == s1[0] & 1 {
                 // s0, s1 = s0, (s1 - s0) // 2
                 bn_sub_into_vartime(&mut s1, &s0);
                 bn_set_div2_vartime(&mut s1);
-
-                r0 = self.xdouble(&x1);
-                r1 = Self::xdiff_add(&x1, &x0, &xd);
-                (x0, x1) = (r1, r0)
+                (x1, x0) = self.xdbladd(&x1, &x0, &xd);
 
             // s1 % 2 == 0:
             } else if s1[0] & 1 == 0 {
                 // s0, s1 = s0, s1 // 2
                 bn_set_div2_vartime(&mut s1);
-
-                r0 = self.xdouble(&x1);
-                r1 = Self::xdiff_add(&x1, &xd, &x0);
-                (x1, xd) = (r0, r1)
+                (x1, xd) = self.xdbladd(&x1, &xd, &x0);
             } else {
                 // s0, s1 = s0 // 2, s1
                 bn_set_div2_vartime(&mut s0);
-
-                r0 = self.xdouble(&x0);
-                r1 = Self::xdiff_add(&x0, &xd, &x1);
-                (x0, xd) = (r0, r1)
+                (x0, xd) = self.xdbladd(&x0, &xd, &x1);
             }
         }
 
-        // Clean trailing padded zeros 
+        // Clean trailing padded zeros
         while s1.len() > 1 && s1.last() == Some(&0) {
             s1.pop();
         }
@@ -566,7 +544,7 @@ impl<Fq: FpTrait> Curve<Fq> {
             let mut n = s1[0];
             while n & 1 == 0 && n > 0 {
                 n >>= 1;
-                x1 = self.xdouble(&x1);
+                self.set_xdbl(&mut x1);
             }
             if n > 1 {
                 x1 = self.xmul_u64_vartime(&x1, n);

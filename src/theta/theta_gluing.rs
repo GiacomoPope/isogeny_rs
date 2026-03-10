@@ -13,7 +13,7 @@ use super::theta_point::ThetaPoint;
 use super::theta_structure::ThetaStructure;
 use super::theta_util::{apply_base_change, to_hadamard};
 use crate::elliptic::curve::Curve;
-use crate::elliptic::projective_point::Point;
+use crate::elliptic::point::PointX;
 
 use fp2::traits::Fp2 as FqTrait;
 
@@ -48,9 +48,9 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
     /// M = (1/lambda) * [[a, b], [c, d]] represented as an array [a, b, c, d] and
     /// a scalar lambda.
     /// Cost: 9M + 3S
-    fn action_by_translation(E: &Curve<Fq>, T: &Point<Fq>) -> ((Fq, Fq, Fq, Fq), Fq) {
-        let (x, z) = T.to_xz();
-        let (u, w) = E.xdbl_coords(&x, &z); // Cost 3M 2S
+    fn action_by_translation(E: &Curve<Fq>, T: &PointX<Fq>) -> ((Fq, Fq, Fq, Fq), Fq) {
+        let (x, z) = T.coords();
+        let (u, w) = E.xdbl(T).coords(); // Cost 3M 2S
 
         // Precompute some pieces
         let wx = w * x;
@@ -79,8 +79,8 @@ impl<Fq: FqTrait> EllipticProduct<Fq> {
     fn get_base_matrix(&self, P1P2: &ProductPoint<Fq>, Q1Q2: &ProductPoint<Fq>) -> [Fq; 16] {
         // First compute the submatrices from each point
         let (E1, E2) = self.curves();
-        let (P1, P2) = P1P2.points();
-        let (Q1, Q2) = Q1Q2.points();
+        let (P1, P2) = P1P2.to_pointx();
+        let (Q1, Q2) = Q1Q2.to_pointx();
 
         // NOTES: action_by_translation computes a matrix G together with a scaling factor
         // such that the coefficients we want are given by G / d.

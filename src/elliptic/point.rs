@@ -56,6 +56,12 @@ impl<Fq: FpTrait> PointX<Fq> {
         Fq::condswap(&mut P.Z, &mut Q.Z, ctl);
     }
 
+    #[inline]
+    pub fn set_cond(&mut self, P: &Self, ctl: u32) {
+        self.X.set_cond(&P.X, ctl);
+        self.Z.set_cond(&P.Z, ctl);
+    }
+
     pub fn batch_normalise(points: &mut [Self]) {
         let mut zs: Vec<Fq> = points.iter().map(|point| point.Z).collect();
         Fq::batch_invert(&mut zs);
