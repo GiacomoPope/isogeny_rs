@@ -146,8 +146,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         xPQ = self.xmul(&xPQ, cofactor, cofactor_bitsize);
 
         // We clear the 2^(f - e) order with repeated doubling.
-        xP = self.xdbl_iter(&xP, e_diff);
-        xPQ = self.xdbl_iter(&xPQ, e_diff);
+        self.set_xdbl_iter(&mut xP, e_diff);
+        self.set_xdbl_iter(&mut xPQ, e_diff);
 
         // Compute the difference point to get the basis x(P), x(Q) and x(P-Q)
         let xQ = self.projective_difference(&xP, &xPQ);
@@ -209,8 +209,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         xPQ = self.xmul(&xPQ, cofactor, cofactor_bitsize);
 
         // We clear the 2^(f - e) order with repeated doubling.
-        xP = self.xdbl_iter(&xP, e_diff);
-        xPQ = self.xdbl_iter(&xPQ, e_diff);
+        self.set_xdbl_iter(&mut xP, e_diff);
+        self.set_xdbl_iter(&mut xPQ, e_diff);
 
         // Compute the difference point to get the basis x(P), x(Q) and x(P-Q)
         let xQ = self.projective_difference(&xP, &xPQ);

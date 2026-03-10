@@ -14,7 +14,7 @@ impl<Fq: FpTrait> Curve<Fq> {
     // ============================================================================
 
     /// P <- [2]*P (x-only variant) in place
-    #[inline]
+    #[inline(always)]
     pub fn set_xdbl(&self, P: &mut PointX<Fq>) {
         let mut V1 = (P.X + P.Z).square();
         let V2 = (P.X - P.Z).square();
@@ -26,48 +26,24 @@ impl<Fq: FpTrait> Curve<Fq> {
         P.Z *= V1;
     }
 
-    /// P2 <- [2]*P (x-only variant)
-    #[inline]
-    pub fn xdbl_into(&self, P2: &mut PointX<Fq>, P: &PointX<Fq>) {
-        let mut V1 = (P.X + P.Z).square();
-        let V2 = (P.X - P.Z).square();
-        P2.X = V1 * V2;
-        V1 -= V2;
-        P2.Z = V1;
-        P2.Z *= self.A24;
-        P2.Z += V2;
-        P2.Z *= V1;
-    }
-
     /// Return [2]*P (x-only variant).
     pub fn xdbl(&self, P: &PointX<Fq>) -> PointX<Fq> {
-        let mut Q = PointX::INFINITY;
-        self.xdbl_into(&mut Q, P);
+        let mut Q = *P;
+        self.set_xdbl(&mut Q);
         Q
     }
 
-    /// P2 <- (2^e)*P (x-only variant)
-    fn xdbl_iter_into(&self, P2: &mut PointX<Fq>, P: &PointX<Fq>, e: usize) {
-        let mut X = P.X;
-        let mut Z = P.Z;
-        for _ in 0..e {
-            let mut V1 = (X + Z).square();
-            let V2 = (X - Z).square();
-            X = V1 * V2;
-            V1 -= V2;
-            Z = V1;
-            Z *= self.A24;
-            Z += V2;
-            Z *= V1;
+    /// P <- (2^e)*P (x-only variant)
+    pub fn set_xdbl_iter(&self, P: &mut PointX<Fq>, n: usize) {
+        for _ in 0..n {
+            self.set_xdbl(P);
         }
-        P2.X = X;
-        P2.Z = Z;
     }
 
     /// Return (2^e)*P (x-only variant).
-    pub fn xdbl_iter(&self, P: &PointX<Fq>, e: usize) -> PointX<Fq> {
-        let mut Q = PointX::INFINITY;
-        self.xdbl_iter_into(&mut Q, P, e);
+    pub fn xdbl_iter(&self, P: &PointX<Fq>, n: usize) -> PointX<Fq> {
+        let mut Q = *P;
+        self.set_xdbl_iter(&mut Q, n);
         Q
     }
 
