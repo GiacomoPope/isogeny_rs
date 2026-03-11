@@ -24,10 +24,10 @@ kat-tests = []
 # path = "benches/bench_scholten.rs"
 # harness = false
 
-# [[bench]]
-# name = "bench_velu"
-# path = "benches/bench_velu.rs"
-# harness = false
+[[bench]]
+name = "bench_velu"
+path = "benches/bench_velu.rs"
+harness = false
 
 # [[bench]]
 # name = "bench_sidh"
@@ -49,7 +49,7 @@ kat-tests = []
 # path = "benches/bench_biscalar_ladder.rs"
 # harness = false
 
-[[bench]]
-name = "bench_poly_mul"
-path = "benches/bench_poly_mul.rs"
-harness = false
+# [[bench]]
+# name = "bench_poly_mul"
+# path = "benches/bench_poly_mul.rs"
+# harness = false

@@ -4,8 +4,8 @@ use isogeny::fields::csidh::CsidhFp as Fp;
 use isogeny::{polynomial_ring::poly::Polynomial, utilities::test_utils::drng::DRNG};
 type PR = Polynomial<Fp>;
 
-const F_DEGREES: &[usize] = &[4, 8, 12, 16, 20, 40, 80];
-const G_DEGREES: &[usize] = &[1, 2, 4, 8, 16, 32];
+const F_DEGREES: &[usize] = &[2, 4, 8, 16, 32, 64, 128];
+const G_DEGREES: &[usize] = &[3, 10, 20, 40, 80];
 
 fn bench_basic_mul(c: &mut Criterion) {
     let mut group = c.benchmark_group("basic_mul");

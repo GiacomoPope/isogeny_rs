@@ -9,6 +9,9 @@ use std::{
     ops::{Index, IndexMut},
 };
 
+// TODO: what's the optimum here?
+const KARATSUBA_THRESHOLD: usize = 8;
+
 /// Trait for arithmetic for univariate polynomials in Fp[X]
 pub trait Poly<Fp: FpTrait>:
     Clone
@@ -215,7 +218,7 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         // For small degree f, g we use basic multiplication strategies with
         // O(n^2) operations. TODO: set the right bound for when to fall back
         // to this.
-        if f.len() <= 4 {
+        if f.len() <= KARATSUBA_THRESHOLD {
             Self::schoolbook_multiplication(fg, f, g);
             return;
         }
