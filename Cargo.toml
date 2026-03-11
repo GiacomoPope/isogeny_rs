@@ -19,10 +19,10 @@ rayon = "1.10.0"
 [features]
 kat-tests = []
 
-[[bench]]
-name = "bench_scholten"
-path = "benches/bench_scholten.rs"
-harness = false
+# [[bench]]
+# name = "bench_scholten"
+# path = "benches/bench_scholten.rs"
+# harness = false
 
 # [[bench]]
 # name = "bench_velu"
@@ -48,3 +48,13 @@ harness = false
 # name = "bench_biscalar_ladder"
 # path = "benches/bench_biscalar_ladder.rs"
 # harness = false
+
+# [[bench]]
+# name = "bench_poly_mul"
+# path = "benches/bench_poly_mul.rs"
+# harness = false
+
+[[bench]]
+name = "bench_sqrt_velu"
+path = "benches/bench_sqrt_velu.rs"
+harness = false

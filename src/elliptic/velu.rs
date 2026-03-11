@@ -12,11 +12,9 @@
 
 use fp2::traits::Fp as FqTrait;
 
-use crate::{
-    polynomial_ring::poly::Poly,
-    utilities::bn::{
-        bn_bit_length_vartime, factorisation_to_bn_vartime, prime_power_to_bn_vartime,
-    },
+use crate::polynomial_ring::poly::Poly;
+use crate::utilities::bn::{
+    bn_bit_length_vartime, factorisation_to_bn_vartime, prime_power_to_bn_vartime,
 };
 
 use super::{curve::Curve, point::PointX};
@@ -370,7 +368,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// Precompute the points in the three partitions I, J and K using x-only arithmetic.
     // TODO: study Algorithm 1 of ia.cr/2024/584 and see if this still will lead to
     // performance gains for our implementation.
-    fn precompute_partitions(
+    pub fn precompute_partitions(
         xI: &mut [PointX<Fq>],
         xJ: &mut [PointX<Fq>],
         xK: &mut [PointX<Fq>],
@@ -437,7 +435,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     }
 
     #[inline]
-    fn precompute_eJ_values(
+    pub fn precompute_eJ_values(
         eJ_coeffs: &mut [(Fq, Fq, Fq)],
         hJ_points: &[PointX<Fq>],
         A24: &Fq,
@@ -464,16 +462,10 @@ impl<Fq: FqTrait> Curve<Fq> {
         }
     }
 
-    #[inline]
-    fn product_from_quadratic_leaves<P: Poly<Fq>>(leaves: &[[Fq; 3]]) -> P {
-        let tree = P::product_tree_quadratic_leaves(leaves);
-        P::product_from_tree(&tree)
-    }
-
     /// Understanding the polynomial hK = prod(x * PZ - PX) for the set in hK, then
     /// evaluate this polynomial at alpha = 1 and alpha = -1
     #[inline]
-    fn hK_codomain(hK_points: &[PointX<Fq>]) -> (Fq, Fq) {
+    pub fn hK_codomain(hK_points: &[PointX<Fq>]) -> (Fq, Fq) {
         // We already have the factorisation into linear pieces, so there is no
         // need to materialise the factors or use a product tree here.
         let mut h1 = Fq::ONE;
@@ -489,7 +481,7 @@ impl<Fq: FqTrait> Curve<Fq> {
     /// evaluate this polynomial at alpha and 1/alpha (projectively) where we have
     /// alpha = (X : Z) and we take as input X + Z and X - Z.
     #[inline]
-    fn hK_eval(hK_points: &[PointX<Fq>], XpZ: &Fq, XmZ: &Fq) -> (Fq, Fq) {
+    pub fn hK_eval(hK_points: &[PointX<Fq>], XpZ: &Fq, XmZ: &Fq) -> (Fq, Fq) {
         let mut h1 = Fq::ONE;
         let mut h2 = Fq::ONE;
         for P in hK_points.iter() {
@@ -540,6 +532,8 @@ impl<Fq: FqTrait> Curve<Fq> {
         // would use as input into a remainder tree instead...
         PointX::batch_normalise(&mut hI_points);
         let hI_roots: Vec<Fq> = hI_points.iter().map(|P| P.X).collect();
+        // I really want to use the scaled remainder trees but iterative Horner eval seems faster
+        // let hI_eval_tree = EvalTree::new(&hI_roots);
 
         // Precompute (X + Z)^2, (X - Z)^2, -4XZ and -4XZ*A
         let mut eJ_precomp = vec![(Fq::ZERO, Fq::ZERO, Fq::ZERO); size_J];
@@ -561,18 +555,18 @@ impl<Fq: FqTrait> Curve<Fq> {
 
             // Each quadratic factor here is a palindrome.
             // TODO: we could write specialised polynomial arithmetic which
-            // abuses this for faaster multiplication.
+            // abuses this for faster multiplication.
             E0j_codomain_leaves.push([c0_0, c0_1, c0_0]);
             E1j_codomain_leaves.push([c1_0, c1_1, c1_0]);
         }
-        let E0J = Self::product_from_quadratic_leaves::<P>(&E0j_codomain_leaves);
-        let E1J = Self::product_from_quadratic_leaves::<P>(&E1j_codomain_leaves);
+        let E0J = <P>::root_from_quadratic_leaves(&E0j_codomain_leaves);
+        let E1J = <P>::root_from_quadratic_leaves(&E1j_codomain_leaves);
         debug_assert!(E0J.degree().unwrap() == 2 * size_J);
         debug_assert!(E1J.degree().unwrap() == 2 * size_J);
 
         // Compute the codomain.
-        let r0 = E0J.resultant_from_roots(&hI_roots);
-        let r1 = E1J.resultant_from_roots(&hI_roots);
+        let r0 = E0J.resultant_from_roots_horner(&hI_roots);
+        let r1 = E1J.resultant_from_roots_horner(&hI_roots);
         let (m0, m1) = Self::hK_codomain(&hK_points);
 
         // Compute (ri * mi)^8 * (A ∓ 2)^degree
@@ -592,7 +586,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         D_ed *= num;
 
         // Evaluate each point through the isogeny.
-        let mut E0J_eval_leaves: Vec<P> = Vec::with_capacity(size_J);
+        let mut E0J_eval_leaves: Vec<[Fq; 3]> = Vec::with_capacity(size_J);
         for img in img_points.iter_mut() {
             if img.is_zero() == u32::MAX {
                 continue;
@@ -629,14 +623,14 @@ impl<Fq: FqTrait> Curve<Fq> {
                 c1 += X2Z2 * *XZ4neg;
                 c1.set_mul2();
 
-                E0J_eval_leaves.push(P::new_from_slice(&[c0, c1, c2]));
+                E0J_eval_leaves.push([c0, c1, c2]);
             }
 
-            let E0J = P::product_tree_root(&E0J_eval_leaves);
+            let E0J = <P>::root_from_quadratic_leaves(&E0J_eval_leaves);
             let E1J = E0J.reverse();
 
-            let r0 = E0J.resultant_from_roots(&hI_roots);
-            let r1 = E1J.resultant_from_roots(&hI_roots);
+            let r0 = E0J.resultant_from_roots_horner(&hI_roots);
+            let r1 = E1J.resultant_from_roots_horner(&hI_roots);
             let (m0, m1) = Self::hK_eval(&hK_points, &XpZ, &XmZ);
 
             let r0m0 = r0 * m0;
