@@ -1502,6 +1502,42 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         res
     }
 
+    /// Experimental strategy where we take 2^n elements from roots for a balanced product
+    /// tree, and then the remaining elements are multiplied in with Horner
+    pub fn resultant_mixed_strategy_with_tree(
+        &self,
+        balanced_tree: &EvalTree<Fp>,
+        rem_roots: &[Fp],
+    ) -> Fp {
+        // Compute the resultant of 2^n elements with a balanced tree
+        let mut resultant = self.resultant_from_roots_with_tree(&balanced_tree);
+
+        // Use Horner for the rest, if I got things faster we could use an unbalanced tree?
+        for a in rem_roots {
+            resultant *= self.evaluate(a)
+        }
+
+        resultant
+    }
+
+    /// Experimental strategy where we take 2^n elements from roots for a balanced product
+    /// tree, and then the remaining elements are multiplied in with Horner
+    pub fn resultant_mixed_strategy(&self, ai: &[Fp]) -> Fp {
+        // For the first 2^n elements, use a product tree
+        let n_roots = ai.len();
+        let n = usize::BITS - n_roots.leading_zeros() - 1;
+        let two_n = 1 << n;
+        let balanced_tree = EvalTree::new(&ai[..two_n]);
+
+        // For the rest of it, use Horner, but we could make two trees, one balanced and one unbalanced?
+        let mut resultant = self.resultant_from_roots_with_tree(&balanced_tree);
+        for a in &ai[two_n..] {
+            resultant *= self.evaluate(a)
+        }
+
+        resultant
+    }
+
     // Extra functions for benchmarking and testing ===========================================
 
     /// TODO: testing only.
@@ -2247,6 +2283,20 @@ mod test_poly {
                 let f = PR::rand(&mut rng, deg + 1);
                 let roots: Vec<Fp> = (0..n_roots).map(|_| Fp::rand(&mut rng)).collect();
                 let res = f.resultant_from_roots(&roots);
+                let horner = f.resultant_from_roots_horner(&roots);
+                assert_eq!(res.equals(&horner), u32::MAX);
+            }
+        }
+    }
+
+    #[test]
+    fn test_resultant_mixed_strategy_matches_horner() {
+        let mut rng = DRNG::from_seed("resultant".as_bytes());
+        for _ in 0..10 {
+            for &(deg, n_roots) in &[(5usize, 5usize), (10, 10), (20, 20), (50, 50)] {
+                let f = PR::rand(&mut rng, deg + 1);
+                let roots: Vec<Fp> = (0..n_roots).map(|_| Fp::rand(&mut rng)).collect();
+                let res = f.resultant_mixed_strategy(&roots);
                 let horner = f.resultant_from_roots_horner(&roots);
                 assert_eq!(res.equals(&horner), u32::MAX);
             }

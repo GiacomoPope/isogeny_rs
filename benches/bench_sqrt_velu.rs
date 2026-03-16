@@ -129,6 +129,12 @@ fn bench_resultant(c: &mut Criterion) {
         let roots = random_fps(&mut rng, size_i);
         let eval_tree = EvalTree::new(&roots);
 
+        let n = usize::BITS - roots.len().leading_zeros() - 1;
+        let two_n = 1 << n;
+        let balanced_roots = &roots[..two_n];
+        let rem_roots = &roots[two_n..];
+        let balanced_tree = EvalTree::new(&balanced_roots);
+
         // (a) prebuilt eval tree
         group.bench_with_input(
             BenchmarkId::new("remainder_tree_prebuilt", ell),
@@ -145,11 +151,29 @@ fn bench_resultant(c: &mut Criterion) {
             |b, (poly, r)| b.iter(|| black_box(poly).resultant_from_roots_horner(black_box(r))),
         );
 
-        // (c) rebuild eval tree on every call expected slowest
+        // (c) Use a 2^n balanced tree and absorb the last roots with Horner
+        group.bench_with_input(
+            BenchmarkId::new("mixed strategy", ell),
+            &(&ej_poly, &balanced_tree, &rem_roots),
+            |b, (poly, t, r)| {
+                b.iter(|| {
+                    black_box(poly).resultant_mixed_strategy_with_tree(black_box(t), black_box(r))
+                })
+            },
+        );
+
+        // (d) rebuild eval tree on every call expected slowest
         group.bench_with_input(
             BenchmarkId::new("remainder_tree_rebuild", ell),
             &(&ej_poly, &roots),
             |b, (poly, r)| b.iter(|| black_box(poly).resultant_from_roots(black_box(r))),
+        );
+
+        // (e) rebuild eval tree on every call but use horner for remainder
+        group.bench_with_input(
+            BenchmarkId::new("remainder_tree_mixed_rebuild", ell),
+            &(&ej_poly, &roots),
+            |b, (poly, r)| b.iter(|| black_box(poly).resultant_mixed_strategy(black_box(r))),
         );
     }
     group.finish();
