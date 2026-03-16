@@ -58,3 +58,10 @@ kat-tests = []
 name = "bench_sqrt_velu"
 path = "benches/bench_sqrt_velu.rs"
 harness = false
+
+# [[bin]]
+# name = "profile_resultant"
+# path = "bin/profile_resultant.rs"
+
+# [profile.release]
+# debug = true # keep symbols for flamegraph

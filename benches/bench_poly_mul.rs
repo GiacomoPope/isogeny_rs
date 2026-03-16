@@ -118,7 +118,7 @@ fn bench_sqrt_velu_comparison(c: &mut Criterion) {
     let eval_tree = EvalTree::new(&roots);
 
     group.bench_function("product_tree", |b: &mut criterion::Bencher<'_>| {
-        b.iter(|| PR::product_tree_from_roots(&roots))
+        b.iter(|| PR::product_tree_from_roots_simple(&roots))
     });
 
     // Naive O(n^2): evaluate polynomial at each root using Horner, done 4 times
