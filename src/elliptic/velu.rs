@@ -464,12 +464,6 @@ impl<Fq: FqTrait> Curve<Fq> {
         }
     }
 
-    #[inline]
-    fn product_from_quadratic_leaves<P: Poly<Fq>>(leaves: &[[Fq; 3]]) -> P {
-        let tree = P::product_tree_quadratic_leaves(leaves);
-        P::product_from_tree(&tree)
-    }
-
     /// Understanding the polynomial hK = prod(x * PZ - PX) for the set in hK, then
     /// evaluate this polynomial at alpha = 1 and alpha = -1
     #[inline]
@@ -515,12 +509,9 @@ impl<Fq: FqTrait> Curve<Fq> {
         img_points: &mut [PointX<Fq>],
     ) {
         // baby step, giant step values
-        // TODO: better sqrt?
-        // TODO: I need to use degree - 1 rather than degree + 1 as in
-        // the paper to avoid K < 0... Try and get to the bottom of this.
         let size_J = (((degree - 1) as f64).sqrt() as usize) / 2;
-        let size_I = (degree - 1) / (4 * size_J);
-        let size_K = (degree - 4 * size_J * size_I - 1) / 2;
+        let size_I = (degree + 1) / (4 * size_J);
+        let size_K = ((degree - 1) / 2).saturating_sub(2 * size_J * size_I);
 
         // Compute the points in the I, J and K partitions.
         let mut hI_points = vec![PointX::INFINITY; size_I];
@@ -565,8 +556,8 @@ impl<Fq: FqTrait> Curve<Fq> {
             E0j_codomain_leaves.push([c0_0, c0_1, c0_0]);
             E1j_codomain_leaves.push([c1_0, c1_1, c1_0]);
         }
-        let E0J = Self::product_from_quadratic_leaves::<P>(&E0j_codomain_leaves);
-        let E1J = Self::product_from_quadratic_leaves::<P>(&E1j_codomain_leaves);
+        let E0J = <P>::product_from_quadratic_leaves(&E0j_codomain_leaves);
+        let E1J = <P>::product_from_quadratic_leaves(&E1j_codomain_leaves);
         debug_assert!(E0J.degree().unwrap() == 2 * size_J);
         debug_assert!(E1J.degree().unwrap() == 2 * size_J);
 
@@ -592,7 +583,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         D_ed *= num;
 
         // Evaluate each point through the isogeny.
-        let mut E0J_eval_leaves: Vec<P> = Vec::with_capacity(size_J);
+        let mut E0J_eval_leaves: Vec<[Fq; 3]> = Vec::with_capacity(size_J);
         for img in img_points.iter_mut() {
             if img.is_zero() == u32::MAX {
                 continue;
@@ -629,10 +620,10 @@ impl<Fq: FqTrait> Curve<Fq> {
                 c1 += X2Z2 * *XZ4neg;
                 c1.set_mul2();
 
-                E0J_eval_leaves.push(P::new_from_slice(&[c0, c1, c2]));
+                E0J_eval_leaves.push([c0, c1, c2]);
             }
 
-            let E0J = P::product_tree_root(&E0J_eval_leaves);
+            let E0J = <P>::product_from_quadratic_leaves(&E0J_eval_leaves);
             let E1J = E0J.reverse();
 
             let r0 = E0J.resultant_from_roots(&hI_roots);
