@@ -2,3 +2,4 @@
 *.DS_Store
 /scripts
 main.rs
+*.json

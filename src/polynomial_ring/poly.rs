@@ -1176,9 +1176,7 @@ impl<Fp: FpTrait> Polynomial<Fp> {
             std::mem::swap(&mut buf_in, &mut buf_out);
         }
 
-        Self {
-            coeffs: buf_in[..2 * n + 1].to_vec(),
-        }
+        Self::new_from_slice(&buf_in[..2 * n + 1])
     }
 
     /// Build a product tree over roots using a simple node-per-Vec layout.
@@ -1454,6 +1452,154 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         node_buf[..n_roots].to_vec()
     }
 
+    // TODO this could be refactored into the above potentially, there's a lot of code duplication
+    /// Evaluate self at a perfectly balanced power-of-2 set of roots.
+    ///
+    /// Uses a simplified descent that exploits the uniform stride layout:
+    /// at layer lyr, node j occupies tree[lyr][j*(1<<lyr) .. (j+1)*(1<<lyr)].
+    /// This avoids all offset lookups and calls mul_middle directly (never
+    /// mul_middle_rect) since all sibling pairs have equal size.
+    ///
+    /// Requires eval_tree to have been built over exactly n roots where
+    /// n is a power of 2, using product_tree_from_roots.
+    pub fn multieval_from_balanced_tree(&self, eval_tree: &EvalTree<Fp>) -> Vec<Fp> {
+        let n = eval_tree.n_roots;
+        debug_assert!(n.is_power_of_two());
+        let log_n = n.trailing_zeros() as usize;
+
+        let degp_full = match self.degree() {
+            Some(d) => d,
+            None => return vec![Fp::ZERO; n],
+        };
+
+        // Reduce P mod Q if necessary.
+        let n_layers = eval_tree.tree.len();
+        let owned: Option<Vec<Fp>> = if degp_full >= n {
+            let top = &eval_tree.tree[n_layers - 1];
+            let mut rem = self.coeffs.clone();
+            rem.resize(degp_full + 1, Fp::ZERO);
+            for i in (n..=degp_full).rev() {
+                if rem[i].is_zero() != u32::MAX {
+                    let c = rem[i];
+                    for j in 0..n {
+                        rem[i - n + j] -= c * top[j];
+                    }
+                    rem[i] = Fp::ZERO;
+                }
+            }
+            rem.truncate(n);
+            Some(rem)
+        } else {
+            None
+        };
+        let p_coeffs: &[Fp] = owned.as_deref().unwrap_or(&self.coeffs[..=degp_full]);
+
+        let degp = p_coeffs
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, c)| c.is_zero() != u32::MAX)
+            .map(|(i, _)| i)
+            .unwrap_or(0);
+
+        if p_coeffs[degp].is_zero() == u32::MAX {
+            return vec![Fp::ZERO; n];
+        }
+
+        // Build rev_p zero-padded to length n.
+        let mut rev_p = vec![Fp::ZERO; n];
+        for i in 0..=degp {
+            rev_p[i] = p_coeffs[degp - i];
+        }
+
+        // Scaled series: rev(P) * rev(Q)^{-1} mod x^n.
+        let mut series = vec![Fp::ZERO; n];
+        Self::mul_low(&mut series, &rev_p, &eval_tree.rev_q_inv, n);
+
+        // Reverse back to polynomial order into the working buffer.
+        // dst_buf[0..n] holds the root-level node.
+        let mut dst_buf = vec![Fp::ZERO; n];
+        for i in 0..=degp {
+            dst_buf[i] = series[degp - i];
+        }
+
+        // Scratch buffer: largest mul_middle call is at the first descent step
+        // with child_size = n/2.
+        let max_scratch = Self::mul_middle_scratch_size(n / 2);
+        let mut scratch = vec![Fp::ZERO; max_scratch];
+
+        // dst buffer reused each layer.
+        let mut dst = vec![Fp::ZERO; n];
+
+        // Descend from the root toward the leaves.
+        // After processing layer lyr (0-indexed from leaves), we split
+        // nodes of size (1 << (lyr+1)) into pairs of size (1 << lyr).
+        //
+        // Loop variable: node_size is the size of the CURRENT (parent) nodes.
+        // child_size = node_size / 2.
+        // n_nodes = n / node_size  (number of parent nodes at this step).
+        //
+        // We go from node_size=n (1 parent) down to node_size=2 (n/2 parents,
+        // each producing 2 children of size 1).
+        let mut node_size = n;
+
+        for lyr in (0..log_n).rev() {
+            // lyr is the child layer index (0 = leaves).
+            // child_size = 1 << lyr.
+            // parent layer index = lyr + 1, node_size = 1 << (lyr + 1).
+            let child_size = 1_usize << lyr;
+            debug_assert_eq!(node_size, child_size * 2);
+
+            let n_parents = n / node_size;
+
+            // At child layer lyr, node j has non-leading coefficients at:
+            // eval_tree.tree[lyr][j * child_size .. (j+1) * child_size]
+            let lyr_flat = &eval_tree.tree[lyr];
+
+            for j in 0..n_parents {
+                // Parent node j occupies dst_buf[j*node_size .. (j+1)*node_size].
+                let p_start = j * node_size;
+                let parent = &dst_buf[p_start..p_start + node_size];
+
+                // parent_tail = parent[1..], length = node_size - 1 = 2*child_size - 1.
+                // This is the `f` argument to mul_middle (length 2*child_size - 1).
+                let parent_tail = &parent[1..]; // length 2*child_size - 1
+
+                // Left child (index 2j) non-leading coeffs.
+                let q_l = &lyr_flat[2 * j * child_size..(2 * j + 1) * child_size];
+                // Right child (index 2j+1) non-leading coeffs.
+                let q_r = &lyr_flat[(2 * j + 1) * child_size..(2 * j + 2) * child_size];
+
+                // Both q_l and q_r have length child_size.
+                // parent_tail has length 2*child_size - 1.
+                // So mul_middle(out, parent_tail, q_x) is exactly the balanced case.
+                debug_assert_eq!(parent_tail.len(), 2 * child_size - 1);
+                debug_assert_eq!(q_l.len(), child_size);
+                debug_assert_eq!(q_r.len(), child_size);
+
+                // Left child remainder = MP(parent_tail, q_r) + parent[..child_size]
+                {
+                    let out = &mut dst[2 * j * child_size..(2 * j + 1) * child_size];
+                    Self::mul_middle(out, parent_tail, q_r, &mut scratch);
+                    Self::add_into(out, &parent[..child_size]);
+                }
+
+                // Right child remainder = MP(parent_tail, q_l) + parent[..child_size]
+                {
+                    let out = &mut dst[(2 * j + 1) * child_size..(2 * j + 2) * child_size];
+                    Self::mul_middle(out, parent_tail, q_l, &mut scratch);
+                    Self::add_into(out, &parent[..child_size]);
+                }
+            }
+
+            std::mem::swap(&mut dst_buf, &mut dst);
+            node_size = child_size;
+        }
+
+        // dst_buf[i] now holds P(roots[i]) for i in 0..n.
+        dst_buf
+    }
+
     // Multi point evaluation methods ===========================================
 
     /// Evaluate self at each point in ai using a scaled remainder tree.
@@ -1510,7 +1656,10 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         rem_roots: &[Fp],
     ) -> Fp {
         // Compute the resultant of 2^n elements with a balanced tree
-        let mut resultant = self.resultant_from_roots_with_tree(&balanced_tree);
+        let mut resultant = Fp::ONE;
+        for r in self.multieval_from_balanced_tree(&balanced_tree) {
+            resultant *= r
+        }
 
         // Use Horner for the rest, if I got things faster we could use an unbalanced tree?
         for a in rem_roots {
@@ -1530,7 +1679,11 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         let balanced_tree = EvalTree::new(&ai[..two_n]);
 
         // For the rest of it, use Horner, but we could make two trees, one balanced and one unbalanced?
-        let mut resultant = self.resultant_from_roots_with_tree(&balanced_tree);
+        let mut resultant = Fp::ONE;
+        for r in self.multieval_from_balanced_tree(&balanced_tree) {
+            resultant *= r
+        }
+
         for a in &ai[two_n..] {
             resultant *= self.evaluate(a)
         }

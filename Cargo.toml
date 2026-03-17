@@ -24,10 +24,10 @@ kat-tests = []
 # path = "benches/bench_scholten.rs"
 # harness = false
 
-# [[bench]]
-# name = "bench_velu"
-# path = "benches/bench_velu.rs"
-# harness = false
+[[bench]]
+name = "bench_velu"
+path = "benches/bench_velu.rs"
+harness = false
 
 # [[bench]]
 # name = "bench_sidh"
