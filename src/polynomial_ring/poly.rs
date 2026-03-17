@@ -38,10 +38,7 @@ pub trait Poly<Fp: FpTrait>:
 
     fn evaluate(&self, a: &Fp) -> Fp;
 
-    fn product_tree_root(v: &[Self]) -> Self;
-    fn product_tree_quadratic_leaves(leaves: &[[Fp; 3]]) -> Vec<Vec<Fp>>;
-    fn product_from_tree(tree: &[Vec<Fp>]) -> Self;
-
+    fn product_from_quadratic_leaves(leaves: &[[Fp; 3]]) -> Self;
     fn resultant_from_roots(&self, ai: &[Fp]) -> Fp;
 }
 
@@ -69,16 +66,6 @@ impl<Fp: FpTrait> Polynomial<Fp> {
     /// The length of the polynomial. TODO: should we trim trailing zeros? If so, how often?
     fn len(&self) -> usize {
         self.coeffs.len()
-    }
-
-    /// Truncate leading zeros from the polynomial
-    fn truncate_leading_zeros(&mut self) {
-        // find the index of the first non-zero element
-        let mut i = self.len() - 1;
-        while i > 0 && self.coeffs[i].is_zero() == u32::MAX {
-            i -= 1;
-        }
-        self.coeffs.truncate(i);
     }
 
     /// Return the degree of the polynomial.
@@ -313,7 +300,7 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         Self::add_into(&mut fg[nf..nf + mf + nf.max(mg) - 1], &fg_mid);
     }
 
-    /// TODO: implement other polynomial multiplication (Karatsuba, probably)
+    /// TODO: implement a scratch buffer for karatsuba_multiplication reuse
     fn mul_into(fg: &mut [Fp], f: &[Fp], g: &[Fp]) {
         assert!(f.len() + g.len() - 1 <= fg.len());
         Self::karatsuba_multiplication(fg, f, g)
@@ -391,15 +378,77 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         r
     }
 
-    /// Computes the root of a product tree given a slice of the leaves.
-    pub fn product_tree_root(v: &[Self]) -> Self {
-        if v.len() == 1 {
-            return v[0].clone();
+    /// Computation of a product tree given an array of coefficients of
+    /// quadratic polynomials as leaves. Avoids performing many memory
+    /// allocations, but the code is a little harder to read.
+    pub fn product_from_quadratic_leaves(leaves: &[[Fp; 3]]) -> Self {
+        // Number of leaves and depth for the tree.
+        let n = leaves.len();
+        let log_n = usize::BITS - (2 * n - 1).leading_zeros();
+
+        // Store the quadratic polynomials inside an input buffer
+        let mut buf_in: Vec<Fp> = leaves
+            .iter()
+            .flat_map(|poly| poly.iter().copied())
+            .collect();
+        let mut buf_out = vec![Fp::ZERO; 3 * n];
+
+        // Iterate over the remaining layers,
+        for i in 1..log_n {
+            // At each layer in the tree the degree of each polynomial is at most 2^i.
+            let deg = 1 << i;
+            let len = deg + 1;
+            let out_len = 2 * deg + 1;
+
+            // The majority of the multiplications will be h <- f * g where f and g
+            // both have degree `deg`. This will be done k times when (2 * n = 2 * deg * k + r)
+            let k = n / deg;
+            let r = (n << 1) & ((1 << (i + 1)) - 1);
+
+            // Keep track of the slices for the length deg + 1 polys for input and
+            // length 2*degree + 1 polynomials as output for multiplication.
+            let mut idx_in = 0;
+            let mut idx_out = 0;
+
+            // Compute k full multiplications into the buffer.
+            for _ in 0..k {
+                Self::mul_into(
+                    &mut buf_out[idx_out..idx_out + out_len],
+                    &buf_in[idx_in..idx_in + len],
+                    &buf_in[idx_in + len..idx_in + 2 * len],
+                );
+                idx_out += out_len;
+                idx_in += 2 * len;
+            }
+
+            if r > 0 {
+                // By this point, we have consumed pairs of polynomials of degree `deg`
+                // If `r` is larger than `deg` then we need to do an unbalanced multiplication
+                // of a degree `deg` polynomial with a degree `r - deg` polynomial
+                if r > deg {
+                    let len_rem = r - deg + 1;
+                    Self::mul_into(
+                        &mut buf_out[idx_out..idx_out + r + 1],
+                        &buf_in[idx_in..idx_in + len],
+                        &buf_in[idx_in + len..idx_in + len + len_rem],
+                    );
+                } else {
+                    // Otherwise we want to copy the polynomial from the in buffer to the
+                    // out buffer
+                    buf_out[idx_out..idx_out + r + 1]
+                        .copy_from_slice(&buf_in[idx_in..idx_in + r + 1]);
+                }
+            }
+
+            // Move the multiplication result into the input buffer and append
+            // this into the layers.
+            std::mem::swap(&mut buf_in, &mut buf_out);
         }
-        let half = v.len() >> 1;
-        &Self::product_tree_root(&v[..half]) * &Self::product_tree_root(&v[half..])
+
+        Self::new_from_slice(&buf_in[..2 * n + 1])
     }
 
+    /// UNUSED as we never use the full tree here.
     /// Computation of a product tree given an array of coefficients of
     /// quadratic polynomials as leaves. Avoids performing many memory
     /// allocations, but the code is a little harder to read.
@@ -481,16 +530,6 @@ impl<Fp: FpTrait> Polynomial<Fp> {
         layers
     }
 
-    /// Computes the polynomial product(leaves) assuming a tree given by
-    /// product_tree_quadratic_leaves.
-    pub fn product_from_tree(tree: &[Vec<Fp>]) -> Self {
-        let n = tree[0].len() / 3;
-        let root = tree.last().unwrap();
-        Self {
-            coeffs: root[..2 * n + 1].to_vec(),
-        }
-    }
-
     /// Evaluate a polynomial at a value `a` using Horner's method.
     pub fn evaluate(&self, a: &Fp) -> Fp {
         // Handle degree 0 and 1 cases early.
@@ -512,8 +551,9 @@ impl<Fp: FpTrait> Polynomial<Fp> {
 
     /// Compute the resultant of self with a polynomial g = \prod {x - ai}
     /// given the roots ai.
-    // TODO: this is a very slow and stupid method, but speed comes later and
-    // I want to sketch sqrt velu.
+    /// TODO: this is a naive method where we use Horner's eval on every root.
+    /// Getting scaled remainder trees to be faster than this is a bit of a
+    /// "white whale" problem for me, and is in the branch "remainder_tree"
     pub fn resultant_from_roots(&self, ai: &[Fp]) -> Fp {
         let mut res = Fp::ONE;
         for a in ai.iter() {
@@ -566,16 +606,8 @@ impl<Fp: FpTrait> Poly<Fp> for Polynomial<Fp> {
         self.evaluate(a)
     }
 
-    fn product_tree_root(v: &[Self]) -> Self {
-        Self::product_tree_root(v)
-    }
-
-    fn product_tree_quadratic_leaves(leaves: &[[Fp; 3]]) -> Vec<Vec<Fp>> {
-        Self::product_tree_quadratic_leaves(leaves)
-    }
-
-    fn product_from_tree(tree: &[Vec<Fp>]) -> Self {
-        Self::product_from_tree(tree)
+    fn product_from_quadratic_leaves(leaves: &[[Fp; 3]]) -> Self {
+        Self::product_from_quadratic_leaves(leaves)
     }
 
     fn resultant_from_roots(&self, ai: &[Fp]) -> Fp {
