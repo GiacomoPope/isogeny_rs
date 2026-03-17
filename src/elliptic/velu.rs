@@ -509,12 +509,9 @@ impl<Fq: FqTrait> Curve<Fq> {
         img_points: &mut [PointX<Fq>],
     ) {
         // baby step, giant step values
-        // TODO: better sqrt?
-        // TODO: I need to use degree - 1 rather than degree + 1 as in
-        // the paper to avoid K < 0... Try and get to the bottom of this.
         let size_J = (((degree - 1) as f64).sqrt() as usize) / 2;
-        let size_I = (degree - 1) / (4 * size_J);
-        let size_K = (degree - 4 * size_J * size_I - 1) / 2;
+        let size_I = (degree + 1) / (4 * size_J);
+        let size_K = ((degree - 1) / 2).saturating_sub(2 * size_J * size_I);
 
         // Compute the points in the I, J and K partitions.
         let mut hI_points = vec![PointX::INFINITY; size_I];
