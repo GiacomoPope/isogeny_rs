@@ -464,12 +464,6 @@ impl<Fq: FqTrait> Curve<Fq> {
         }
     }
 
-    #[inline]
-    fn product_from_quadratic_leaves<P: Poly<Fq>>(leaves: &[[Fq; 3]]) -> P {
-        let tree = P::product_tree_quadratic_leaves(leaves);
-        P::product_from_tree(&tree)
-    }
-
     /// Understanding the polynomial hK = prod(x * PZ - PX) for the set in hK, then
     /// evaluate this polynomial at alpha = 1 and alpha = -1
     #[inline]
@@ -549,8 +543,10 @@ impl<Fq: FqTrait> Curve<Fq> {
         // reused for every evaluated image point
         let hJ_sum_diff: Vec<(Fq, Fq)> = hJ_points.iter().map(|Q| (Q.X + Q.Z, Q.X - Q.Z)).collect();
 
-        let mut E0j_codomain_leaves: Vec<[Fq; 3]> = Vec::with_capacity(size_J);
-        let mut E1j_codomain_leaves: Vec<[Fq; 3]> = Vec::with_capacity(size_J);
+        // Instead of computing E0_J and E1_J as degree 2*size_J we simply evaluate each
+        // quadratic factor for every root. This is "stupid" but might be faster.
+        let mut r0 = Fq::ONE;
+        let mut r1 = Fq::ONE;
         for (sum_sqr, XZ4neg, AXZ4neg) in eJ_precomp.iter() {
             // (X - Z)^2 = (X + Z)^2 - 4 * X * Z
             let c0_0 = *sum_sqr + *XZ4neg;
@@ -559,20 +555,13 @@ impl<Fq: FqTrait> Curve<Fq> {
             let c1_0 = *sum_sqr;
             let c1_1 = c0_0.mul2() - *AXZ4neg;
 
-            // Each quadratic factor here is a palindrome.
-            // TODO: we could write specialised polynomial arithmetic which
-            // abuses this for faaster multiplication.
-            E0j_codomain_leaves.push([c0_0, c0_1, c0_0]);
-            E1j_codomain_leaves.push([c1_0, c1_1, c1_0]);
+            for x in hI_roots.iter() {
+                let x = *x;
+                r0 *= c0_0 + x * (c0_1 + x * c0_0);
+                r1 *= c1_0 + x * (c1_1 + x * c1_0);
+            }
         }
-        let E0J = Self::product_from_quadratic_leaves::<P>(&E0j_codomain_leaves);
-        let E1J = Self::product_from_quadratic_leaves::<P>(&E1j_codomain_leaves);
-        debug_assert!(E0J.degree().unwrap() == 2 * size_J);
-        debug_assert!(E1J.degree().unwrap() == 2 * size_J);
 
-        // Compute the codomain.
-        let r0 = E0J.resultant_from_roots(&hI_roots);
-        let r1 = E1J.resultant_from_roots(&hI_roots);
         let (m0, m1) = Self::hK_codomain(&hK_points);
 
         // Compute (ri * mi)^8 * (A ∓ 2)^degree
@@ -592,7 +581,6 @@ impl<Fq: FqTrait> Curve<Fq> {
         D_ed *= num;
 
         // Evaluate each point through the isogeny.
-        let mut E0J_eval_leaves: Vec<P> = Vec::with_capacity(size_J);
         for img in img_points.iter_mut() {
             if img.is_zero() == u32::MAX {
                 continue;
@@ -605,7 +593,8 @@ impl<Fq: FqTrait> Curve<Fq> {
             let XZ2 = (img.X * img.Z).mul2();
             let X2Z2 = XpZ.square() - XZ2; // X^2 + Z^2
 
-            E0J_eval_leaves.clear();
+            let mut r0 = Fq::ONE;
+            let mut r1 = Fq::ONE;
             for (i, (sum_sqr, XZ4neg, AXZ4neg)) in eJ_precomp.iter().enumerate() {
                 let (add, sub) = hJ_sum_diff[i];
 
@@ -629,14 +618,12 @@ impl<Fq: FqTrait> Curve<Fq> {
                 c1 += X2Z2 * *XZ4neg;
                 c1.set_mul2();
 
-                E0J_eval_leaves.push(P::new_from_slice(&[c0, c1, c2]));
+                for x in hI_roots.iter() {
+                    let x = *x;
+                    r0 *= c0 + x * (c1 + x * c2);
+                    r1 *= c2 + x * (c1 + x * c0);
+                }
             }
-
-            let E0J = P::product_tree_root(&E0J_eval_leaves);
-            let E1J = E0J.reverse();
-
-            let r0 = E0J.resultant_from_roots(&hI_roots);
-            let r1 = E1J.resultant_from_roots(&hI_roots);
             let (m0, m1) = Self::hK_eval(&hK_points, &XpZ, &XmZ);
 
             let r0m0 = r0 * m0;
