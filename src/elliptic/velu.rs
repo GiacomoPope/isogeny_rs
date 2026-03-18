@@ -440,18 +440,21 @@ impl<Fq: FqTrait> Curve<Fq> {
     fn precompute_eJ_values(
         eJ_coeffs: &mut [(Fq, Fq, Fq)],
         hJ_points: &[PointX<Fq>],
-        A24: &Fq,
-        C24: &Fq,
+        A24_normalised: &Fq,
     ) {
-        // TODO: we could work projectively here with (A : C) instead of A. This saves us one inversion
+        // NOTE: we could work projectively here with (A : C) instead of A. This saves us one inversion
         // (about 60M for CSIDH 512 or 30M for 256-bit Fp2) but adds multiplications by C throughout codomain
-        // and image computations.
+        // and image computations. However, as we're already normalising all the roots of hI points (instead
+        // of building a product tree from linear polynomials) batch normalization means we get A / C
+        // essentially for free.
         //
-        // I believe this ends up being 2M * J extra for codomain computations and 2M * J extra for each
-        // image. We expect velu to start being better for ell = 100, so we're paying a cost of 60M - 20M(1 + n)
-        // at this degree where n is the number of images we are computing. For ell = 587, the max for
-        // CSIDH 512 we're paying a cost of 60M - 48M(1 + n) and so is a saving when we do one eval.
-        let A = (*A24 / *C24).mul4() - Fq::TWO;
+        // If we did not normalise hI_roots and instead build a product from a tree, then this inversion still
+        // almost pays for itself. I believe working projectively ends up being 2M * J extra for codomain
+        // computations and 2M * J extra for each image. As we expect velu to start being better for ell = 100,
+        // we're paying a maximum cost of 60M - 20M(1 + n) where n is the number of images we are computing.
+        // As ell grows, so does J and this becomes cheaper. For example, for ell = 587, the max for
+        // CSIDH 512, we're paying a cost of 60M - 48M(1 + n) and so is a saving when we do one eval.
+        let A = (*A24_normalised).mul4() - Fq::TWO;
         for (i, P) in hJ_points.iter().enumerate() {
             let (X, Z) = P.coords();
             let XZ = X * Z;
@@ -514,7 +517,7 @@ impl<Fq: FqTrait> Curve<Fq> {
         let size_K = ((degree - 1) / 2).saturating_sub(2 * size_J * size_I);
 
         // Compute the points in the I, J and K partitions.
-        let mut hI_points = vec![PointX::INFINITY; size_I];
+        let mut hI_points = vec![PointX::INFINITY; size_I + 1];
         let mut hJ_points = vec![PointX::INFINITY; size_J];
         let mut hK_points = vec![PointX::INFINITY; size_K];
         Self::precompute_partitions(
@@ -525,16 +528,23 @@ impl<Fq: FqTrait> Curve<Fq> {
             C24,
             kernel,
         );
+        // If we normalise A24 / C24 we save 2 size_J (1 + n) multiplications for codomain
+        // and image computation, where `n` is the number of images computed. As we're
+        // already normalising the hI roots, we can normalise A24 essentially for "free".
+        // For now, we stick this into the hI_points array and then extract it out at the
+        // end.
+        hI_points[size_I] = PointX::new(&A24, &C24);
 
         // Precompute the roots of the polynomial Prod(x - [i]P.x()) for i in the set I
         // In another implementation, we might instead compute the polynomial, which we
         // would use as input into a remainder tree instead...
         PointX::batch_normalise(&mut hI_points);
-        let hI_roots: Vec<Fq> = hI_points.iter().map(|P| P.X).collect();
+        let hI_roots: Vec<Fq> = hI_points[..size_I].iter().map(|P| P.X).collect();
+        let A24_normalised = hI_points[size_I].X;
 
         // Precompute (X + Z)^2, (X - Z)^2, -4XZ and -4XZ*A
         let mut eJ_precomp = vec![(Fq::ZERO, Fq::ZERO, Fq::ZERO); size_J];
-        Self::precompute_eJ_values(&mut eJ_precomp, &hJ_points, A24, C24); // Cost: size_J * (1S + 2M)
+        Self::precompute_eJ_values(&mut eJ_precomp, &hJ_points, &A24_normalised); // Cost: size_J * (1S + 2M)
 
         // Also cache (X + Z) and (X - Z) for the J partition since these are
         // reused for every evaluated image point
