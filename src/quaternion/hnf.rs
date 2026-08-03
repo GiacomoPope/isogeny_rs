@@ -1,4 +1,6 @@
-use crate::quaternion::algebra::{BigIntAlg, IntQuat, QuatConfig};
+use crate::quaternion::algebra::{IntQuat, QuatConfig};
+use crate::quaternion::hnf_ext::HnfModExt;
+use crate::bigint::BigIntAlg;
 
 pub fn xgcd_with_u_not_0<T: BigIntAlg>(a: &T, b: &T) -> (T, T, T) {
     let (d, mut u, mut v) = a.xgcd(b);

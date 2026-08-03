@@ -1,4 +1,6 @@
-use isogeny::quaternion::algebra::{BigIntAlg, IntQuat, QuatConfig};
+use isogeny::quaternion::algebra::{IntQuat, QuatConfig};
+use isogeny::quaternion::hnf_ext::HnfModExt;
+use isogeny::bigint::BigIntAlg;
 use isogeny::quaternion::hnf::*;
 use isogeny::quaternion::matrix::MatrixUtils;
 use num_bigint::BigInt;

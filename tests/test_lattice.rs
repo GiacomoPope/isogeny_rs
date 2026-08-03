@@ -1,4 +1,5 @@
-use isogeny::quaternion::algebra::{BigIntAlg, QuatConfig, IntQuat, RatQuat};
+use isogeny::quaternion::algebra::{QuatConfig, IntQuat, RatQuat};
+use isogeny::bigint::BigIntAlg;
 use isogeny::quaternion::lattice::QuatLattice;
 use num_bigint::BigInt;
 use std::sync::LazyLock;

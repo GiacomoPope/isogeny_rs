@@ -1,6 +1,7 @@
 // tests/test_ideal.rs
 
-use isogeny::quaternion::algebra::{BigIntAlg, IntQuat, QuatConfig, RatQuat};
+use isogeny::quaternion::algebra::{IntQuat, QuatConfig, RatQuat};
+use isogeny::bigint::BigIntAlg;
 use isogeny::quaternion::ideal::{quat_order_discriminant, quat_order_is_maximal, QuatLeftIdeal};
 use isogeny::quaternion::lattice::QuatLattice;
 use num_bigint::BigInt;

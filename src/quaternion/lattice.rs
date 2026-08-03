@@ -1,7 +1,8 @@
 use core::ops::{Add, Mul};
-use crate::quaternion::algebra::{BigIntAlg, QuatConfig, IntQuat, RatQuat};
+use crate::quaternion::algebra::{QuatConfig, IntQuat, RatQuat};
 use crate::quaternion::hnf::quat_hnf_mod_core;
 use crate::quaternion::matrix::MatrixUtils;
+use crate::bigint::BigIntAlg;
 
 #[derive(Debug)]
 pub struct QuatLattice<T: BigIntAlg, P: QuatConfig<T>> {

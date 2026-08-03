@@ -1,4 +1,5 @@
-use crate::quaternion::algebra::{BigIntAlg, IntQuat, QuatConfig};
+use crate::quaternion::algebra::{IntQuat, QuatConfig};
+use crate::bigint::BigIntAlg;
 
 pub struct MatrixUtils;
 

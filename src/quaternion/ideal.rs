@@ -1,7 +1,8 @@
 // src/quaternion/ideal.rs
 
-use crate::quaternion::algebra::{BigIntAlg, IntQuat, QuatConfig, RatQuat};
+use crate::quaternion::algebra::{IntQuat, QuatConfig, RatQuat};
 use crate::quaternion::lattice::QuatLattice;
+use crate::bigint::BigIntAlg;
 
 #[derive(Clone, Debug)]
 pub struct QuatLeftIdeal<T: BigIntAlg, P: QuatConfig<T>> {
