@@ -28,6 +28,7 @@ pub trait BigIntAlg:
     fn xgcd(&self, other: &Self) -> (Self, Self, Self);
     fn abs(&self) -> Self;
     fn is_zero(&self) -> bool;
+    fn sqrt(&self) -> Self;
 
     /// Returns u32::MAX (0xFFFFFFFF) if equal, 0 otherwise
     fn ct_eq(&self, other: &Self) -> u32;
@@ -440,6 +441,8 @@ impl<T: BigIntAlg, P: QuatConfig<T>> RatQuat<T, P> {
 impl<'a, 'b, T: BigIntAlg, P: QuatConfig<T>> Add<&'b RatQuat<T, P>> for &'a RatQuat<T, P> {
     type Output = RatQuat<T, P>;
     fn add(self, rhs: &'b RatQuat<T, P>) -> Self::Output {
+        // TODO: is it possible to perform lcm without division for marginal
+        // speed gain?
         let mut res = self.add_lazy(rhs);
         res.normalize();
         res
@@ -488,6 +491,7 @@ pub mod backends {
         }
         fn abs(&self) -> Self { <BigInt as Signed>::abs(self) }
         fn is_zero(&self) -> bool { <BigInt as Zero>::is_zero(self) }
+        fn sqrt(&self) -> Self { self.sqrt() }
         fn ct_eq(&self, other: &Self) -> u32 {
             ((self == other) as u32).wrapping_neg()
         }
@@ -552,6 +556,10 @@ pub mod backends {
         }
         fn abs(&self) -> Self { CryptoInt(Int::new(self.0.abs().into())) }
         fn is_zero(&self) -> bool { self.0.is_zero().into() }
+        fn sqrt(&self) -> Self {
+            let root_uint = self.0.abs().floor_sqrt_vartime();
+            CryptoInt(Int::new(root_uint.into()))
+        }
 
         fn ct_eq(&self, other: &Self) -> u32 {
             ((self.0 == other.0) as u32).wrapping_neg()
