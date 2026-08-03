@@ -1,6 +1,6 @@
-use isogeny::quaternion::algebra::{QuatConfig, IntQuat, RatQuat};
+use isogeny::quaternion::algebra::{IntQuat, QuatConfig, RatQuat};
 use isogeny::bigint::BigIntAlg;
-use isogeny::quaternion::lattice::QuatLattice;
+use isogeny::quaternion::lattice::RatLattice;
 use num_bigint::BigInt;
 use std::sync::LazyLock;
 
@@ -21,14 +21,14 @@ pub struct P103;
 static P103_VAL: LazyLock<BigInt> = LazyLock::new(|| BigInt::from(103));
 impl QuatConfig<BigInt> for P103 { fn p() -> &'static BigInt { &P103_VAL } }
 
-type TestLattice = QuatLattice<BigInt, P103>;
+type TestLattice = RatLattice<BigInt, P103>;
 type TestQuat = IntQuat<BigInt, P103>;
 type TestRatQuat = RatQuat<BigInt, P103>;
 
-type TestLattice19 = QuatLattice<BigInt, P19>;
+type TestLattice19 = RatLattice<BigInt, P19>;
 type TestQuat19 = IntQuat<BigInt, P19>;
 
-type TestLattice23 = QuatLattice<BigInt, P23>;
+type TestLattice23 = RatLattice<BigInt, P23>;
 type TestQuat23 = IntQuat<BigInt, P23>;
 type TestRatQuat23 = RatQuat<BigInt, P23>;
 
@@ -55,8 +55,8 @@ fn test_lattice_equal() {
     let mut lat = TestLattice::zero();
     let mut cmp = TestLattice::zero();
 
-    lat.generators = identity_gens();
-    cmp.generators = identity_gens();
+    lat.basis.generators = identity_gens();
+    cmp.basis.generators = identity_gens();
     assert_eq!(TestLattice::equal(&lat, &cmp), u32::MAX);
 
     lat.denom = b(5);
@@ -72,7 +72,7 @@ fn test_lattice_equal() {
     assert_eq!(TestLattice::equal(&lat, &cmp), u32::MAX);
 
     // Transposed from original matrix
-    lat.generators = [
+    lat.basis.generators = [
         TestQuat::new_i32(1, 0, 0, 0),
         TestQuat::new_i32(0, -2, 1, 0),
         TestQuat::new_i32(0, 0, 1, 0),
@@ -81,7 +81,7 @@ fn test_lattice_equal() {
     lat.denom = b(6);
     lat.hnf();
 
-    cmp.generators = lat.generators.clone();
+    cmp.basis.generators = lat.basis.generators.clone();
     cmp.denom = b(6);
     assert_eq!(TestLattice::equal(&lat, &cmp), u32::MAX);
 
@@ -89,7 +89,7 @@ fn test_lattice_equal() {
     assert_eq!(TestLattice::equal(&lat, &cmp), 0);
 
     cmp.denom = b(6);
-    cmp.generators[3].coords[3] = b(165);
+    cmp.basis.generators[3].coords[3] = b(165);
     assert_eq!(TestLattice::equal(&lat, &cmp), 0);
 }
 
@@ -98,8 +98,8 @@ fn test_lattice_inclusion() {
     let mut lat = TestLattice::zero();
     let mut cmp = TestLattice::zero();
 
-    lat.generators = identity_gens();
-    cmp.generators = identity_gens();
+    lat.basis.generators = identity_gens();
+    cmp.basis.generators = identity_gens();
     assert_eq!(TestLattice::inclusion(&lat, &cmp), u32::MAX);
 
     lat.denom = b(5);
@@ -114,7 +114,7 @@ fn test_lattice_inclusion() {
     cmp.denom = b(3);
     assert_eq!(TestLattice::inclusion(&lat, &cmp), u32::MAX);
 
-    lat.generators = [
+    lat.basis.generators = [
         TestQuat::new_i32(1, 0, 0, 0),
         TestQuat::new_i32(0, -2, 1, 0),
         TestQuat::new_i32(0, 0, 1, 0),
@@ -123,7 +123,7 @@ fn test_lattice_inclusion() {
     lat.denom = b(6);
     lat.hnf();
 
-    cmp.generators = lat.generators.clone();
+    cmp.basis.generators = lat.basis.generators.clone();
     cmp.denom = b(6);
     assert_eq!(TestLattice::inclusion(&lat, &cmp), u32::MAX);
 
@@ -131,7 +131,7 @@ fn test_lattice_inclusion() {
     assert_eq!(TestLattice::inclusion(&lat, &cmp), u32::MAX);
 
     cmp.denom = b(6);
-    cmp.generators[3].coords[3] = b(165);
+    cmp.basis.generators[3].coords[3] = b(165);
     assert_eq!(TestLattice::inclusion(&lat, &cmp), 0);
 }
 
@@ -143,8 +143,8 @@ fn test_lattice_reduce_denom() {
     let s = 15i32;
     for idx in 0..4 {
         let i = idx as i32;
-        lat.generators[idx] = TestQuat::new_i32(i * s, (i + 1) * s, (i + 2) * s, (i + 3) * s);
-        cmp.generators[idx] = TestQuat::new_i32(i, i + 1, i + 2, i + 3);
+        lat.basis.generators[idx] = TestQuat::new_i32(i * s, (i + 1) * s, (i + 2) * s, (i + 3) * s);
+        cmp.basis.generators[idx] = TestQuat::new_i32(i, i + 1, i + 2, i + 3);
     }
     lat.denom = b(4 * s);
     cmp.denom = b(4);
@@ -163,7 +163,7 @@ fn test_lattice_conjugate_without_hnf() {
     let mut lat = TestLattice::zero();
     let mut cmp = TestLattice::zero();
 
-    lat.generators = [
+    lat.basis.generators = [
         TestQuat::new_i32(4, 0, 0, 0),
         TestQuat::new_i32(0, -2, -1, 0),
         TestQuat::new_i32(0, 0, -1, 0),
@@ -171,7 +171,7 @@ fn test_lattice_conjugate_without_hnf() {
     ];
     lat.denom = b(6);
 
-    cmp.generators = [
+    cmp.basis.generators = [
         TestQuat::new_i32(4, 0, 0, 0),
         TestQuat::new_i32(0, 2, 1, 0),
         TestQuat::new_i32(0, 0, 1, 0),
@@ -197,7 +197,7 @@ fn test_lattice_dual_without_hnf() {
     let mut lat = TestLattice::zero();
     let mut cmp = TestLattice::zero();
 
-    lat.generators = [
+    lat.basis.generators = [
         TestQuat::new_i32(1, 0, 0, 0),
         TestQuat::new_i32(0, -2, 1, 0),
         TestQuat::new_i32(0, 0, 1, 0),
@@ -205,7 +205,7 @@ fn test_lattice_dual_without_hnf() {
     ];
     lat.denom = b(6);
 
-    cmp.generators = [
+    cmp.basis.generators = [
         TestQuat::new_i32(6, 0, 0, 0),
         TestQuat::new_i32(0, 3, 0, 0),
         TestQuat::new_i32(0, 0, 6, 0),
@@ -233,19 +233,19 @@ fn test_lattice_add() {
     let mut lat2 = TestLattice::zero();
     let mut cmp = TestLattice::zero();
 
-    lat1.generators = [
+    lat1.basis.generators = [
         TestQuat::new_i32(44, 0, 0, 0),
         TestQuat::new_i32(0, 5, 0, 0),
         TestQuat::new_i32(3, 0, 3, 0),
         TestQuat::new_i32(32, 0, 0, 1),
     ];
-    lat2.generators = [
+    lat2.basis.generators = [
         TestQuat::new_i32(1, 0, 0, 0),
         TestQuat::new_i32(0, 2, 0, 0),
         TestQuat::new_i32(0, 0, 1, 0),
         TestQuat::new_i32(0, 0, 0, 3),
     ];
-    cmp.generators = [
+    cmp.basis.generators = [
         TestQuat::new_i32(2, 0, 0, 0),
         TestQuat::new_i32(0, 1, 0, 0),
         TestQuat::new_i32(1, 0, 1, 0),
@@ -258,13 +258,13 @@ fn test_lattice_add() {
     let sum = &lat1 + &lat2;
     assert_eq!(sum.ct_eq(&cmp), u32::MAX);
 
-    lat1.generators = [
+    lat1.basis.generators = [
         TestQuat::new_i32(4, 0, 0, 0),
         TestQuat::new_i32(0, 5, 0, 0),
         TestQuat::new_i32(3, 0, 3, 0),
         TestQuat::new_i32(0, 0, 0, 7),
     ];
-    lat2.generators = [
+    lat2.basis.generators = [
         TestQuat::new_i32(1, 0, 0, 0),
         TestQuat::new_i32(0, -2, 1, 0),
         TestQuat::new_i32(0, 0, 1, 0),
@@ -276,7 +276,7 @@ fn test_lattice_add() {
     let sum2 = &lat1 + &lat2;
     assert_eq!(sum2.ct_eq(&cmp), u32::MAX);
 
-    cmp.generators = lat2.generators.clone();
+    cmp.basis.generators = lat2.basis.generators.clone();
     cmp.denom = lat2.denom.clone();
     cmp.hnf();
 
@@ -290,13 +290,13 @@ fn test_lattice_intersect() {
     let mut lat2 = TestLattice::zero();
     let mut cmp = TestLattice::zero();
 
-    lat1.generators = [
+    lat1.basis.generators = [
         TestQuat::new_i32(4, 0, 0, 0),
         TestQuat::new_i32(0, 5, 0, 0),
         TestQuat::new_i32(3, 0, 3, 0),
         TestQuat::new_i32(0, 0, 0, 7),
     ];
-    lat2.generators = [
+    lat2.basis.generators = [
         TestQuat::new_i32(1, 0, 0, 0),
         TestQuat::new_i32(0, -2, 1, 0),
         TestQuat::new_i32(0, 0, 1, 0),
@@ -307,7 +307,7 @@ fn test_lattice_intersect() {
     lat1.hnf();
     lat2.hnf();
 
-    cmp.generators = [
+    cmp.basis.generators = [
         TestQuat::new_i32(2, 0, 0, 0),
         TestQuat::new_i32(0, 10, 0, 0),
         TestQuat::new_i32(1, 0, 3, 0),
@@ -321,7 +321,7 @@ fn test_lattice_intersect() {
     let inter2 = TestLattice::intersect(&lat2, &lat1);
     assert_eq!(TestLattice::equal(&inter2, &cmp), u32::MAX);
 
-    cmp.generators = lat1.generators.clone();
+    cmp.basis.generators = lat1.basis.generators.clone();
     cmp.denom = lat1.denom.clone();
     let inter_self = TestLattice::intersect(&lat1, &lat1);
     assert_eq!(TestLattice::equal(&inter_self, &cmp), u32::MAX);
@@ -334,7 +334,7 @@ fn test_lattice_alg_elem_mul() {
 
     let elem = TestRatQuat23::new_i32(2, 3, 4, -1, 0);
 
-    lat.generators = [
+    lat.basis.generators = [
         TestQuat23::new_i32(11, 0, 0, 0),
         TestQuat23::new_i32(2, -13, 0, 0),
         TestQuat23::new_i32(0, 0, 15, 0),
@@ -345,7 +345,7 @@ fn test_lattice_alg_elem_mul() {
 
     let prod = &lat * &elem;
 
-    cmp.generators = [
+    cmp.basis.generators = [
         TestQuat23::new_i32(33, 44, -11, 0),
         TestQuat23::new_i32(27 - 4 * 13, 36 + 3 * 13, -9, -13),
         TestQuat23::new_i32(15 * 23, 0, 45, -60),
@@ -366,19 +366,19 @@ fn test_lattice_mul() {
     let mut lat2 = TestLattice19::zero();
     let mut cmp = TestLattice19::zero();
 
-    lat1.generators = [
+    lat1.basis.generators = [
         TestQuat19::new_i32(44, 0, 0, 0),
         TestQuat19::new_i32(0, 5, 0, 0),
         TestQuat19::new_i32(3, 0, 3, 0),
         TestQuat19::new_i32(32, 0, 0, 1),
     ];
-    lat2.generators = [
+    lat2.basis.generators = [
         TestQuat19::new_i32(1, 0, 0, 0),
         TestQuat19::new_i32(0, 2, 0, 0),
         TestQuat19::new_i32(0, 0, 1, 0),
         TestQuat19::new_i32(0, 0, 0, 3),
     ];
-    cmp.generators = [
+    cmp.basis.generators = [
         TestQuat19::new_i32(1, 0, 0, 0),
         TestQuat19::new_i32(0, 1, 0, 0),
         TestQuat19::new_i32(0, 0, 1, 0),
@@ -391,13 +391,13 @@ fn test_lattice_mul() {
     let prod = &lat1 * &lat2;
     assert_eq!(prod.ct_eq(&cmp), u32::MAX);
 
-    lat1.generators = [
+    lat1.basis.generators = [
         TestQuat19::new_i32(4, 0, 0, 0),
         TestQuat19::new_i32(0, 5, 0, 0),
         TestQuat19::new_i32(3, 0, 3, 0),
         TestQuat19::new_i32(0, 0, 0, 7),
     ];
-    lat2.generators = [
+    lat2.basis.generators = [
         TestQuat19::new_i32(1, 0, 0, 0),
         TestQuat19::new_i32(0, -2, 1, 0),
         TestQuat19::new_i32(0, 0, 1, 0),
@@ -409,7 +409,7 @@ fn test_lattice_mul() {
     let prod2 = &lat1 * &lat2;
     assert_eq!(prod2.ct_eq(&cmp), u32::MAX);
 
-    cmp.generators = [
+    cmp.basis.generators = [
         TestQuat19::new_i32(1, 0, 0, 0),
         TestQuat19::new_i32(0, 1, 0, 0),
         TestQuat19::new_i32(0, 0, 1, 0),
@@ -425,7 +425,7 @@ fn test_lattice_mul() {
 fn test_lattice_contains() {
     let mut lat = TestLattice::zero();
 
-    lat.generators = [
+    lat.basis.generators = [
         TestQuat::new_i32(4, 0, 0, 0),
         TestQuat::new_i32(0, 5, 0, 0),
         TestQuat::new_i32(3, 0, 3, 0),
@@ -436,7 +436,7 @@ fn test_lattice_contains() {
     let x = TestRatQuat::new_i32(3, 1, -2, 26, 9);
     assert!(lat.contains(&x).is_none());
 
-    lat.generators = [
+    lat.basis.generators = [
         TestQuat::new_i32(1, 0, 0, 0),
         TestQuat::new_i32(0, -2, 1, 0),
         TestQuat::new_i32(0, 0, 1, 0),
@@ -460,10 +460,10 @@ fn test_lattice_index() {
     let mut sublat = TestLattice::zero();
     let mut overlat = TestLattice::zero();
 
-    overlat.generators = identity_gens();
+    overlat.basis.generators = identity_gens();
     overlat.denom = b(2);
 
-    sublat.generators = [
+    sublat.basis.generators = [
         TestQuat::new_i32(2, 0, 0, 0),
         TestQuat::new_i32(0, 4, 0, 0),
         TestQuat::new_i32(1, 2, 1, 0),
@@ -480,13 +480,13 @@ fn test_lattice_hnf() {
     let mut lat = TestLattice::zero();
     let mut cmp = TestLattice::zero();
 
-    lat.generators = [
+    lat.basis.generators = [
         TestQuat::new_i32(1, 0, 0, 0),
         TestQuat::new_i32(0, -2, 1, 0),
         TestQuat::new_i32(0, 0, 1, 0),
         TestQuat::new_i32(-1, 0, 0, -3),
     ];
-    cmp.generators = [
+    cmp.basis.generators = [
         TestQuat::new_i32(1, 0, 0, 0),
         TestQuat::new_i32(0, 2, 0, 0),
         TestQuat::new_i32(0, 0, 1, 0),
@@ -505,7 +505,7 @@ fn test_lattice_hnf() {
 fn test_lattice_gram() {
     let mut lattice = TestLattice::zero();
 
-    lattice.generators = [
+    lattice.basis.generators = [
         TestQuat::new_i32(202, 0, 0, 0),
         TestQuat::new_i32(0, 202, 0, 0),
         TestQuat::new_i32(158, 149, 1, 0),
@@ -513,7 +513,7 @@ fn test_lattice_gram() {
     ];
     lattice.denom = b(2);
 
-    let gram = lattice.gram();
+    let gram = lattice.basis.gram();
 
     let elem1 = TestRatQuat::new_i32(2, 360, 149, 1, 0);
     let elem2 = TestRatQuat::new_i32(2, 53, 360, 0, 1);

@@ -2,7 +2,7 @@ use isogeny::quaternion::algebra::{IntQuat, QuatConfig};
 use isogeny::quaternion::hnf_ext::HnfModExt;
 use isogeny::bigint::BigIntAlg;
 use isogeny::quaternion::hnf::*;
-use isogeny::quaternion::matrix::MatrixUtils;
+use isogeny::quaternion::lattice::IntLattice;
 use num_bigint::BigInt;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -91,16 +91,16 @@ fn test_xgcd_with_u_not_0() {
 
 #[test]
 fn test_mat_4x4_inv_with_det_as_denom() {
-    let mut mat = [TestQuat::zero(), TestQuat::zero(), TestQuat::zero(), TestQuat::zero()];
-    mat[0].coords[0] = BigInt::from_i32(1);
-    mat[1].coords[1] = BigInt::from_i32(4);
-    mat[2].coords[2] = BigInt::from_i32(1);
-    mat[3].coords[3] = BigInt::from_i32(1);
-    mat[1].coords[0] = BigInt::from_i32(2);
-    mat[0].coords[1] = BigInt::from_i32(3);
+    let mut mat: IntLattice<BigInt, P103> = IntLattice::zero();
+    mat.generators[0].coords[0] = BigInt::from_i32(1);
+    mat.generators[1].coords[1] = BigInt::from_i32(4);
+    mat.generators[2].coords[2] = BigInt::from_i32(1);
+    mat.generators[3].coords[3] = BigInt::from_i32(1);
+    mat.generators[1].coords[0] = BigInt::from_i32(2);
+    mat.generators[0].coords[1] = BigInt::from_i32(3);
 
-    let mut adj = [TestQuat::zero(), TestQuat::zero(), TestQuat::zero(), TestQuat::zero()];
-    let det = MatrixUtils::mat_4x4_inv_with_det_as_denom(Some(&mut adj), &mat);
+    let mut adj = IntLattice::zero();
+    let det = mat.inv_with_det(Some(&mut adj));
 
     assert_eq!(det, BigInt::from_i32(-2));
 
@@ -109,7 +109,7 @@ fn test_mat_4x4_inv_with_det_as_denom() {
         for j in 0..4 {
             let mut sum = b_zero();
             for k in 0..4 {
-                sum = sum + adj[j].coords[k].clone() * mat[k].coords[i].clone();
+                sum = sum + adj.generators[j].coords[k].clone() * mat.generators[k].coords[i].clone();
             }
             prod[j].coords[i] = sum;
         }

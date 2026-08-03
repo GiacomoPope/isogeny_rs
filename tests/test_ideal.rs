@@ -1,9 +1,7 @@
-// tests/test_ideal.rs
-
 use isogeny::quaternion::algebra::{IntQuat, QuatConfig, RatQuat};
 use isogeny::bigint::BigIntAlg;
 use isogeny::quaternion::ideal::{quat_order_discriminant, quat_order_is_maximal, QuatLeftIdeal};
-use isogeny::quaternion::lattice::QuatLattice;
+use isogeny::quaternion::lattice::RatLattice;
 use num_bigint::BigInt;
 use std::sync::LazyLock;
 
@@ -59,9 +57,9 @@ fn b(val: i32) -> BigInt {
 }
 
 /// Helper function to create the standard O0 order lattice
-fn o0_lattice<P: QuatConfig<BigInt>>() -> QuatLattice<BigInt, P> {
-    let mut lat = QuatLattice::zero();
-    lat.generators = [
+fn o0_lattice<P: QuatConfig<BigInt>>() -> RatLattice<BigInt, P> {
+    let mut lat = RatLattice::zero();
+    lat.basis.generators = [
         IntQuat::new_i32(2, 0, 0, 0),
         IntQuat::new_i32(0, 2, 0, 0),
         IntQuat::new_i32(0, 1, 1, 0),
@@ -101,7 +99,7 @@ fn test_lideal_create_principal() {
     assert_eq!(ideal.norm, b(2321156));
     assert_eq!(ideal.lattice.denom, b_one());
 
-    let gens = &ideal.lattice.generators;
+    let gens = &ideal.lattice.basis.generators;
     assert_eq!(gens[0].coords[0], b(1160578));
     assert_eq!(gens[0].coords[1], b_zero());
     assert_eq!(gens[0].coords[2], b_zero());
@@ -138,7 +136,7 @@ fn test_lideal_create_from_primitive() {
     assert_eq!(ideal.norm, n);
     assert_eq!(ideal.lattice.denom, b(2));
 
-    let gens = &ideal.lattice.generators;
+    let gens = &ideal.lattice.basis.generators;
     assert_eq!(gens[0].coords[0], b(62));
     assert_eq!(gens[0].coords[1], b_zero());
     assert_eq!(gens[0].coords[2], b_zero());
@@ -210,7 +208,7 @@ fn test_lideal_add_intersect_equals() {
 
     let mut lideal4 = QuatLeftIdeal::add(&lideal1, &lideal2);
     assert_eq!(lideal4.norm, b_one());
-    assert_eq!(QuatLattice::equal(&lideal4.lattice, &o0), u32::MAX);
+    assert_eq!(RatLattice::equal(&lideal4.lattice, &o0), u32::MAX);
 
     lideal4 = QuatLeftIdeal::intersect(&lideal1, &lideal1);
     assert_eq!(lideal4.ct_eq(&lideal1), u32::MAX);
@@ -251,8 +249,8 @@ fn test_lideal_order_is_maximal() {
     let o0 = o0_lattice::<P43>();
     assert_eq!(quat_order_is_maximal(&o0), u32::MAX);
 
-    let mut id = QuatLattice::<BigInt, P43>::zero();
-    id.generators = [
+    let mut id = RatLattice::<BigInt, P43>::zero();
+    id.basis.generators = [
         IntQuat::new_i32(1, 0, 0, 0),
         IntQuat::new_i32(0, 1, 0, 0),
         IntQuat::new_i32(0, 0, 1, 0),
