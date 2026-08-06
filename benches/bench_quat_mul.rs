@@ -1,5 +1,3 @@
-// benches/bench_quat_mul.rs
-
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use isogeny::quaternion::algebra::{IntQuat, QuatConfig};
 use num_bigint::{BigInt, Sign};

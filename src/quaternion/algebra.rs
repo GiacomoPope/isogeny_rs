@@ -277,10 +277,19 @@ impl_scalar_mul!();
 // Rational Quaternions (Integer + Denominator)
 // ========================================================================
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct RatQuat<T: BigIntAlg, P: QuatConfig<T>> {
     pub num: IntQuat<T, P>,
     pub denom: T,
+}
+
+impl<T: BigIntAlg, P: QuatConfig<T>> Clone for RatQuat<T, P> {
+    fn clone(&self) -> Self {
+        Self {
+            num: self.num.clone(),
+            denom: self.denom.clone(),
+        }
+    }
 }
 
 impl<T: BigIntAlg, P: QuatConfig<T>> RatQuat<T, P> {

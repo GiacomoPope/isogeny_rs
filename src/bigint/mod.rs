@@ -1,3 +1,5 @@
+pub mod rat;
+
 use core::fmt::Debug;
 use core::ops::{Add, Div, Mul, Neg, Rem, Sub};
 
