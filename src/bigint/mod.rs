@@ -1,4 +1,5 @@
 pub mod rat;
+pub mod numtheory;
 
 use core::fmt::Debug;
 use core::ops::{Add, Div, Mul, Neg, Rem, Sub};

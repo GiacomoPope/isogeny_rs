@@ -174,3 +174,53 @@ fn test_dim2_lattice_short_basis_fuzzing() {
         assert_eq!(det.abs(), det_red.abs(), "Determinant volume changed");
     }
 }
+
+#[test]
+fn test_dim2_det_from_ibz() {
+    let mut mat = Mat2x2::zero();
+
+    // Test Identity matrix determinant
+    mat.m[0][0] = b(1); mat.m[0][1] = b(0);
+    mat.m[1][0] = b(0); mat.m[1][1] = b(1);
+    let (_, det) = mat.inv_with_det_as_denom();
+    assert_eq!(det, b(1), "Determinant for identity matrix failed");
+
+    // Test matrix [2, 3; 1, -2] determinant
+    mat.m[0][0] = b(2); mat.m[0][1] = b(3);
+    mat.m[1][0] = b(1); mat.m[1][1] = b(-2);
+    let (_, det) = mat.inv_with_det_as_denom();
+    assert_eq!(det, b(-7), "Determinant for [2, 3; 1, -2] failed");
+
+    // Test matrix [0, 3; -1, 0] determinant
+    mat.m[0][0] = b(0); mat.m[0][1] = b(3);
+    mat.m[1][0] = b(-1); mat.m[1][1] = b(0);
+    let (_, det) = mat.inv_with_det_as_denom();
+    assert_eq!(det, b(3), "Determinant for [0, 3; -1, 0] failed");
+
+    // Test linearly dependent matrix [2, 2; 2, 2] determinant
+    mat.m[0][0] = b(2); mat.m[0][1] = b(2);
+    mat.m[1][0] = b(2); mat.m[1][1] = b(2);
+    let (_, det) = mat.inv_with_det_as_denom();
+    assert_eq!(det, b_zero(), "Determinant for dependent matrix failed");
+}
+
+#[test]
+fn test_dim2_mat_eval() {
+    let mut mat = Mat2x2::zero();
+
+    // mat = [1, -1; 2, 4], vec = [1, -1]
+    mat.m[0][0] = b(1); mat.m[0][1] = b(-1);
+    mat.m[1][0] = b(2); mat.m[1][1] = b(4);
+    let vec1 = Vec2::new(b(1), b(-1));
+    let res1 = mat.eval(&vec1);
+    assert_eq!(res1.coords[0], b(2));
+    assert_eq!(res1.coords[1], b(-2));
+
+    // mat = [2, -2; 1, 3], vec = [2, 4]
+    mat.m[0][0] = b(2); mat.m[0][1] = b(-2);
+    mat.m[1][0] = b(1); mat.m[1][1] = b(3);
+    let vec2 = Vec2::new(b(2), b(4));
+    let res2 = mat.eval(&vec2);
+    assert_eq!(res2.coords[0], b(-4));
+    assert_eq!(res2.coords[1], b(14));
+}
