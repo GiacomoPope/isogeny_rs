@@ -5,3 +5,4 @@ pub mod lattice;
 pub mod ideal;
 pub mod lll;
 pub mod dim2;
+pub mod qlapoti;

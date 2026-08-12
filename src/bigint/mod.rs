@@ -2,7 +2,7 @@ pub mod rat;
 pub mod numtheory;
 
 use core::fmt::Debug;
-use core::ops::{Add, Div, Mul, Neg, Rem, Sub};
+use core::ops::{Add, Div, Mul, Neg, Rem, Sub, Shl};
 
 // ========================================================================
 // Generic BigInt Interface
@@ -20,6 +20,7 @@ pub trait BigIntAlg:
     + Div<Output = Self>
     + Rem<Output = Self>
     + Neg<Output = Self>
+    + Shl<u32, Output = Self>
     + Sized
     + 'static
 {
@@ -42,6 +43,7 @@ pub trait BigIntAlg:
 
 pub mod backends {
     use super::BigIntAlg;
+    use core::ops::Shl;
 
     // --- num_bigint Backend ---
     use num_bigint::BigInt;
@@ -108,6 +110,13 @@ pub mod backends {
     impl<const LIMBS: usize> Neg for CryptoInt<LIMBS> {
         type Output = Self;
         fn neg(self) -> Self::Output { CryptoInt(Int::ZERO - self.0) }
+    }
+
+    impl<const LIMBS: usize> Shl<u32> for CryptoInt<LIMBS> {
+        type Output = Self;
+        fn shl(self, rhs: u32) -> Self::Output {
+            CryptoInt(self.0 << (rhs as usize))
+        }
     }
 
     impl<const LIMBS: usize> BigIntAlg for CryptoInt<LIMBS> {

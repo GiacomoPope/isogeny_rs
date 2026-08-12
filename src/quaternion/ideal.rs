@@ -138,6 +138,22 @@ impl<T: BigIntAlg, P: QuatConfig<T>> QuatLeftIdeal<T, P> {
         prod_ideal
     }
 
+    pub fn mul_ideal(i1: &Self, i2: &Self) -> Self {
+        debug_assert!(
+            RatLattice::equal(&i1.parent_order, &i2.parent_order) == u32::MAX,
+            "Ideals must have the same parent order"
+        );
+
+        let mut prod_lattice = RatLattice::mul_lazy(&i1.lattice, &i2.lattice);
+        prod_lattice.hnf();
+
+        Self {
+            lattice: prod_lattice,
+            norm: i1.norm.clone() * i2.norm.clone(),
+            parent_order: i1.parent_order.clone(),
+        }
+    }
+
     pub fn conjugate_without_hnf(&self, new_parent_order: &RatLattice<T, P>) -> Self {
         Self {
             lattice: self.lattice.conjugate_without_hnf(),

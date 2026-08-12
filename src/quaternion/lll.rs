@@ -134,46 +134,96 @@ pub fn quat_lll_core<T: BigIntAlg, P: QuatConfig<T>>(
 pub fn quat_lideal_class_gram<T: BigIntAlg, P: QuatConfig<T>>(
     lideal: &QuatLeftIdeal<T, P>,
 ) -> [[T; 4]; 4] {
-    let mut gram = lideal.lattice.basis.gram();
+    let mut gram = [
+        [T::zero(), T::zero(), T::zero(), T::zero()],
+        [T::zero(), T::zero(), T::zero(), T::zero()],
+        [T::zero(), T::zero(), T::zero(), T::zero()],
+        [T::zero(), T::zero(), T::zero(), T::zero()],
+    ];
+    let p = P::p();
 
-    // Divisor: denom^2 * norm
     let mut divisor = lideal.lattice.denom.clone() * lideal.lattice.denom.clone();
     divisor = divisor * lideal.norm.clone();
 
     for i in 0..4 {
         for j in 0..=i {
-            gram[i][j] = gram[i][j].clone() / divisor.clone();
-        }
-    }
-    for i in 0..4 {
-        for j in 0..i {
+            let gi = &lideal.lattice.basis.generators[i].coords;
+            let gj = &lideal.lattice.basis.generators[j].coords;
+
+            let mut sum = gi[0].clone() * gj[0].clone();
+            sum = sum + gi[1].clone() * gj[1].clone();
+            sum = sum + p.clone() * gi[2].clone() * gj[2].clone();
+            sum = sum + p.clone() * gi[3].clone() * gj[3].clone();
+
+        let trace = sum.clone() + sum;
+            gram[i][j] = trace.clone() / divisor.clone();
             gram[j][i] = gram[i][j].clone();
         }
     }
     gram
 }
 
-/// L2-reduces the basis of the left ideal.
+/// L2-reduces the basis of the left ideal using the exact Trace form.
 pub fn quat_lideal_reduce_basis<T: BigIntAlg, P: QuatConfig<T>>(
     reduced: &mut IntLattice<T, P>,
     gram: &mut [[T; 4]; 4],
     lideal: &QuatLeftIdeal<T, P>,
 ) {
-    *gram = quat_lideal_class_gram(lideal);
-    *reduced = lideal.lattice.basis.clone();
+    let mut exact_gram = [
+        [T::zero(), T::zero(), T::zero(), T::zero()],
+        [T::zero(), T::zero(), T::zero(), T::zero()],
+        [T::zero(), T::zero(), T::zero(), T::zero()],
+        [T::zero(), T::zero(), T::zero(), T::zero()],
+    ];
+    let p = P::p();
 
-    quat_lll_core(gram, reduced);
-
-    let gram_corrector = lideal.lattice.denom.clone() * lideal.lattice.denom.clone();
-    let two = T::from_i32(2);
-
+    // Construct exact integer Gram matrix to prevent LLL truncation
     for i in 0..4 {
-        for j in 0..4 {
-            gram[i][j] = gram[i][j].clone() * gram_corrector.clone();
+        for j in 0..=i {
+            let gi = &lideal.lattice.basis.generators[i].coords;
+            let gj = &lideal.lattice.basis.generators[j].coords;
+
+            let mut sum = gi[0].clone() * gj[0].clone();
+            sum = sum + gi[1].clone() * gj[1].clone();
+            sum = sum + p.clone() * gi[2].clone() * gj[2].clone();
+            sum = sum + p.clone() * gi[3].clone() * gj[3].clone();
+
+            let trace = sum.clone() + sum;
+            exact_gram[i][j] = trace.clone();
+            exact_gram[j][i] = trace;
         }
     }
 
-    // Isolate the quadratic form components (lower triangular, halved diagonal)
+    *reduced = lideal.lattice.basis.clone();
+    quat_lll_core(&mut exact_gram, reduced);
+
+    // Recompute exact gram of the reduced basis
+    for i in 0..4 {
+        for j in 0..=i {
+            let gi = &reduced.generators[i].coords;
+            let gj = &reduced.generators[j].coords;
+
+            let mut sum = gi[0].clone() * gj[0].clone();
+            sum = sum + gi[1].clone() * gj[1].clone();
+            sum = sum + p.clone() * gi[2].clone() * gj[2].clone();
+            sum = sum + p.clone() * gi[3].clone() * gj[3].clone();
+
+            let trace = sum.clone() + sum;
+            exact_gram[i][j] = trace.clone();
+            exact_gram[j][i] = trace;
+        }
+    }
+
+    let norm = lideal.norm.clone();
+    let two = T::from_i32(2);
+
+    // return the normalized Class Gram Matrix
+    for i in 0..4 {
+        for j in 0..=i {
+            gram[i][j] = exact_gram[i][j].clone() / norm.clone();
+        }
+    }
+
     for i in 0..4 {
         gram[i][i] = gram[i][i].clone() / two.clone();
         for j in (i + 1)..4 {
@@ -182,7 +232,7 @@ pub fn quat_lideal_reduce_basis<T: BigIntAlg, P: QuatConfig<T>>(
     }
 }
 
-/// Extracts the shortest equivalent ideal, driving step 1 of Qlapoti.
+/// Extracts the shortest equivalent ideal
 pub fn quat_lideal_shortest_equivalent<T: BigIntAlg, P: QuatConfig<T>>(
     lideal: &QuatLeftIdeal<T, P>,
 ) -> (QuatLeftIdeal<T, P>, RatQuat<T, P>) {
@@ -196,7 +246,6 @@ pub fn quat_lideal_shortest_equivalent<T: BigIntAlg, P: QuatConfig<T>>(
 
     quat_lideal_reduce_basis(&mut red, &mut gram, lideal);
 
-    // new_alpha.coord = (1, 0, 0, 0) evaluated on the reduced basis yields the first vector
     let mut new_alpha = RatQuat::new(red.generators[0].clone(), lideal.lattice.denom.clone());
     let elem = new_alpha.clone();
 
@@ -206,4 +255,18 @@ pub fn quat_lideal_shortest_equivalent<T: BigIntAlg, P: QuatConfig<T>>(
     let equiv = QuatLeftIdeal::mul(lideal, &new_alpha);
 
     (equiv, elem)
+}
+
+/// Multiplies two left ideals and returns the LLL reduced result and Gram matrix.
+pub fn quat_lideal_lideal_mul_reduced<T: BigIntAlg, P: QuatConfig<T>>(
+    prod: &mut QuatLeftIdeal<T, P>,
+    gram: &mut [[T; 4]; 4],
+    lideal1: &QuatLeftIdeal<T, P>,
+    lideal2: &QuatLeftIdeal<T, P>,
+) {
+    *prod = QuatLeftIdeal::mul_ideal(lideal1, lideal2);
+
+    let mut red_basis = crate::quaternion::lattice::IntLattice::zero();
+    quat_lideal_reduce_basis(&mut red_basis, gram, prod);
+    prod.lattice.basis = red_basis;
 }

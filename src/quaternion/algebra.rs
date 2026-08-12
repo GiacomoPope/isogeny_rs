@@ -423,3 +423,24 @@ impl<'a, 'b, T: BigIntAlg, P: QuatConfig<T>> Mul<&'b RatQuat<T, P>> for &'a RatQ
         res
     }
 }
+
+// --- Macros to auto-implement Val/Ref combinations for RatQuat ---
+macro_rules! impl_binop_rat {
+    ($trait:ident, $method:ident) => {
+        impl<T: BigIntAlg, P: QuatConfig<T>> $trait<RatQuat<T, P>> for RatQuat<T, P> {
+            type Output = RatQuat<T, P>;
+            fn $method(self, rhs: RatQuat<T, P>) -> Self::Output { (&self).$method(&rhs) }
+        }
+        impl<'a, T: BigIntAlg, P: QuatConfig<T>> $trait<&'a RatQuat<T, P>> for RatQuat<T, P> {
+            type Output = RatQuat<T, P>;
+            fn $method(self, rhs: &'a RatQuat<T, P>) -> Self::Output { (&self).$method(rhs) }
+        }
+        impl<'a, T: BigIntAlg, P: QuatConfig<T>> $trait<RatQuat<T, P>> for &'a RatQuat<T, P> {
+            type Output = RatQuat<T, P>;
+            fn $method(self, rhs: RatQuat<T, P>) -> Self::Output { self.$method(&rhs) }
+        }
+    };
+}
+impl_binop_rat!(Add, add);
+impl_binop_rat!(Sub, sub);
+impl_binop_rat!(Mul, mul);

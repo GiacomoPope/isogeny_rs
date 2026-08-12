@@ -3,11 +3,13 @@ use isogeny::bigint::BigIntAlg;
 use isogeny::quaternion::algebra::{IntQuat, QuatConfig, RatQuat};
 use isogeny::quaternion::ideal::QuatLeftIdeal;
 use isogeny::quaternion::lattice::{IntLattice, RatLattice};
-use isogeny::quaternion::lll::{quat_lideal_reduce_basis, quat_lll_core};
+use isogeny::quaternion::lll::{quat_lideal_reduce_basis, quat_lll_core, quat_lideal_lideal_mul_reduced};
 use num_bigint::BigInt;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::sync::LazyLock;
+use std::str::FromStr;
+use isogeny::quaternion::qlapoti::quat_lideal_shortest_equivalent;
 
 // ========================================================================
 // Test Configurations
@@ -120,7 +122,7 @@ fn lll_verify<T: BigIntAlg, P: QuatConfig<T>>(mat: &IntLattice<T, P>) -> bool {
     let b_star = lll_gram_schmidt(mat);
     let mut res = true;
 
-    // Check size reduction
+    // size reduction
     for i in 0..4 {
         for j in 0..i {
             let mut b_i = [BigRat::zero(), BigRat::zero(), BigRat::zero(), BigRat::zero()];
@@ -131,7 +133,7 @@ fn lll_verify<T: BigIntAlg, P: QuatConfig<T>>(mat: &IntLattice<T, P>) -> bool {
             let b_val = lll_bilinear::<T, P>(&b_star[j], &b_i);
             let norm = lll_bilinear::<T, P>(&b_star[j], &b_star[j]);
 
-            let mut mu = b_val * BigRat::new(norm.den, norm.num); // Division
+            let mut mu = b_val * BigRat::new(norm.den, norm.num);
             if mu < BigRat::zero() {
                 mu = BigRat::zero() - mu;
             }
@@ -142,7 +144,7 @@ fn lll_verify<T: BigIntAlg, P: QuatConfig<T>>(mat: &IntLattice<T, P>) -> bool {
         }
     }
 
-    // Check Lovász condition
+    // Lovász condition
     for i in 1..4 {
         let mut b_i = [BigRat::zero(), BigRat::zero(), BigRat::zero(), BigRat::zero()];
         for k in 0..4 {
@@ -190,7 +192,7 @@ fn test_lll_bigrat_consts() {
 
 #[test]
 fn test_lll_verify_fail_conditions() {
-    // Tests that unreduced matrices correctly fail the LLL verification[cite: 10]
+    // unreduced matrices should fail the LLL verification
     let mut mat = IntLattice::<BigInt, P3>::zero();
     mat.generators[0] = IntQuat::new_i32(0, 2, 3, -14);
     mat.generators[1] = IntQuat::new_i32(2, -1, -4, -8);
@@ -273,7 +275,6 @@ fn test_lll_randomized_lattice_lll() {
 fn test_lideal_reduce_basis() {
     let alg_order = o0_lattice::<P19>();
 
-    // Test generator defined as 1, 1, 2, 8, 8 mapping to denom=1, c0=1, c1=2, c2=8, c3=8
     let init_helper_int = IntQuat::new_i32(1, 2, 8, 8);
     let init_helper = RatQuat::new(init_helper_int, b_one());
 
@@ -297,4 +298,161 @@ fn test_lideal_reduce_basis() {
     test_lat.hnf();
 
     assert_eq!(RatLattice::equal(&lideal.lattice, &test_lat), u32::MAX, "Reduced ideal lattice not equal to original");
+}
+
+#[test]
+fn test_lll_bilinear() {
+    let mut vec0 = [
+        BigRat::from_integer(b(1)),
+        BigRat::from_integer(b(2)),
+        BigRat::from_integer(b(3)),
+        BigRat::from_integer(b(4)),
+    ];
+    let vec1 = [
+        BigRat::from_integer(b(9)),
+        BigRat::from_integer(b(-8)),
+        BigRat::from_integer(b(7)),
+        BigRat::from_integer(b(-6)),
+    ];
+
+    for i in 0..4 {
+        vec0[i] = BigRat::new(vec0[i].den.clone(), vec0[i].num.clone());
+    }
+
+    let cmp = BigRat::new(b(15), b(2));
+
+    let res = lll_bilinear::<BigInt, P3>(&vec0, &vec1);
+
+    assert_eq!(res, cmp, "Bilinear form evaluation failed");
+}
+
+#[test]
+fn test_lll_gram_schmidt_transposed_with_ibq() {
+    let mut mat = IntLattice::<BigInt, P3>::zero();
+
+    for i in 0..4 {
+        for j in 0..4 {
+            let i_i32 = i as i32;
+            let j_i32 = j as i32;
+            let val = i_i32 * i_i32 + (j_i32 + 5) * j_i32 - 2 + if i == j { 1 } else { 0 };
+            mat.generators[i].coords[j] = b(val);
+        }
+    }
+
+    let ot = lll_gram_schmidt(&mat);
+
+    // orthogonality using bilinear form
+    for i in 0..4 {
+        for j in (i + 1)..4 {
+            let b_val = lll_bilinear::<BigInt, P3>(&ot[i], &ot[j]);
+            assert!(b_val.num.is_zero(), "Gram-Schmidt vectors at {}, {} are not orthogonal", i, j);
+        }
+    }
+
+    // first vector should be identical to original matrix row
+    for i in 0..4 {
+        assert_eq!(ot[0][i].num, mat.generators[0].coords[i], "First vector was improperly mutated");
+        assert_eq!(ot[0][i].den, b_one(), "First vector denominator mutated");
+    }
+
+    // check no zero vector
+    for i in 0..4 {
+        let mut is_zero = true;
+        for j in 0..4 {
+            if !ot[i][j].num.is_zero() {
+                is_zero = false;
+            }
+        }
+        assert!(!is_zero, "Gram-Schmidt unexpectedly generated a zero vector at index {}", i);
+    }
+}
+
+#[test]
+fn test_lll_lideal_lideal_mul_reduced() {
+    let alg_order = o0_lattice::<P103>();
+
+    let n1 = b(113);
+    let gen1_int = IntQuat::new_i32(10, 0, 1, 3);
+    let gen1 = RatQuat::new(gen1_int, b(1));
+    let lideal1 = QuatLeftIdeal::create(&alg_order, &gen1, &n1);
+
+    let n2 = b(89);
+    let gen2_int = IntQuat::new_i32(2, 5, 1, 4);
+    let gen2 = RatQuat::new(gen2_int, b(2));
+    let lideal2 = QuatLeftIdeal::create(&alg_order, &gen2, &n2);
+
+    let mut prod = QuatLeftIdeal {
+        lattice: RatLattice::zero(),
+        norm: b_zero(),
+        parent_order: alg_order.clone().into(),
+    };
+    let mut gram = [
+        [b_zero(), b_zero(), b_zero(), b_zero()],
+        [b_zero(), b_zero(), b_zero(), b_zero()],
+        [b_zero(), b_zero(), b_zero(), b_zero()],
+        [b_zero(), b_zero(), b_zero(), b_zero()],
+    ];
+
+    quat_lideal_lideal_mul_reduced(&mut prod, &mut gram, &lideal1, &lideal2);
+
+    assert!(lll_verify(&prod.lattice.basis), "Product ideal basis failed post-multiplication LLL verification");
+
+    let prod_norm = prod.norm.clone();
+    assert_eq!(prod_norm, n1 * n2, "Product ideal norm diverged from multiplicative invariant");
+}
+
+
+// temporary?
+
+#[derive(Debug, Clone)]
+pub struct PSQISign;
+static PSQISIGN_VAL: LazyLock<BigInt> = LazyLock::new(|| {
+    let mut p = BigInt::from(2);
+    p = p << 248;
+    p = p * BigInt::from(5);
+    p - BigInt::from(1)
+});
+impl QuatConfig<BigInt> for PSQISign {
+    fn p() -> &'static BigInt {
+        &PSQISIGN_VAL
+    }
+}
+
+#[test]
+fn test_lll_basis_ordering_in_qlapoti() {
+    let alg_order = o0_lattice::<PSQISign>();
+
+    let c0 = BigInt::from_str("11679558057699548966295664199498600969").unwrap();
+    let c1 = BigInt::from_str("5995913694671076569732436307214390300").unwrap();
+    let elem = RatQuat::new(IntQuat::new(c0, c1, b_zero(), b_one()), b(2));
+    let n = BigInt::from_str("3588068757273373623184041115224326680").unwrap();
+
+    let lideal = QuatLeftIdeal::create(&alg_order, &elem, &n);
+
+    let mut smallest = RatQuat::<BigInt, PSQISign>::new(IntQuat::zero(), b_one());
+    let mut small = QuatLeftIdeal {
+        lattice: RatLattice::zero(),
+        norm: b_zero(),
+        parent_order: lideal.parent_order.clone(),
+    };
+    quat_lideal_shortest_equivalent(&mut small, &mut smallest, &lideal);
+
+    let mut gram = [
+        [b_zero(), b_zero(), b_zero(), b_zero()],
+        [b_zero(), b_zero(), b_zero(), b_zero()],
+        [b_zero(), b_zero(), b_zero(), b_zero()],
+        [b_zero(), b_zero(), b_zero(), b_zero()]
+    ];
+    let mut red_basis = IntLattice::zero();
+    isogeny::quaternion::lll::quat_lideal_reduce_basis(&mut red_basis, &mut gram, &small);
+
+    let mut norms = [b_zero(), b_zero(), b_zero(), b_zero()];
+    for i in 0..4 {
+        let v_rat = RatQuat::new(red_basis.generators[i].clone(), b_one());
+        let (n_val, _) = v_rat.norm();
+        norms[i] = n_val;
+    }
+
+    assert!(norms[0] < norms[2], "LLL failed to order short vectors to the front (b0 >= b2)");
+    assert!(norms[1] < norms[3], "LLL failed to order short vectors to the front (b1 >= b3)");
 }

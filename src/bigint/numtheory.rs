@@ -38,8 +38,7 @@ pub fn legendre<T: BigIntAlg>(a: &T, p: &T) -> i32 {
     }
 }
 
-/// Computes the modular square root of n modulo p using Tonelli-Shanks.
-/// Requires p to be prime. Returns None if n is a quadratic non-residue.
+/// Modular square root of n modulo p using Tonelli-Shanks.
 pub fn sqrt_mod_p<T: BigIntAlg>(n: &T, p: &T) -> Option<T> {
     let n_mod = n.clone() % p.clone();
     if n_mod.is_zero() {
@@ -105,9 +104,66 @@ pub fn sqrt_mod_p<T: BigIntAlg>(n: &T, p: &T) -> Option<T> {
     }
 }
 
+/// Miller-Rabin primality test
+pub fn is_probable_prime<T: BigIntAlg>(n: &T, reps: u32) -> bool {
+    let two = T::from_i32(2);
+    let three = T::from_i32(3);
+
+    if n.ct_eq(&two) == u32::MAX || n.ct_eq(&three) == u32::MAX { return true; }
+    if n < &two || (n.clone() % two.clone()).is_zero() { return false; }
+
+    let mut d = n.clone() - T::one();
+    let mut s = 0;
+    while (d.clone() % two.clone()).is_zero() {
+        d = d / two.clone();
+        s += 1;
+    }
+
+    let mut a = T::from_i32(2);
+    let n_minus_one = n.clone() - T::one();
+    let n_minus_two = n.clone() - two.clone();
+
+    for _ in 0..reps {
+        let mut x = powmod(&a, &d, n);
+
+        if x.ct_eq(&T::one()) == u32::MAX || x.ct_eq(&n_minus_one) == u32::MAX {
+            a = a + T::one();
+            if a > n_minus_two {
+                a = T::from_i32(2);
+            }
+            continue;
+        }
+
+    let mut composite = true;
+        for _ in 1..s {
+            x = powmod(&x, &two, n);
+            if x.ct_eq(&n_minus_one) == u32::MAX {
+                composite = false;
+                break;
+            }
+        }
+        if composite { return false; }
+
+        a = a + T::one();
+        if a > n_minus_two {
+            a = T::from_i32(2);
+        }
+    }
+    true
+}
+
 /// Solves the Diophantine equation x^2 + d*y^2 = m using Cornacchia's Algorithm.
-/// Returns Some((x, y)) if a solution exists, otherwise None.
 pub fn cornacchia<T: BigIntAlg>(d: &T, m: &T) -> Option<(T, T)> {
+    if m <= &T::zero() {
+        return None;
+    }
+
+    // TODO: not sure how well modular square roots behave when m is not prime
+    //       I forgot if we can keep them, I need to check this later
+    if !is_probable_prime(m, 40) {
+        return None;
+    }
+
     let two = T::from_i32(2);
 
     let minus_d = (m.clone() - (d.clone() % m.clone())) % m.clone();
@@ -122,7 +178,6 @@ pub fn cornacchia<T: BigIntAlg>(d: &T, m: &T) -> Option<(T, T)> {
     let limit = m.sqrt();
 
     while b > limit {
-
         let r = a.clone() % b.clone();
         a = b;
         b = r;
@@ -138,9 +193,22 @@ pub fn cornacchia<T: BigIntAlg>(d: &T, m: &T) -> Option<(T, T)> {
     let c = diff / d.clone();
     let c_sqrt = c.sqrt();
 
-    // check if c is a perfect square
     if c_sqrt.clone() * c_sqrt.clone() == c {
         Some((b, c_sqrt))
+    } else {
+        None
+    }
+}
+
+pub fn invmod<T: BigIntAlg>(a: &T, m: &T) -> Option<T> {
+    let (gcd, x, _y) = a.xgcd(m);
+
+    if gcd.ct_eq(&T::one()) == u32::MAX {
+        let mut inv = x % m.clone();
+        if inv < T::zero() {
+            inv = inv + m.clone();
+        }
+        Some(inv)
     } else {
         None
     }
