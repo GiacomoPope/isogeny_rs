@@ -189,7 +189,6 @@ mod test_product_isogeny_castryck_decru {
         theta::elliptic_product::{EllipticProduct, ProductPoint},
     };
 
-    // The Castryck-Decru instance uses a specific modulus
     static MODULUS: [u64; 4] = [
         0xffffffffffffffff,
         0xdcdfffffffffffff,

@@ -4,7 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+crypto-bigint = "0.7.3"
 fp2 = "0.3.0"
+num-bigint = "0.4.3"
+num-integer = "0.1"
+num-traits = "0.2"
 rand = "0.9"
 rand_core = "0.9"
 sha3 = "0.10.8"
@@ -13,7 +17,9 @@ sha3 = "0.10.8"
 criterion = { version = "0.4", features = ["html_reports"] }
 hex = "0.4.3"
 sha2 = "0.10.2"
-num-bigint = "0.4.3"
+num-bigint = { version = "0.4.3", features = ["rand"] }
+num-traits = "0.2"
+num-integer = "0.1"
 rayon = "1.10.0"
 
 [features]
@@ -28,6 +34,11 @@ kat-tests = []
 name = "bench_velu"
 path = "benches/bench_velu.rs"
 harness = false
+
+# [[bench]]
+# name = "bench_quat_mul"
+# path = "benches/bench_quat_mul.rs"
+# harness = false
 
 # [[bench]]
 # name = "bench_sidh"

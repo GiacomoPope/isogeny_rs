@@ -130,6 +130,7 @@ Tests can be run:
 ```
 cargo test
 ```
+(In addition to the basic RUST/cargo install, you might need `rustup toolchain install nightly`, then call `cargo +nightly test`)
 
 ## Collaboration
 
