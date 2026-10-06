@@ -16,6 +16,10 @@ pub trait Ring:
     /// The length of the encoded representation of the ring element in bytes
     const ENCODED_LENGTH: usize;
 
+    /// The type of the encoded representation, a byte array of length
+    /// `ENCODED_LENGTH`.
+    type Encoded: Copy + AsRef<[u8]> + AsMut<[u8]>;
+
     /// Predefined constant element representing the value 0.
     const ZERO: Self;
 
@@ -65,7 +69,7 @@ pub trait Ring:
 
     // Encode this value into bytes. Encoding uses little-endian, has
     // a fixed size (for a given field), and is canonical.
-    fn encode(self) -> [u8; Self::ENCODED_LENGTH];
+    fn encode(self) -> Self::Encoded;
 
     /// Decode the provided bytes into a field element. The source slice
     /// can have arbitrary length; the bytes are interpreted with the
@@ -89,9 +93,8 @@ pub trait Ring:
 /// `Zmod2e<const E: usize>`. But the issue then is we can't use `Self::N`
 ///  to define the struct, so then you need redundant Zmod2e<const E: usize, const N: usize>`
 /// but this also wasn't enough when integrating the type with the Ring trait because
-/// `fn encode(self) -> [u8; Self::ENCODED_LENGTH];` caused further issues.
-/// Once I understand generic const expressions better maybe this macro can be
-/// removed.
+/// the encoded byte array length depends on `E`, which is not expressible on
+/// stable Rust without `generic_const_exprs`.
 #[macro_export]
 macro_rules! define_z_mod_2e_core {
         (
@@ -657,6 +660,7 @@ macro_rules! define_z_mod_2e_core {
             // Reexport constants for base field Trait
             const ENCODED_LENGTH: usize = $typename::ENCODED_LENGTH;
             const ZERO: Self = Self::ZERO;
+            type Encoded = [u8; $typename::ENCODED_LENGTH];
 
             fn from_i32(x: i32) -> Self {
                 Self::from_i32(x)
@@ -697,7 +701,7 @@ macro_rules! define_z_mod_2e_core {
             fn set_cond(&mut self, rhs: &Self, ctl: u32) {
                 self.set_cond(rhs, ctl)
             }
-            fn encode(self) -> [u8; Self::ENCODED_LENGTH] {
+            fn encode(self) -> Self::Encoded {
                 self.encode()
             }
             fn decode_reduce(buf: &[u8]) -> Self {

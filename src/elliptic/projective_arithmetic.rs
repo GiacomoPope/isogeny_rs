@@ -1,4 +1,4 @@
-use fp2::traits::Fp as FpTrait;
+use fp2::traits::Fq as FpTrait;
 
 use crate::elliptic::point::PointX;
 
@@ -199,19 +199,19 @@ impl<Fq: FpTrait> Curve<Fq> {
             let Xp = P.X / P.Z;
             for i in (0..nbitlen).rev() {
                 let ctl = (((n[i >> 3] >> (i & 7)) as u32) & 1).wrapping_neg();
-                PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
+                PointX::cond_swap(&mut X0, &mut X1, ctl ^ cc);
                 self.xdbladd_aff_into(&mut X0, &mut X1, &Xp);
                 cc = ctl;
             }
         } else {
             for i in (0..nbitlen).rev() {
                 let ctl = (((n[i >> 3] >> (i & 7)) as u32) & 1).wrapping_neg();
-                PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
+                PointX::cond_swap(&mut X0, &mut X1, ctl ^ cc);
                 self.xdbladd_into(&mut X0, &mut X1, &xP);
                 cc = ctl;
             }
         }
-        PointX::condswap(&mut X0, &mut X1, cc);
+        PointX::cond_swap(&mut X0, &mut X1, cc);
 
         // Special cases:
         //  - ladder fails if P = (0,0) (a point of order 2)
@@ -252,7 +252,7 @@ impl<Fq: FpTrait> Curve<Fq> {
         P3.Z.set_cond(&Fq::ZERO, order1 | (order2 & !n_odd) | z0inf);
         P3.set_cond(P, z1inf | (order2 & n_odd));
         P3.set_cond(&dP, p1mp);
-        P3.set_condneg(z1inf | p1mp);
+        P3.set_cond_neg(z1inf | p1mp);
     }
 
     /// Return n*P as a new point.

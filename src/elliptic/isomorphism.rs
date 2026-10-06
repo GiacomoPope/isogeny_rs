@@ -1,4 +1,4 @@
-use fp2::traits::Fp as FpTrait;
+use fp2::traits::Fq as FpTrait;
 
 use super::{curve::Curve, point::PointX};
 

@@ -1,4 +1,4 @@
-use fp2::traits::Fp as FpTrait;
+use fp2::traits::Fq as FpTrait;
 
 /// Special x-only representation of a point (or a pair of points,
 /// since two Y coordinates may match a given X).
@@ -51,9 +51,9 @@ impl<Fq: FpTrait> PointX<Fq> {
     }
 
     #[inline]
-    pub fn condswap(P: &mut Self, Q: &mut Self, ctl: u32) {
-        Fq::condswap(&mut P.X, &mut Q.X, ctl);
-        Fq::condswap(&mut P.Z, &mut Q.Z, ctl);
+    pub fn cond_swap(P: &mut Self, Q: &mut Self, ctl: u32) {
+        Fq::cond_swap(&mut P.X, &mut Q.X, ctl);
+        Fq::cond_swap(&mut P.Z, &mut Q.Z, ctl);
     }
 
     #[inline]

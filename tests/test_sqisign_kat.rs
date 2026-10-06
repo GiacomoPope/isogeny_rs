@@ -1,5 +1,3 @@
-#![allow(incomplete_features)]
-#![feature(generic_const_exprs)]
 
 #[cfg(feature = "kat-tests")]
 mod test_helpers {
@@ -64,10 +62,7 @@ mod test_helpers {
         kat_tests
     }
 
-    pub fn test_kat<Fq: FqTrait>(sqisign: &Sqisign<Fq>, test: &KatTest)
-    where
-        [(); Fq::ENCODED_LENGTH]: Sized,
-    {
+    pub fn test_kat<Fq: FqTrait>(sqisign: &Sqisign<Fq>, test: &KatTest) {
         // Parse sm into the signature and message
         let (sig, msg) = test.sm.split_at(test.sm.len() - test.mlen);
 

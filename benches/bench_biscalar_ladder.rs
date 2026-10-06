@@ -4,7 +4,6 @@ mod benchmark_biscalar {
     use std::time::Duration;
 
     use criterion::{Criterion, black_box, criterion_group};
-    use fp2::traits::Fp as _;
     use rand_core::RngCore;
 
     use isogeny::elliptic::basis::BasisX;
@@ -15,7 +14,7 @@ mod benchmark_biscalar {
     fn benchmark_ladder_biscalar(c: &mut Criterion) {
         let mut rng = DRNG::from_seed("test_biscalar_ladder".as_bytes());
 
-        let A = Fp2::from_i32(6);
+        let A = Fp2::from(6i32);
         let E = Curve::new(&A);
 
         let mut a: [u8; 16] = [0; 16];
@@ -59,7 +58,7 @@ mod benchmark_biscalar {
     fn benchmark_ladder_biscalar_vartime(c: &mut Criterion) {
         let mut rng = DRNG::from_seed("test_biscalar_ladder".as_bytes());
 
-        let A = Fp2::from_i32(6);
+        let A = Fp2::from(6i32);
         let E = Curve::new(&A);
 
         let mut a: [u8; 16] = [0; 16];

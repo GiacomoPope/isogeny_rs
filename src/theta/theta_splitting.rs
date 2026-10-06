@@ -250,7 +250,7 @@ impl<Fq: FqTrait> ThetaStructure<Fq> {
                 // If chi(i, t) is +1 we want ctl to be 0x00..00
                 // If chi(i, t) is -1 we want ctl to be 0xFF..FF
                 let ctl = (CHI_EVAL[EVEN_INDICIES[i][0]][j] >> 1) as u32;
-                t1.set_condneg(ctl);
+                t1.set_cond_neg(ctl);
                 U_sqr += t1;
             }
 

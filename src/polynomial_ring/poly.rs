@@ -1,6 +1,6 @@
 #![allow(dead_code)] // for now
 
-use fp2::traits::Fp as FpTrait;
+use fp2::traits::{Fq as FpTrait, FqRnd};
 use rand_core::{CryptoRng, RngCore};
 
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
@@ -563,14 +563,20 @@ impl<Fp: FpTrait> Polynomial<Fp> {
     }
 
     /// Set self to a random value
-    pub fn set_rand<R: CryptoRng + RngCore>(&mut self, rng: &mut R) {
+    pub fn set_rand<R: CryptoRng + RngCore>(&mut self, rng: &mut R)
+    where
+        Fp: FqRnd,
+    {
         for x in self.coeffs.iter_mut() {
             x.set_rand(rng);
         }
     }
 
     /// Return a new random polynomial with length d
-    pub fn rand<R: CryptoRng + RngCore>(rng: &mut R, d: usize) -> Self {
+    pub fn rand<R: CryptoRng + RngCore>(rng: &mut R, d: usize) -> Self
+    where
+        Fp: FqRnd,
+    {
         let mut r = Self {
             coeffs: vec![Fp::ZERO; d],
         };

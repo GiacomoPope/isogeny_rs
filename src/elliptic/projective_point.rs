@@ -1,4 +1,4 @@
-use fp2::traits::Fp as FpTrait;
+use fp2::traits::Fq as FpTrait;
 
 use super::point::PointX;
 
@@ -72,8 +72,8 @@ impl<Fq: FpTrait> Point<Fq> {
     /// Negate this point if ctl == `0xFFFFFFFF`.
     /// Do nothing is ctl == `0x00000000`.
     /// ctl MUST be either `0xFFFFFFFF` or `0x00000000`.
-    pub fn set_condneg(&mut self, ctl: u32) {
-        self.Y.set_condneg(ctl);
+    pub fn set_cond_neg(&mut self, ctl: u32) {
+        self.Y.set_cond_neg(ctl);
     }
 
     /// Return `0xFFFFFFFF` if self is the point-at-infinity, `0x00000000` otherwise.

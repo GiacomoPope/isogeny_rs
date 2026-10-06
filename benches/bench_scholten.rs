@@ -9,7 +9,7 @@ mod benchmark_scholten {
     use std::time::Duration;
 
     fn benchmark_dim_one_isogeny(c: &mut Criterion) {
-        use fp2::traits::Fp as _;
+        use fp2::traits::Fq as _;
         use isogeny::fields::sqisign::SqiField248 as Fp2;
 
         // Curve coefficients
@@ -54,7 +54,7 @@ mod benchmark_scholten {
     }
 
     fn benchmark_dim_two_isogeny(c: &mut Criterion) {
-        use fp2::traits::Fp as _;
+        use fp2::traits::Fq as _;
         use isogeny::fields::sqisign::SqiField248 as Fp2;
 
         // Domain Curve coefficients

@@ -1,4 +1,4 @@
-use fp2::traits::Fp as FpTrait;
+use fp2::traits::Fq as FpTrait;
 
 use crate::utilities::bn::{
     bn_div4_vartime, bn_from_le_bytes, bn_is_zero_vartime, bn_lt_vartime, bn_set_div2_vartime,
@@ -203,19 +203,19 @@ impl<Fq: FpTrait> Curve<Fq> {
             let Xp = P.X / P.Z;
             for i in (0..nbitlen).rev() {
                 let ctl = (((n[i >> 3] >> (i & 7)) as u32) & 1).wrapping_neg();
-                PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
+                PointX::cond_swap(&mut X0, &mut X1, ctl ^ cc);
                 self.xdbladd_aff_into(&mut X0, &mut X1, &Xp);
                 cc = ctl;
             }
         } else {
             for i in (0..nbitlen).rev() {
                 let ctl = (((n[i >> 3] >> (i & 7)) as u32) & 1).wrapping_neg();
-                PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
+                PointX::cond_swap(&mut X0, &mut X1, ctl ^ cc);
                 self.xdbladd_into(&mut X0, &mut X1, P);
                 cc = ctl;
             }
         }
-        PointX::condswap(&mut X0, &mut X1, cc);
+        PointX::cond_swap(&mut X0, &mut X1, cc);
 
         // The ladder may fail if P = (0,0) (which is a point of
         // order 2) because in that case xadd() (and xadd_aff())
@@ -263,19 +263,19 @@ impl<Fq: FpTrait> Curve<Fq> {
                     let Xp = P.X / P.Z;
                     for i in (0..nbitlen).rev() {
                         let ctl = (((n >> i) as u32) & 1).wrapping_neg();
-                        PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
+                        PointX::cond_swap(&mut X0, &mut X1, ctl ^ cc);
                         self.xdbladd_aff_into(&mut X0, &mut X1, &Xp);
                         cc = ctl;
                     }
                 } else {
                     for i in (0..nbitlen).rev() {
                         let ctl = (((n >> i) as u32) & 1).wrapping_neg();
-                        PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
+                        PointX::cond_swap(&mut X0, &mut X1, ctl ^ cc);
                         self.xdbladd_into(&mut X0, &mut X1, P);
                         cc = ctl;
                     }
                 }
-                PointX::condswap(&mut X0, &mut X1, cc);
+                PointX::cond_swap(&mut X0, &mut X1, cc);
 
                 // The ladder may fail if P = (0,0) (which is a point of
                 // order 2) because in that case xadd() (and xadd_aff())
@@ -327,11 +327,11 @@ impl<Fq: FpTrait> Curve<Fq> {
         let mut cc = 0u32;
         for i in 0..nbitlen {
             let ctl = (((n[i >> 3] >> (i & 7)) as u32) & 1).wrapping_neg();
-            PointX::condswap(&mut X1, &mut X2, ctl ^ cc);
+            PointX::cond_swap(&mut X1, &mut X2, ctl ^ cc);
             self.xdbladd_into(&mut X0, &mut X2, &X1);
             cc = ctl;
         }
-        PointX::condswap(&mut X1, &mut X2, cc);
+        PointX::cond_swap(&mut X1, &mut X2, cc);
         X1
     }
 
@@ -438,11 +438,11 @@ impl<Fq: FpTrait> Curve<Fq> {
             let to_double = if (h >> 1) == 0 { R[h & 1] } else { R[2] };
             T[0] = self.xdbl(&to_double);
 
-            Fq::condswap(&mut xD1, &mut xD2, (r2 as u32).wrapping_neg());
+            Fq::cond_swap(&mut xD1, &mut xD2, (r2 as u32).wrapping_neg());
             T[1] = Self::xdiff_add_aff(&R[r2], &R[r2 + 1], &xD1);
 
             T[2] = Self::xdiff_add_aff(&R[0], &R[2], &xF1);
-            Fq::condswap(&mut xF1, &mut xF2, ((h & 1) as u32).wrapping_neg());
+            Fq::cond_swap(&mut xF1, &mut xF2, ((h & 1) as u32).wrapping_neg());
 
             // Update R values from T values.
             R = T;

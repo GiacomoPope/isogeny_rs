@@ -1,5 +1,5 @@
 use super::point::PointX;
-use fp2::traits::Fp as FpTrait;
+use fp2::traits::Fq as FpTrait;
 
 /// A x-only basis of x(P), x(Q) and x(P - Q)
 #[derive(Clone, Copy, Debug)]

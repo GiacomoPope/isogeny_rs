@@ -103,7 +103,7 @@ impl<Fq: FqTrait, const N: usize> Sidh<Fq, N> {
 
     /// Return the domain E0 : y^2 = x^3 + 6x^2 + x
     pub fn starting_curve() -> Curve<Fq> {
-        let A = Fq::from_i32(6);
+        let A = Fq::from(6i32);
         Curve::new(&A)
     }
 

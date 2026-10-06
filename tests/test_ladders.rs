@@ -2,7 +2,6 @@
 
 #[cfg(test)]
 mod test_ladders {
-    use fp2::traits::Fp as _;
     use isogeny::elliptic::basis::BasisX;
     use isogeny::elliptic::curve::Curve;
     use isogeny::fields::sike::SikeOne as Fp2;
@@ -13,7 +12,7 @@ mod test_ladders {
     fn test_mul() {
         let mut rng = DRNG::from_seed("test_mul".as_bytes());
 
-        let A = Fp2::from_i32(6);
+        let A = Fp2::from(6i32);
         let E = Curve::new(&A);
 
         let mut scalar: [u8; 32] = [0; 32];
@@ -35,7 +34,7 @@ mod test_ladders {
     fn test_3pt_ladder() {
         let mut rng = DRNG::from_seed("test_3pt_ladder".as_bytes());
 
-        let A = Fp2::from_i32(6);
+        let A = Fp2::from(6i32);
         let E = Curve::new(&A);
 
         let mut scalar: [u8; 32] = [0; 32];
@@ -66,7 +65,7 @@ mod test_ladders {
     fn test_ladder_biscalar() {
         let mut rng = DRNG::from_seed("test_biscalar_ladder".as_bytes());
 
-        let A = Fp2::from_i32(6);
+        let A = Fp2::from(6i32);
         let E = Curve::new(&A);
 
         // Try truncating the scalar by a few bits by setting the bit length.
@@ -101,7 +100,7 @@ mod test_ladders {
     fn test_ladder_biscalar_vartime() {
         let mut rng = DRNG::from_seed("test_biscalar_ladder_vartime".as_bytes());
 
-        let A = Fp2::from_i32(6);
+        let A = Fp2::from(6i32);
         let E = Curve::new(&A);
 
         // Try truncating the scalar by a few bits by setting the bit length.

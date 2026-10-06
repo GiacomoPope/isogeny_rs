@@ -10,7 +10,7 @@
 
 // use std::time::Instant;
 
-use fp2::traits::Fp as FqTrait;
+use fp2::traits::{Fq as FqTrait, FqExp};
 
 use crate::{
     polynomial_ring::poly::Poly,
@@ -77,7 +77,7 @@ impl<Fq: FqTrait> Iterator for PointXMultiples<Fq> {
     }
 }
 
-impl<Fq: FqTrait> Curve<Fq> {
+impl<Fq: FqTrait + FqExp> Curve<Fq> {
     //============================================================
     // Variable time methods to compute [n]P and [n^ell]P for
     // cofactor clearing during isogeny computations. Should be
@@ -131,7 +131,7 @@ impl<Fq: FqTrait> Curve<Fq> {
                     let Xp = P.X / P.Z;
                     for i in (0..nbitlen).rev() {
                         let ctl = (((n >> i) as u32) & 1).wrapping_neg();
-                        PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
+                        PointX::cond_swap(&mut X0, &mut X1, ctl ^ cc);
                         Self::xdiff_add_aff_into(&X0, &mut X1, &Xp);
                         Self::xdbl_proj_into(&mut X0, A24, C24);
                         cc = ctl;
@@ -139,13 +139,13 @@ impl<Fq: FqTrait> Curve<Fq> {
                 } else {
                     for i in (0..nbitlen).rev() {
                         let ctl = (((n >> i) as u32) & 1).wrapping_neg();
-                        PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
+                        PointX::cond_swap(&mut X0, &mut X1, ctl ^ cc);
                         Self::xdiff_add_into(&X0, &mut X1, P);
                         Self::xdbl_proj_into(&mut X0, A24, C24);
                         cc = ctl;
                     }
                 }
-                PointX::condswap(&mut X0, &mut X1, cc);
+                PointX::cond_swap(&mut X0, &mut X1, cc);
 
                 // The ladder may fail if P = (0,0) (which is a point of
                 // order 2) because in that case xadd() (and xadd_aff())
@@ -190,13 +190,13 @@ impl<Fq: FqTrait> Curve<Fq> {
         let Xp = P.X / P.Z;
         for i in (0..nbitlen).rev() {
             let ctl = (((n[i >> 6] >> (i & 63)) as u32) & 1).wrapping_neg();
-            PointX::condswap(&mut X0, &mut X1, ctl ^ cc);
+            PointX::cond_swap(&mut X0, &mut X1, ctl ^ cc);
             // TODO: xdbladd_proj_aff_into?
             Self::xdiff_add_aff_into(&X0, &mut X1, &Xp);
             Self::xdbl_proj_into(&mut X0, A24, C24);
             cc = ctl;
         }
-        PointX::condswap(&mut X0, &mut X1, cc);
+        PointX::cond_swap(&mut X0, &mut X1, cc);
 
         // The ladder may fail if P = (0,0) (which is a point of
         // order 2) because in that case xadd() (and xadd_aff())

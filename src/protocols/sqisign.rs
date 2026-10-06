@@ -230,10 +230,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
 
     /// Given the public key curve and challenge curve, compute a challenge scalar
     /// from the message. Used for generating and verifiying signatures.
-    fn hash_challenge(&self, E_pk: &Curve<Fq>, E_chl: &Curve<Fq>, msg: &[u8]) -> Vec<u8>
-    where
-        [(); Fq::ENCODED_LENGTH]: Sized,
-    {
+    fn hash_challenge(&self, E_pk: &Curve<Fq>, E_chl: &Curve<Fq>, msg: &[u8]) -> Vec<u8> {
         let mut shake_256 = Shake256::default();
 
         // For all but the last steps, we extract out hash_bytes from
@@ -242,8 +239,8 @@ impl<Fq: FqTrait> Sqisign<Fq> {
         let mut xof_bytes = vec![0; hash_bytes];
 
         // The first iteration hashes j(E_pk) || j(E_chl) || msg
-        shake_256.update(&E_pk.j_invariant().encode());
-        shake_256.update(&E_chl.j_invariant().encode());
+        shake_256.update(E_pk.j_invariant().encode().as_ref());
+        shake_256.update(E_chl.j_invariant().encode().as_ref());
         shake_256.update(msg);
         shake_256.finalize_xof_reset_into(&mut xof_bytes);
 
@@ -403,10 +400,7 @@ impl<Fq: FqTrait> Sqisign<Fq> {
     }
 
     /// SQIsign verification.
-    pub fn verify(&self, msg: &[u8], sig_bytes: &[u8], pk_bytes: &[u8]) -> bool
-    where
-        [(); Fq::ENCODED_LENGTH]: Sized,
-    {
+    pub fn verify(&self, msg: &[u8], sig_bytes: &[u8], pk_bytes: &[u8]) -> bool {
         // Decode the byte encoded public key and signature.
         let pk = self.decode_public_key(pk_bytes).unwrap();
         let sig = self.decode_signature(sig_bytes).unwrap();

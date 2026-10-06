@@ -157,9 +157,9 @@ impl<Fq: FqTrait> Curve<Fq> {
 
             // Compute [2]Si and T + Si for i = {0, 1} depending on the bit of n
             let ctl = (((n[i >> 3] >> (i & 7)) as u32) & 1).wrapping_neg();
-            <Fq>::condswap(&mut xS0, &mut xS1, ctl ^ cc);
-            <Fq>::condswap(&mut zS0, &mut zS1, ctl ^ cc);
-            <Fq>::condswap(&mut ixQ, &mut ixPQ, ctl ^ cc);
+            <Fq>::cond_swap(&mut xS0, &mut xS1, ctl ^ cc);
+            <Fq>::cond_swap(&mut zS0, &mut zS1, ctl ^ cc);
+            <Fq>::cond_swap(&mut ixQ, &mut ixPQ, ctl ^ cc);
             self.cubical_xdbladd(&mut xS0, &mut zS0, &mut xT, &mut zT, &ixQ);
 
             // Update Sj to be R
@@ -170,8 +170,8 @@ impl<Fq: FqTrait> Curve<Fq> {
             cc = ctl;
         }
         // Perform a final swap
-        <Fq>::condswap(&mut xS0, &mut xS1, cc);
-        <Fq>::condswap(&mut zS0, &mut zS1, cc);
+        <Fq>::cond_swap(&mut xS0, &mut xS1, cc);
+        <Fq>::cond_swap(&mut zS0, &mut zS1, cc);
 
         // Set the variables to return S0, T = [n]P, [n]P + Q
         *nP = PointX::new(&xS0, &zS0);
